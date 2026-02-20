@@ -23,8 +23,9 @@ function RequireAuth({ children }) {
 }
 
 function RequireAdmin({ children }) {
-  const permissions = useAuthStore((s) => s.permissions);
-  if (!permissions.can_manage_users) return <Navigate to="/clients" replace />;
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role_data?.name === 'admin' || user?.is_superuser;
+  if (!isAdmin) return <Navigate to="/clients" replace />;
   return children;
 }
 
@@ -36,7 +37,18 @@ export default function App() {
     const token = localStorage.getItem('access_token');
     if (token) {
       authAPI.me()
-        .then(({ data }) => setUser({ ...data, permissions: data.role_data?.permissions || {} }))
+        .then(({ data }) => {
+          const permissions = data.role_data ? {
+            can_view_all_clients: data.role_data.can_view_all_clients,
+            can_create_client: data.role_data.can_create_client,
+            can_edit_client: data.role_data.can_edit_client,
+            can_delete_client: data.role_data.can_delete_client,
+            can_manage_users: data.role_data.can_manage_users,
+            can_manage_roles: data.role_data.can_manage_roles,
+            can_manage_custom_fields: data.role_data.can_manage_custom_fields,
+          } : {};
+          setUser({ ...data, permissions });
+        })
         .catch(() => localStorage.clear())
         .finally(() => setInitializing(false));
     } else {

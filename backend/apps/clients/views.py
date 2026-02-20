@@ -12,6 +12,64 @@ from .serializers import (
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields
 
 
+FIELD_LABELS = {
+    'last_name': 'Фамилия',
+    'first_name': 'Имя',
+    'middle_name': 'Отчество',
+    'inn': 'ИНН',
+    'phone': 'Телефон',
+    'email': 'Email',
+    'company': 'Компания',
+    'address': 'Адрес',
+    'status': 'Статус',
+    'provider_id': 'Провайдер',
+    'personal_account': 'Лицевой счёт',
+    'contract_number': '№ договора',
+    'provider_settings': 'Настройки провайдера',
+    'subnet': 'Подсеть аптеки',
+    'external_ip': 'Внешний IP',
+    'iccid': 'ICCID',
+    'pharmacy_code': 'Код аптеки',
+}
+
+STATUS_LABELS = {
+    'active': 'Активен',
+    'inactive': 'Неактивен',
+}
+
+
+def build_change_log(old_client, new_data, provider_map):
+    changes = []
+    for field, label in FIELD_LABELS.items():
+        old_val = getattr(old_client, field, '') or ''
+        new_val = new_data.get(field.replace('_id', ''), '') or ''
+
+        # Для провайдера получаем ID
+        if field == 'provider_id':
+            new_val = new_data.get('provider', '') or ''
+            if str(old_val) == str(new_val):
+                continue
+            old_name = provider_map.get(old_val, f'#{old_val}') if old_val else '—'
+            new_name = provider_map.get(int(new_val), f'#{new_val}') if new_val else '—'
+            changes.append(f'{label}: «{old_name}» → «{new_name}»')
+            continue
+
+        if field == 'status':
+            old_val = STATUS_LABELS.get(str(old_val), old_val)
+            new_val = STATUS_LABELS.get(str(new_val), new_val)
+
+        if str(old_val) != str(new_val):
+            old_display = str(old_val) if old_val else '—'
+            new_display = str(new_val) if new_val else '—'
+            # Обрезаем длинные значения
+            if len(old_display) > 50:
+                old_display = old_display[:50] + '...'
+            if len(new_display) > 50:
+                new_display = new_display[:50] + '...'
+            changes.append(f'{label}: «{old_display}» → «{new_display}»')
+    return changes
+
+
 class CustomFieldDefinitionViewSet(viewsets.ModelViewSet):
     queryset = CustomFieldDefinition.objects.filter(is_active=True)
     serializer_class = CustomFieldDefinitionSerializer
@@ -49,11 +107,21 @@ class ClientViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        old = self.get_object()
+        provider_map = {p.id: p.name for p in Provider.objects.all()}
+        changes = build_change_log(old, self.request.data, provider_map)
         client = serializer.save()
-        ClientActivity.objects.create(
-            client=client, user=self.request.user,
-            action='Карточка клиента обновлена'
-        )
+        if changes:
+            for change in changes:
+                ClientActivity.objects.create(
+                    client=client, user=self.request.user,
+                    action=change
+                )
+        else:
+            ClientActivity.objects.create(
+                client=client, user=self.request.user,
+                action='Карточка обновлена (без изменений в полях)'
+            )
 
     def destroy(self, request, *args, **kwargs):
         if not request.user.has_perm_flag('can_delete_client'):

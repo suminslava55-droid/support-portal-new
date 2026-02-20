@@ -34,16 +34,27 @@ function CopyField({ value, children }) {
       <span>{children || value || '—'}</span>
       {value && (
         <Tooltip title="Скопировать">
-          <Button
-            type="text" size="small"
+          <Button type="text" size="small"
             icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-            onClick={handleCopy}
-            style={{ padding: '0 2px', height: 'auto' }}
+            onClick={handleCopy} style={{ padding: '0 2px', height: 'auto' }}
           />
         </Tooltip>
       )}
     </Space>
   );
+}
+
+function ActivityIcon({ action }) {
+  if (action.includes('создана')) return '🆕';
+  if (action.includes('заметка')) return '💬';
+  if (action.includes('Провайдер')) return '🌐';
+  if (action.includes('Статус')) return '🔄';
+  if (action.includes('Телефон') || action.includes('Email')) return '📞';
+  if (action.includes('IP') || action.includes('Подсеть') || action.includes('Микротик')) return '🖧';
+  if (action.includes('договора') || action.includes('счёт')) return '📄';
+  if (action.includes('ICCID')) return '📱';
+  if (action.includes('Код аптеки')) return '🏥';
+  return '✏️';
 }
 
 export default function ClientDetailPage() {
@@ -101,13 +112,14 @@ export default function ClientDetailPage() {
   if (!client) return <div>Клиент не найден</div>;
 
   const provider = client.provider_data;
+  const pageTitle = client.address || client.company || `Клиент #${client.id}`;
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <Space>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/clients')} />
-          <Title level={4} style={{ margin: 0 }}>{client.full_name}</Title>
+          <Title level={4} style={{ margin: 0 }}>{pageTitle}</Title>
           <Tag color={client.status === 'active' ? 'green' : 'default'}>
             {client.status === 'active' ? 'Активен' : 'Неактивен'}
           </Tag>
@@ -130,22 +142,23 @@ export default function ClientDetailPage() {
         <Col span={16}>
           <Card title="Информация о клиенте" style={{ marginBottom: 16 }}>
             <Descriptions column={2} bordered size="small">
-              <Descriptions.Item label="Фамилия">{client.last_name}</Descriptions.Item>
-              <Descriptions.Item label="Имя">{client.first_name}</Descriptions.Item>
-              {client.middle_name && (
-                <Descriptions.Item label="Отчество" span={2}>{client.middle_name}</Descriptions.Item>
-              )}
+              <Descriptions.Item label="Адрес" span={2}>{client.address || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Компания">{client.company || '—'}</Descriptions.Item>
               <Descriptions.Item label="ИНН">
                 <CopyField value={client.inn} />
               </Descriptions.Item>
               <Descriptions.Item label="Телефон">
                 <CopyField value={client.phone} />
               </Descriptions.Item>
+              <Descriptions.Item label="ICCID">
+                <CopyField value={client.iccid} />
+              </Descriptions.Item>
               <Descriptions.Item label="Email">
                 <CopyField value={client.email} />
               </Descriptions.Item>
-              <Descriptions.Item label="Компания" span={2}>{client.company || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Адрес" span={2}>{client.address || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Код аптеки">
+                <CopyField value={client.pharmacy_code} />
+              </Descriptions.Item>
             </Descriptions>
           </Card>
 
@@ -160,9 +173,7 @@ export default function ClientDetailPage() {
                 </Descriptions.Item>
                 <Descriptions.Item label="Тип подключения" span={2}>
                   {provider.connection_type
-                    ? <Tag color={CONNECTION_COLORS[provider.connection_type]}>
-                        {CONNECTION_LABELS[provider.connection_type]}
-                      </Tag>
+                    ? <Tag color={CONNECTION_COLORS[provider.connection_type]}>{CONNECTION_LABELS[provider.connection_type]}</Tag>
                     : '—'}
                 </Descriptions.Item>
                 <Descriptions.Item label="Лицевой счёт">
@@ -176,10 +187,28 @@ export default function ClientDetailPage() {
                     ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings}</pre>
                     : '—'}
                 </Descriptions.Item>
-                <Descriptions.Item label="Подсеть аптеки" span={2}>
-                  {client.subnet
-                    ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.subnet}</pre>
-                    : '—'}
+                <Descriptions.Item label="Подсеть аптеки">
+                  <CopyField value={client.subnet} />
+                </Descriptions.Item>
+                <Descriptions.Item label="Внешний IP">
+                  <CopyField value={client.external_ip} />
+                </Descriptions.Item>
+                <Descriptions.Item label="Микротик IP" span={2}>
+                  <Space>
+                    <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                      {client.mikrotik_ip || '—'}
+                    </Tag>
+                    {client.mikrotik_ip && (
+                      <Tooltip title="Скопировать">
+                        <Button type="text" size="small"
+                          icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                          onClick={() => { navigator.clipboard.writeText(client.mikrotik_ip); message.success('Скопировано!', 1); }}
+                          style={{ padding: '0 2px', height: 'auto' }}
+                        />
+                      </Tooltip>
+                    )}
+                    <Text type="secondary" style={{ fontSize: 11 }}>вычисляется автоматически</Text>
+                  </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Телефоны техподдержки" span={2}>
                   <CopyField value={provider.support_phones}>
@@ -191,9 +220,7 @@ export default function ClientDetailPage() {
               </Descriptions>
             ) : (
               <Empty description="Провайдер не указан" image={Empty.PRESENTED_IMAGE_SIMPLE}>
-                <Button type="link" onClick={() => navigate(`/clients/${id}/edit`)}>
-                  Указать провайдера
-                </Button>
+                <Button type="link" onClick={() => navigate(`/clients/${id}/edit`)}>Указать провайдера</Button>
               </Empty>
             )}
           </Card>
@@ -201,17 +228,12 @@ export default function ClientDetailPage() {
           <Card title="Заметки">
             <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
               <Input.TextArea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Добавить заметку..."
-                rows={2}
+                value={noteText} onChange={(e) => setNoteText(e.target.value)}
+                placeholder="Добавить заметку..." rows={2}
                 style={{ borderRadius: '6px 0 0 6px' }}
               />
-              <Button
-                type="primary" icon={<SendOutlined />}
-                onClick={handleAddNote} loading={noteSending}
-                style={{ height: 'auto', borderRadius: '0 6px 6px 0' }}
-              >
+              <Button type="primary" icon={<SendOutlined />} onClick={handleAddNote}
+                loading={noteSending} style={{ height: 'auto', borderRadius: '0 6px 6px 0' }}>
                 Добавить
               </Button>
             </Space.Compact>
@@ -234,24 +256,26 @@ export default function ClientDetailPage() {
         </Col>
 
         <Col span={8}>
-          <Card title="История изменений">
-            {client.activities?.length === 0 ? (
+          <Card title={<Space>История изменений <Tag>{client.activities?.length || 0}</Tag></Space>}>
+            {!client.activities?.length ? (
               <Empty description="История пуста" image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
-              <Timeline
-                items={client.activities?.map((a) => ({
-                  dot: <ClockCircleOutlined style={{ color: '#1677ff' }} />,
-                  children: (
-                    <div>
-                      <Text>{a.action}</Text>
-                      <br />
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        {a.user_name} · {dayjs(a.created_at).format('DD.MM HH:mm')}
-                      </Text>
-                    </div>
-                  ),
-                }))}
-              />
+              <div style={{ maxHeight: 600, overflowY: 'auto' }}>
+                <Timeline
+                  items={client.activities.map((a) => ({
+                    dot: <span style={{ fontSize: 14 }}><ActivityIcon action={a.action} /></span>,
+                    children: (
+                      <div style={{ marginBottom: 4 }}>
+                        <Text style={{ fontSize: 13 }}>{a.action}</Text>
+                        <br />
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          {a.user_name} · {dayjs(a.created_at).format('DD.MM.YYYY HH:mm')}
+                        </Text>
+                      </div>
+                    ),
+                  }))}
+                />
+              </div>
             )}
           </Card>
         </Col>

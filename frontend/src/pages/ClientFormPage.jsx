@@ -8,6 +8,16 @@ import useAuthStore from '../store/authStore';
 
 const { Title } = Typography;
 
+function calcMikrotikIP(subnet) {
+  if (!subnet) return '';
+  try {
+    const network = subnet.split('/')[0];
+    const parts = network.split('.');
+    if (parts.length === 4) { parts[3] = '2'; return parts.join('.'); }
+  } catch (e) {}
+  return '';
+}
+
 export default function ClientFormPage() {
   const { id } = useParams();
   const isEdit = Boolean(id);
@@ -16,6 +26,7 @@ export default function ClientFormPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState([]);
+  const [mikrotikIP, setMikrotikIP] = useState('');
   const permissions = useAuthStore((s) => s.permissions);
 
   useEffect(() => {
@@ -27,6 +38,7 @@ export default function ClientFormPage() {
         if (isEdit) {
           const { data } = await clientsAPI.get(id);
           form.setFieldsValue(data);
+          setMikrotikIP(calcMikrotikIP(data.subnet));
         }
       } catch {
         message.error('Ошибка загрузки данных');
@@ -57,55 +69,51 @@ export default function ClientFormPage() {
   };
 
   const canEdit = permissions.can_edit_client || permissions.can_create_client;
-
   if (loading) return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>;
 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} />
-        <Title level={4} style={{ margin: 0 }}>
-          {isEdit ? 'Редактирование клиента' : 'Новый клиент'}
-        </Title>
+        <Title level={4} style={{ margin: 0 }}>{isEdit ? 'Редактирование клиента' : 'Новый клиент'}</Title>
       </div>
 
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={!canEdit}>
-
         <Card title="Основная информация" style={{ marginBottom: 16 }}>
           <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="last_name" label="Фамилия" rules={[{ required: true, message: 'Обязательное поле' }]}>
-                <Input placeholder="Иванов" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="first_name" label="Имя" rules={[{ required: true, message: 'Обязательное поле' }]}>
-                <Input placeholder="Иван" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="middle_name" label="Отчество">
-                <Input placeholder="Иванович" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="inn" label="ИНН">
-                <Input placeholder="123456789012" maxLength={12} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="phone" label="Телефон">
-                <Input placeholder="+7 (999) 123-45-67" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Некорректный email' }]}>
-                <Input placeholder="example@mail.ru" />
+            <Col span={24}>
+              <Form.Item name="address" label="Адрес">
+                <Input.TextArea rows={2} placeholder="г. Новосибирск, ул. Примерная, д. 1" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="company" label="Компания / организация">
                 <Input placeholder="ООО «Название»" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="inn" label="ИНН">
+                <Input placeholder="123456789012" maxLength={12} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="phone" label="Телефон">
+                <Input placeholder="+7 (999) 123-45-67" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="iccid" label="ICCID">
+                <Input placeholder="89701xxxxxxxxxxxxxxx" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Некорректный email' }]}>
+                <Input placeholder="example@mail.ru" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="pharmacy_code" label="Код аптеки">
+                <Input placeholder="APT-001" />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -116,11 +124,6 @@ export default function ClientFormPage() {
                 ]} />
               </Form.Item>
             </Col>
-            <Col span={24}>
-              <Form.Item name="address" label="Адрес">
-                <Input.TextArea rows={2} placeholder="г. Москва, ул. Примерная, д. 1" />
-              </Form.Item>
-            </Col>
           </Row>
         </Card>
 
@@ -129,10 +132,7 @@ export default function ClientFormPage() {
             <Col span={24}>
               <Form.Item name="provider" label="Провайдер">
                 <Select
-                  placeholder="Выберите провайдера"
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
+                  placeholder="Выберите провайдера" allowClear showSearch optionFilterProp="label"
                   options={providers.map((p) => ({ value: p.id, label: p.name }))}
                 />
               </Form.Item>
@@ -149,18 +149,22 @@ export default function ClientFormPage() {
             </Col>
             <Col span={24}>
               <Form.Item name="provider_settings" label="Настройки провайдера">
-                <Input.TextArea
-                  rows={4}
-                  placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"}
-                />
+                <Input.TextArea rows={4} placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"} />
               </Form.Item>
             </Col>
-            <Col span={24}>
+            <Col span={12}>
               <Form.Item name="subnet" label="Подсеть аптеки">
-                <Input.TextArea
-                  rows={3}
-                  placeholder={"192.168.10.0/24\nШлюз: 192.168.10.1"}
-                />
+                <Input placeholder="10.1.5.0/24" onChange={(e) => setMikrotikIP(calcMikrotikIP(e.target.value))} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="external_ip" label="Внешний IP">
+                <Input placeholder="1.2.3.4" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Микротик IP (вычисляется автоматически)">
+                <Input value={mikrotikIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
               </Form.Item>
             </Col>
           </Row>

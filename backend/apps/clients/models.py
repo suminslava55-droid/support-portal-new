@@ -34,7 +34,6 @@ class Provider(models.Model):
         ('satellite', 'Спутниковое'),
         ('other', 'Другое'),
     ]
-
     name = models.CharField('Название провайдера', max_length=200)
     connection_type = models.CharField('Тип подключения', max_length=50, choices=CONNECTION_CHOICES, blank=True)
     support_phones = models.TextField('Телефоны техподдержки', blank=True)
@@ -58,16 +57,17 @@ class Client(models.Model):
         (STATUS_INACTIVE, 'Неактивен'),
     ]
 
-    last_name = models.CharField('Фамилия', max_length=100)
-    first_name = models.CharField('Имя', max_length=100)
-    middle_name = models.CharField('Отчество', max_length=100, blank=True)
+    last_name = models.CharField('Фамилия', max_length=100, blank=True, default='')
+    first_name = models.CharField('Имя', max_length=100, blank=True, default='')
+    middle_name = models.CharField('Отчество', max_length=100, blank=True, default='')
     inn = models.CharField('ИНН', max_length=12, blank=True)
     phone = models.CharField('Телефон', max_length=30, blank=True)
+    iccid = models.CharField('ICCID', max_length=30, blank=True)
     email = models.EmailField('Email', blank=True)
+    pharmacy_code = models.CharField('Код аптеки', max_length=50, blank=True)
     company = models.CharField('Компания / организация', max_length=200, blank=True)
     address = models.TextField('Адрес', blank=True)
     status = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
-
     provider = models.ForeignKey(
         Provider, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='clients', verbose_name='Провайдер'
@@ -75,8 +75,8 @@ class Client(models.Model):
     personal_account = models.CharField('Лицевой счёт', max_length=100, blank=True)
     contract_number = models.CharField('№ договора', max_length=100, blank=True)
     provider_settings = models.TextField('Настройки провайдера', blank=True)
-    subnet = models.TextField('Подсеть аптеки', blank=True)
-
+    subnet = models.CharField('Подсеть аптеки', max_length=50, blank=True)
+    external_ip = models.CharField('Внешний IP', max_length=50, blank=True)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True,
         related_name='created_clients', verbose_name='Создал'
@@ -90,12 +90,25 @@ class Client(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f'{self.last_name} {self.first_name}'
+        return self.company or self.address or f'Клиент #{self.id}'
 
     @property
-    def full_name(self):
-        parts = [self.last_name, self.first_name, self.middle_name]
-        return ' '.join(p for p in parts if p)
+    def display_name(self):
+        return self.company or self.address or f'Клиент #{self.id}'
+
+    @property
+    def mikrotik_ip(self):
+        if not self.subnet:
+            return ''
+        try:
+            network = self.subnet.split('/')[0]
+            parts = network.split('.')
+            if len(parts) == 4:
+                parts[3] = '2'
+                return '.'.join(parts)
+        except Exception:
+            pass
+        return ''
 
 
 class CustomFieldValue(models.Model):
@@ -124,7 +137,7 @@ class ClientNote(models.Model):
 class ClientActivity(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='activities')
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    action = models.CharField('Действие', max_length=200)
+    action = models.CharField('Действие', max_length=500)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

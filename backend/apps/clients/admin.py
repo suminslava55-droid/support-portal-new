@@ -13,6 +13,6 @@ class CustomFieldDefinitionAdmin(admin.ModelAdmin):
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
-    list_display = ['full_name', 'inn', 'phone', 'email', 'company', 'provider', 'status']
+    list_display = ['company', 'address', 'inn', 'phone', 'provider', 'status']
     list_filter = ['status', 'provider']
-    search_fields = ['last_name', 'first_name', 'email', 'phone', 'company', 'inn']
+    search_fields = ['company', 'address', 'email', 'phone', 'inn']

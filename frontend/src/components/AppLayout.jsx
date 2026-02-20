@@ -15,7 +15,7 @@ export default function AppLayout({ children }) {
   const [pwdLoading, setPwdLoading] = useState(false);
   const [form] = Form.useForm();
 
-  const isAdmin = user?.role === 'admin' || user?.is_superuser;
+  const isAdmin = user?.role_data?.name === 'admin' || user?.is_superuser;
 
   const menuItems = [
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
@@ -48,18 +48,9 @@ export default function AppLayout({ children }) {
 
   const userMenu = {
     items: [
-      {
-        key: 'change-password',
-        icon: <LockOutlined />,
-        label: 'Сменить пароль',
-      },
+      { key: 'change-password', icon: <LockOutlined />, label: 'Сменить пароль' },
       { type: 'divider' },
-      {
-        key: 'logout',
-        icon: <LogoutOutlined />,
-        label: 'Выйти',
-        danger: true,
-      },
+      { key: 'logout', icon: <LogoutOutlined />, label: 'Выйти', danger: true },
     ],
     onClick: ({ key }) => {
       if (key === 'logout') { logout(); navigate('/login'); }
@@ -113,7 +104,6 @@ export default function AppLayout({ children }) {
         </Content>
       </Layout>
 
-      {/* Модалка смены пароля */}
       <Modal
         title={<><LockOutlined style={{ marginRight: 8 }} />Смена пароля</>}
         open={pwdModalOpen}
@@ -125,28 +115,13 @@ export default function AppLayout({ children }) {
         width={420}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item
-            name="old_password"
-            label="Текущий пароль"
-            rules={[{ required: true, message: 'Введите текущий пароль' }]}
-          >
+          <Form.Item name="old_password" label="Текущий пароль" rules={[{ required: true, message: 'Введите текущий пароль' }]}>
             <Input.Password placeholder="Введите текущий пароль" />
           </Form.Item>
-          <Form.Item
-            name="new_password"
-            label="Новый пароль"
-            rules={[
-              { required: true, message: 'Введите новый пароль' },
-              { min: 6, message: 'Минимум 6 символов' },
-            ]}
-          >
+          <Form.Item name="new_password" label="Новый пароль" rules={[{ required: true, message: 'Введите новый пароль' }, { min: 6, message: 'Минимум 6 символов' }]}>
             <Input.Password placeholder="Минимум 6 символов" />
           </Form.Item>
-          <Form.Item
-            name="confirm_password"
-            label="Повторите новый пароль"
-            rules={[{ required: true, message: 'Повторите новый пароль' }]}
-          >
+          <Form.Item name="confirm_password" label="Повторите новый пароль" rules={[{ required: true, message: 'Повторите новый пароль' }]}>
             <Input.Password placeholder="Повторите новый пароль" />
           </Form.Item>
         </Form>

@@ -37,17 +37,17 @@ export default function ClientsPage() {
 
   const columns = [
     {
-      title: 'ФИО',
-      dataIndex: 'full_name',
-      render: (name, r) => (
-        <Button type="link" onClick={() => navigate(`/clients/${r.id}`)} style={{ padding: 0, fontWeight: 500 }}>
-          {name}
+      title: 'Адрес',
+      dataIndex: 'address',
+      render: (address, r) => (
+        <Button type="link" onClick={() => navigate(`/clients/${r.id}`)} style={{ padding: 0, fontWeight: 500, textAlign: 'left', whiteSpace: 'normal', height: 'auto' }}>
+          {address || r.display_name || '—'}
         </Button>
       ),
     },
     { title: 'Компания', dataIndex: 'company', render: (v) => v || '—' },
-    { title: 'Провайдер', dataIndex: 'provider_name', render: (v) => v || '—' },
     { title: 'ИНН', dataIndex: 'inn', render: (v) => v || '—' },
+    { title: 'Провайдер', dataIndex: 'provider_name', render: (v) => v || '—' },
     { title: 'Телефон', dataIndex: 'phone', render: (v) => v || '—' },
     { title: 'Email', dataIndex: 'email', render: (v) => v || '—' },
     {
@@ -74,8 +74,8 @@ export default function ClientsPage() {
 
       <Space style={{ marginBottom: 16 }}>
         <Input.Search
-          placeholder="Поиск по ФИО, телефону, email, компании, ИНН..."
-          style={{ width: 380 }}
+          placeholder="Поиск по адресу, телефону, email, компании, ИНН..."
+          style={{ width: 420 }}
           prefix={<SearchOutlined />}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -83,9 +83,7 @@ export default function ClientsPage() {
           allowClear
         />
         <Select
-          placeholder="Статус"
-          style={{ width: 160 }}
-          allowClear
+          placeholder="Статус" style={{ width: 160 }} allowClear
           value={status || undefined}
           onChange={(v) => setStatus(v || '')}
           options={[
@@ -96,18 +94,13 @@ export default function ClientsPage() {
       </Space>
 
       <Table
-        columns={columns}
-        dataSource={clients}
-        rowKey="id"
-        loading={loading}
+        columns={columns} dataSource={clients} rowKey="id"
+        loading={loading} bordered size="middle"
         pagination={{
-          ...pagination,
-          showSizeChanger: false,
+          ...pagination, showSizeChanger: false,
           showTotal: (total) => `Всего: ${total}`,
           onChange: fetchClients,
         }}
-        bordered
-        size="middle"
       />
     </div>
   );
