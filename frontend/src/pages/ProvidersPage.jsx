@@ -1,23 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Select, Typography, message, Popconfirm, Tag } from 'antd';
+import { Table, Button, Modal, Form, Input, Typography, message, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import api from '../api';
 
 const { Title } = Typography;
-
-const CONNECTION_TYPES = [
-  { value: 'fiber', label: 'Оптоволокно' },
-  { value: 'dsl', label: 'DSL' },
-  { value: 'cable', label: 'Кабель' },
-  { value: 'wireless', label: 'Беспроводное' },
-  { value: 'satellite', label: 'Спутниковое' },
-  { value: 'other', label: 'Другое' },
-];
-
-const CONNECTION_COLORS = {
-  fiber: 'blue', dsl: 'orange', cable: 'green',
-  wireless: 'purple', satellite: 'cyan', other: 'default',
-};
 
 export default function ProvidersPage() {
   const [providers, setProviders] = useState([]);
@@ -77,14 +63,6 @@ export default function ProvidersPage() {
   const columns = [
     { title: 'Название', dataIndex: 'name', width: 200 },
     {
-      title: 'Тип подключения',
-      dataIndex: 'connection_type',
-      width: 180,
-      render: (v, r) => v
-        ? <Tag color={CONNECTION_COLORS[v]}>{r.connection_type_display}</Tag>
-        : '—',
-    },
-    {
       title: 'Телефоны техподдержки',
       dataIndex: 'support_phones',
       render: (v) => v
@@ -131,9 +109,6 @@ export default function ProvidersPage() {
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="name" label="Название провайдера" rules={[{ required: true, message: 'Обязательное поле' }]}>
             <Input placeholder="Ростелеком, МТС, Новотелеком..." />
-          </Form.Item>
-          <Form.Item name="connection_type" label="Тип подключения">
-            <Select placeholder="Выберите тип" allowClear options={CONNECTION_TYPES} />
           </Form.Item>
           <Form.Item name="support_phones" label="Телефоны техподдержки">
             <Input.TextArea

@@ -17,12 +17,13 @@ import useAuthStore from '../store/authStore';
 const { Title, Text } = Typography;
 
 const CONNECTION_LABELS = {
-  fiber: 'Оптоволокно', dsl: 'DSL', cable: 'Кабель',
-  wireless: 'Беспроводное', satellite: 'Спутниковое', other: 'Другое',
+  fiber: '⚡ Оптоволокно',
+  dsl: '☎️ DSL',
+  cable: '🔌 Кабель',
+  wireless: '📡 Беспроводное',
 };
 const CONNECTION_COLORS = {
-  fiber: 'blue', dsl: 'orange', cable: 'green',
-  wireless: 'purple', satellite: 'cyan', other: 'default',
+  fiber: 'blue', dsl: 'orange', cable: 'green', wireless: 'purple',
 };
 
 function copyToClipboard(text) {
@@ -238,9 +239,14 @@ export default function ClientDetailPage() {
                 <Descriptions.Item label="Название" span={2}>
                   <Text strong>{provider.name}</Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="Тип подключения" span={2}>
-                  {provider.connection_type
-                    ? <Tag color={CONNECTION_COLORS[provider.connection_type]}>{CONNECTION_LABELS[provider.connection_type]}</Tag>
+                <Descriptions.Item label="Тип подключения">
+                  {client.connection_type
+                    ? <Tag color={CONNECTION_COLORS[client.connection_type]}>{CONNECTION_LABELS[client.connection_type]}</Tag>
+                    : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Тариф">
+                  {client.tariff
+                    ? <><Text strong>{client.tariff}</Text> <Text type="secondary">Мбит/с</Text></>
                     : '—'}
                 </Descriptions.Item>
                 <Descriptions.Item label="Лицевой счёт">
@@ -278,7 +284,7 @@ export default function ClientDetailPage() {
                       </Tooltip>
                     )}
                     <PingStatus status={pingResults.mikrotik_ip} ip={client.mikrotik_ip} />
-                    <Text type="secondary" style={{ fontSize: 11 }}>авто (.1)</Text>
+
                   </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Сервер IP">
@@ -296,7 +302,7 @@ export default function ClientDetailPage() {
                       </Tooltip>
                     )}
                     <PingStatus status={pingResults.server_ip} ip={client.server_ip} />
-                    <Text type="secondary" style={{ fontSize: 11 }}>авто (.2)</Text>
+
                   </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Телефоны техподдержки" span={2}>
@@ -305,6 +311,11 @@ export default function ClientDetailPage() {
                       ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{provider.support_phones}</pre>
                       : null}
                   </CopyField>
+                </Descriptions.Item>
+                <Descriptions.Item label="Оборудование провайдера" span={2}>
+                  {client.provider_equipment
+                    ? <Tag color="green" style={{ fontSize: 13 }}>✓ Присутствует</Tag>
+                    : <Tag color="red" style={{ fontSize: 13 }}>✗ Отсутствует</Tag>}
                 </Descriptions.Item>
               </Descriptions>
             ) : (
@@ -355,8 +366,15 @@ export default function ClientDetailPage() {
                     dot: <span style={{ fontSize: 14 }}><ActivityIcon action={a.action} /></span>,
                     children: (
                       <div style={{ marginBottom: 4 }}>
-                        <Text style={{ fontSize: 13 }}>{a.action}</Text>
-                        <br />
+                        {a.action.startsWith('Изменено:')
+                          ? <>
+                              <Text style={{ fontSize: 12, fontWeight: 600 }}>Изменено:</Text>
+                              {a.action.replace('Изменено: ', '').split(' | ').map((item, i) => (
+                                <div key={i} style={{ fontSize: 12, paddingLeft: 8, color: '#333' }}>• {item}</div>
+                              ))}
+                            </>
+                          : <Text style={{ fontSize: 13 }}>{a.action}</Text>
+                        }
                         <Text type="secondary" style={{ fontSize: 11 }}>
                           {a.user_name} · {dayjs(a.created_at).format('DD.MM.YYYY HH:mm')}
                         </Text>

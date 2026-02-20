@@ -3,7 +3,7 @@ from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue,
 
 @admin.register(Provider)
 class ProviderAdmin(admin.ModelAdmin):
-    list_display = ['name', 'connection_type']
+    list_display = ['name']
     search_fields = ['name']
 
 @admin.register(CustomFieldDefinition)

@@ -26,16 +26,7 @@ class CustomFieldDefinition(models.Model):
 
 
 class Provider(models.Model):
-    CONNECTION_CHOICES = [
-        ('fiber', 'Оптоволокно'),
-        ('dsl', 'DSL'),
-        ('cable', 'Кабель'),
-        ('wireless', 'Беспроводное'),
-        ('satellite', 'Спутниковое'),
-        ('other', 'Другое'),
-    ]
     name = models.CharField('Название провайдера', max_length=200)
-    connection_type = models.CharField('Тип подключения', max_length=50, choices=CONNECTION_CHOICES, blank=True)
     support_phones = models.TextField('Телефоны техподдержки', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -74,9 +65,17 @@ class Client(models.Model):
     )
     personal_account = models.CharField('Лицевой счёт', max_length=100, blank=True)
     contract_number = models.CharField('№ договора', max_length=100, blank=True)
+    tariff = models.CharField('Тариф', max_length=50, blank=True)
+    connection_type = models.CharField('Тип подключения', max_length=50, blank=True, choices=[
+        ('fiber', 'Оптоволокно'),
+        ('dsl', 'DSL'),
+        ('cable', 'Кабель'),
+        ('wireless', 'Беспроводное'),
+    ])
     provider_settings = models.TextField('Настройки провайдера', blank=True)
     subnet = models.CharField('Подсеть аптеки', max_length=50, blank=True)
     external_ip = models.CharField('Внешний IP', max_length=50, blank=True)
+    provider_equipment = models.BooleanField('Оборудование провайдера', default=False)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True,
         related_name='created_clients', verbose_name='Создал'

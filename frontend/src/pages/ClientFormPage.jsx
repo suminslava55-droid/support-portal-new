@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin } from 'antd';
+import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { clientsAPI } from '../api';
@@ -149,6 +149,21 @@ export default function ClientFormPage() {
                 <Input placeholder="ДГ-2024-001" />
               </Form.Item>
             </Col>
+            <Col span={12}>
+              <Form.Item name="connection_type" label="Тип подключения">
+                <Select placeholder="Выберите тип" allowClear options={[
+                  { value: 'fiber', label: 'Оптоволокно' },
+                  { value: 'dsl', label: 'DSL' },
+                  { value: 'cable', label: 'Кабель' },
+                  { value: 'wireless', label: 'Беспроводное' },
+                ]} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="tariff" label="Тариф (Мбит/с)">
+                <Input placeholder="100" suffix="Мбит/с" />
+              </Form.Item>
+            </Col>
             <Col span={24}>
               <Form.Item name="provider_settings" label="Настройки провайдера">
                 <Input.TextArea rows={4} placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"} />
@@ -165,13 +180,18 @@ export default function ClientFormPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="Микротик IP (авто, .1)">
+              <Form.Item label="Микротик IP">
                 <Input value={mikrotikIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="Сервер IP (авто, .2)">
+              <Form.Item label="Сервер IP">
                 <Input value={serverIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="provider_equipment" valuePropName="checked">
+                <Checkbox>Оборудование провайдера на объекте</Checkbox>
               </Form.Item>
             </Col>
           </Row>

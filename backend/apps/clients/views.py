@@ -31,6 +31,9 @@ FIELD_LABELS = {
     'provider_settings': 'Настройки провайдера',
     'subnet': 'Подсеть аптеки',
     'external_ip': 'Внешний IP',
+    'connection_type': 'Тип подключения',
+    'tariff': 'Тариф',
+    'provider_equipment': 'Оборудование провайдера',
 }
 
 STATUS_LABELS = {'active': 'Активен', 'inactive': 'Неактивен'}
@@ -67,6 +70,11 @@ def build_change_log(old_client, new_data, provider_map):
         if field == 'status':
             old_val = STATUS_LABELS.get(str(old_val), old_val)
             new_val = STATUS_LABELS.get(str(new_val), new_val)
+
+        if field == 'provider_equipment':
+            old_val = 'Присутствует' if str(old_val) == 'True' else 'Отсутствует'
+            new_bool = str(new_data.get('provider_equipment', '')).lower()
+            new_val = 'Присутствует' if new_bool in ('true', '1', 'yes') else 'Отсутствует'
 
         if str(old_val) != str(new_val):
             old_display = str(old_val)[:50] + '...' if len(str(old_val)) > 50 else str(old_val) or '—'
@@ -117,13 +125,13 @@ class ClientViewSet(viewsets.ModelViewSet):
         changes = build_change_log(old, self.request.data, provider_map)
         client = serializer.save()
         if changes:
-            for change in changes:
-                ClientActivity.objects.create(client=client, user=self.request.user, action=change)
+            action = 'Изменено: ' + ' | '.join(changes)
+            # Обрезаем если слишком длинное
+            if len(action) > 490:
+                action = action[:490] + '...'
         else:
-            ClientActivity.objects.create(
-                client=client, user=self.request.user,
-                action='Карточка обновлена'
-            )
+            action = 'Карточка обновлена'
+        ClientActivity.objects.create(client=client, user=self.request.user, action=action)
 
     def destroy(self, request, *args, **kwargs):
         if not request.user.has_perm_flag('can_delete_client'):
