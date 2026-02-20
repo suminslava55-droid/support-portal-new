@@ -25,10 +25,27 @@ const CONNECTION_COLORS = {
   wireless: 'purple', satellite: 'cyan', other: 'default',
 };
 
+function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  // Fallback для HTTP
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.style.position = 'fixed';
+  el.style.opacity = '0';
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+  document.execCommand('copy');
+  document.body.removeChild(el);
+  return Promise.resolve();
+}
+
 function CopyField({ value, children }) {
   const handleCopy = () => {
     if (!value) return;
-    navigator.clipboard.writeText(value);
+    copyToClipboard(value);
     message.success('Скопировано!', 1);
   };
   return (
@@ -108,7 +125,7 @@ export default function ClientDetailPage() {
 
   const checkPing = useCallback(async () => {
     setPinging(true);
-    setPingResults({ external_ip: 'checking', mikrotik_ip: 'checking' });
+    setPingResults({ external_ip: 'checking', mikrotik_ip: 'checking', server_ip: 'checking' });
     try {
       const { data } = await api.get(`/clients/${id}/ping/`);
       setPingResults({
@@ -117,7 +134,7 @@ export default function ClientDetailPage() {
         server_ip: data.server_ip?.alive ?? null,
       });
     } catch {
-      setPingResults({ external_ip: false, mikrotik_ip: false });
+      setPingResults({ external_ip: false, mikrotik_ip: false, server_ip: false });
     } finally {
       setPinging(false);
     }
@@ -255,7 +272,7 @@ export default function ClientDetailPage() {
                       <Tooltip title="Скопировать">
                         <Button type="text" size="small"
                           icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                          onClick={() => { navigator.clipboard.writeText(client.mikrotik_ip); message.success('Скопировано!', 1); }}
+                          onClick={() => { copyToClipboard(client.mikrotik_ip); message.success('Скопировано!', 1); }}
                           style={{ padding: '0 2px', height: 'auto' }}
                         />
                       </Tooltip>
@@ -273,7 +290,7 @@ export default function ClientDetailPage() {
                       <Tooltip title="Скопировать">
                         <Button type="text" size="small"
                           icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                          onClick={() => { navigator.clipboard.writeText(client.server_ip); message.success('Скопировано!', 1); }}
+                          onClick={() => { copyToClipboard(client.server_ip); message.success('Скопировано!', 1); }}
                           style={{ padding: '0 2px', height: 'auto' }}
                         />
                       </Tooltip>
