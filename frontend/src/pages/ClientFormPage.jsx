@@ -8,12 +8,12 @@ import useAuthStore from '../store/authStore';
 
 const { Title } = Typography;
 
-function calcMikrotikIP(subnet) {
+function calcMikrotikIP(subnet, ending = '1') {
   if (!subnet) return '';
   try {
     const network = subnet.split('/')[0];
     const parts = network.split('.');
-    if (parts.length === 4) { parts[3] = '2'; return parts.join('.'); }
+    if (parts.length === 4) { parts[3] = ending; return parts.join('.'); }
   } catch (e) {}
   return '';
 }
@@ -27,6 +27,7 @@ export default function ClientFormPage() {
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState([]);
   const [mikrotikIP, setMikrotikIP] = useState('');
+  const [serverIP, setServerIP] = useState('');
   const permissions = useAuthStore((s) => s.permissions);
 
   useEffect(() => {
@@ -38,7 +39,8 @@ export default function ClientFormPage() {
         if (isEdit) {
           const { data } = await clientsAPI.get(id);
           form.setFieldsValue(data);
-          setMikrotikIP(calcMikrotikIP(data.subnet));
+          setMikrotikIP(calcMikrotikIP(data.subnet, '1'));
+          setServerIP(calcMikrotikIP(data.subnet, '2'));
         }
       } catch {
         message.error('Ошибка загрузки данных');
@@ -154,7 +156,7 @@ export default function ClientFormPage() {
             </Col>
             <Col span={12}>
               <Form.Item name="subnet" label="Подсеть аптеки">
-                <Input placeholder="10.1.5.0/24" onChange={(e) => setMikrotikIP(calcMikrotikIP(e.target.value))} />
+                <Input placeholder="10.1.5.0/24" onChange={(e) => { setMikrotikIP(calcMikrotikIP(e.target.value, '1')); setServerIP(calcMikrotikIP(e.target.value, '2')); }} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -163,8 +165,13 @@ export default function ClientFormPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="Микротик IP (вычисляется автоматически)">
+              <Form.Item label="Микротик IP (авто, .1)">
                 <Input value={mikrotikIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Сервер IP (авто, .2)">
+                <Input value={serverIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
               </Form.Item>
             </Col>
           </Row>

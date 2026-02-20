@@ -104,6 +104,20 @@ class Client(models.Model):
             network = self.subnet.split('/')[0]
             parts = network.split('.')
             if len(parts) == 4:
+                parts[3] = '1'
+                return '.'.join(parts)
+        except Exception:
+            pass
+        return ''
+
+    @property
+    def server_ip(self):
+        if not self.subnet:
+            return ''
+        try:
+            network = self.subnet.split('/')[0]
+            parts = network.split('.')
+            if len(parts) == 4:
                 parts[3] = '2'
                 return '.'.join(parts)
         except Exception:

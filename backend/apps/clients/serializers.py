@@ -60,6 +60,7 @@ class ClientListSerializer(serializers.ModelSerializer):
 class ClientDetailSerializer(serializers.ModelSerializer):
     display_name = serializers.CharField(read_only=True)
     mikrotik_ip = serializers.CharField(read_only=True)
+    server_ip = serializers.CharField(read_only=True)
     created_by_data = UserSerializer(source='created_by', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     notes = ClientNoteSerializer(many=True, read_only=True)

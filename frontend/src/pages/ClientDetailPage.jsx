@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Typography, Tag, Button, Timeline, Input, Space,
-  Descriptions, message, Spin, Popconfirm, Empty, Tooltip
+  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Badge
 } from 'antd';
 import {
   EditOutlined, ArrowLeftOutlined, DeleteOutlined,
-  SendOutlined, ClockCircleOutlined, WifiOutlined, CopyOutlined
+  SendOutlined, ClockCircleOutlined, WifiOutlined, CopyOutlined,
+  CheckCircleFilled, CloseCircleFilled, SyncOutlined, MinusCircleOutlined
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { clientsAPI } from '../api';
+import api from '../api';
 import useAuthStore from '../store/authStore';
 
 const { Title, Text } = Typography;
@@ -44,6 +46,26 @@ function CopyField({ value, children }) {
   );
 }
 
+function PingStatus({ status, ip }) {
+  if (!ip) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+  if (status === 'checking') return <SyncOutlined spin style={{ color: '#1677ff' }} />;
+  if (status === true) return (
+    <Tooltip title={`${ip} — доступен`}>
+      <CheckCircleFilled style={{ color: '#52c41a', fontSize: 16 }} />
+    </Tooltip>
+  );
+  if (status === false) return (
+    <Tooltip title={`${ip} — недоступен`}>
+      <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 16 }} />
+    </Tooltip>
+  );
+  return (
+    <Tooltip title="Не проверено">
+      <MinusCircleOutlined style={{ color: '#d9d9d9', fontSize: 16 }} />
+    </Tooltip>
+  );
+}
+
 function ActivityIcon({ action }) {
   if (action.includes('создана')) return '🆕';
   if (action.includes('заметка')) return '💬';
@@ -65,6 +87,8 @@ export default function ClientDetailPage() {
   const [noteText, setNoteText] = useState('');
   const [loading, setLoading] = useState(true);
   const [noteSending, setNoteSending] = useState(false);
+  const [pingResults, setPingResults] = useState({ external_ip: null, mikrotik_ip: null, server_ip: null });
+  const [pinging, setPinging] = useState(false);
   const permissions = useAuthStore((s) => s.permissions);
 
   const fetchClient = useCallback(async () => {
@@ -82,7 +106,33 @@ export default function ClientDetailPage() {
     }
   }, [id]);
 
-  useEffect(() => { fetchClient(); }, [fetchClient]);
+  const checkPing = useCallback(async () => {
+    setPinging(true);
+    setPingResults({ external_ip: 'checking', mikrotik_ip: 'checking' });
+    try {
+      const { data } = await api.get(`/clients/${id}/ping/`);
+      setPingResults({
+        external_ip: data.external_ip?.alive ?? null,
+        mikrotik_ip: data.mikrotik_ip?.alive ?? null,
+        server_ip: data.server_ip?.alive ?? null,
+      });
+    } catch {
+      setPingResults({ external_ip: false, mikrotik_ip: false });
+    } finally {
+      setPinging(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchClient();
+  }, [fetchClient]);
+
+  // Запускаем пинг автоматически после загрузки карточки
+  useEffect(() => {
+    if (client) {
+      checkPing();
+    }
+  }, [client?.id]);
 
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
@@ -144,26 +194,26 @@ export default function ClientDetailPage() {
             <Descriptions column={2} bordered size="small">
               <Descriptions.Item label="Адрес" span={2}>{client.address || '—'}</Descriptions.Item>
               <Descriptions.Item label="Компания">{client.company || '—'}</Descriptions.Item>
-              <Descriptions.Item label="ИНН">
-                <CopyField value={client.inn} />
-              </Descriptions.Item>
-              <Descriptions.Item label="Телефон">
-                <CopyField value={client.phone} />
-              </Descriptions.Item>
-              <Descriptions.Item label="ICCID">
-                <CopyField value={client.iccid} />
-              </Descriptions.Item>
-              <Descriptions.Item label="Email">
-                <CopyField value={client.email} />
-              </Descriptions.Item>
-              <Descriptions.Item label="Код аптеки">
-                <CopyField value={client.pharmacy_code} />
-              </Descriptions.Item>
+              <Descriptions.Item label="ИНН"><CopyField value={client.inn} /></Descriptions.Item>
+              <Descriptions.Item label="Телефон"><CopyField value={client.phone} /></Descriptions.Item>
+              <Descriptions.Item label="ICCID"><CopyField value={client.iccid} /></Descriptions.Item>
+              <Descriptions.Item label="Email"><CopyField value={client.email} /></Descriptions.Item>
+              <Descriptions.Item label="Код аптеки"><CopyField value={client.pharmacy_code} /></Descriptions.Item>
             </Descriptions>
           </Card>
 
           <Card
             title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер</span></Space>}
+            extra={
+              <Tooltip title="Проверить доступность IP">
+                <Button
+                  size="small" icon={<SyncOutlined spin={pinging} />}
+                  onClick={checkPing} loading={pinging}
+                >
+                  Проверить доступность
+                </Button>
+              </Tooltip>
+            }
             style={{ marginBottom: 16 }}
           >
             {provider ? (
@@ -191,9 +241,12 @@ export default function ClientDetailPage() {
                   <CopyField value={client.subnet} />
                 </Descriptions.Item>
                 <Descriptions.Item label="Внешний IP">
-                  <CopyField value={client.external_ip} />
+                  <Space>
+                    <CopyField value={client.external_ip} />
+                    <PingStatus status={pingResults.external_ip} ip={client.external_ip} />
+                  </Space>
                 </Descriptions.Item>
-                <Descriptions.Item label="Микротик IP" span={2}>
+                <Descriptions.Item label="Микротик IP">
                   <Space>
                     <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 13 }}>
                       {client.mikrotik_ip || '—'}
@@ -207,7 +260,26 @@ export default function ClientDetailPage() {
                         />
                       </Tooltip>
                     )}
-                    <Text type="secondary" style={{ fontSize: 11 }}>вычисляется автоматически</Text>
+                    <PingStatus status={pingResults.mikrotik_ip} ip={client.mikrotik_ip} />
+                    <Text type="secondary" style={{ fontSize: 11 }}>авто (.1)</Text>
+                  </Space>
+                </Descriptions.Item>
+                <Descriptions.Item label="Сервер IP">
+                  <Space>
+                    <Tag color="purple" style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                      {client.server_ip || '—'}
+                    </Tag>
+                    {client.server_ip && (
+                      <Tooltip title="Скопировать">
+                        <Button type="text" size="small"
+                          icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                          onClick={() => { navigator.clipboard.writeText(client.server_ip); message.success('Скопировано!', 1); }}
+                          style={{ padding: '0 2px', height: 'auto' }}
+                        />
+                      </Tooltip>
+                    )}
+                    <PingStatus status={pingResults.server_ip} ip={client.server_ip} />
+                    <Text type="secondary" style={{ fontSize: 11 }}>авто (.2)</Text>
                   </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Телефоны техподдержки" span={2}>
