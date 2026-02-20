@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Typography, Tag, Button, Timeline, Input, Space,
-  Descriptions, Divider, message, Spin, Popconfirm, Empty
+  Descriptions, message, Spin, Popconfirm, Empty, Tooltip
 } from 'antd';
 import {
   EditOutlined, ArrowLeftOutlined, DeleteOutlined,
-  SendOutlined, ClockCircleOutlined
+  SendOutlined, ClockCircleOutlined, WifiOutlined, CopyOutlined
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -13,6 +13,38 @@ import { clientsAPI } from '../api';
 import useAuthStore from '../store/authStore';
 
 const { Title, Text } = Typography;
+
+const CONNECTION_LABELS = {
+  fiber: 'Оптоволокно', dsl: 'DSL', cable: 'Кабель',
+  wireless: 'Беспроводное', satellite: 'Спутниковое', other: 'Другое',
+};
+const CONNECTION_COLORS = {
+  fiber: 'blue', dsl: 'orange', cable: 'green',
+  wireless: 'purple', satellite: 'cyan', other: 'default',
+};
+
+function CopyField({ value, children }) {
+  const handleCopy = () => {
+    if (!value) return;
+    navigator.clipboard.writeText(value);
+    message.success('Скопировано!', 1);
+  };
+  return (
+    <Space size={6}>
+      <span>{children || value || '—'}</span>
+      {value && (
+        <Tooltip title="Скопировать">
+          <Button
+            type="text" size="small"
+            icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+            onClick={handleCopy}
+            style={{ padding: '0 2px', height: 'auto' }}
+          />
+        </Tooltip>
+      )}
+    </Space>
+  );
+}
 
 export default function ClientDetailPage() {
   const { id } = useParams();
@@ -68,8 +100,7 @@ export default function ClientDetailPage() {
   if (loading) return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>;
   if (!client) return <div>Клиент не найден</div>;
 
-  const statusColor = client.status === 'active' ? 'green' : 'default';
-  const statusLabel = client.status === 'active' ? 'Активен' : 'Неактивен';
+  const provider = client.provider_data;
 
   return (
     <div>
@@ -77,7 +108,9 @@ export default function ClientDetailPage() {
         <Space>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/clients')} />
           <Title level={4} style={{ margin: 0 }}>{client.full_name}</Title>
-          <Tag color={statusColor}>{statusLabel}</Tag>
+          <Tag color={client.status === 'active' ? 'green' : 'default'}>
+            {client.status === 'active' ? 'Активен' : 'Неактивен'}
+          </Tag>
         </Space>
         <Space>
           {permissions.can_edit_client && (
@@ -95,35 +128,76 @@ export default function ClientDetailPage() {
 
       <Row gutter={16}>
         <Col span={16}>
-          {/* Основная информация */}
           <Card title="Информация о клиенте" style={{ marginBottom: 16 }}>
             <Descriptions column={2} bordered size="small">
               <Descriptions.Item label="Фамилия">{client.last_name}</Descriptions.Item>
               <Descriptions.Item label="Имя">{client.first_name}</Descriptions.Item>
-              {client.middle_name && <Descriptions.Item label="Отчество">{client.middle_name}</Descriptions.Item>}
-              <Descriptions.Item label="Телефон">{client.phone || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Email">{client.email || '—'}</Descriptions.Item>
+              {client.middle_name && (
+                <Descriptions.Item label="Отчество" span={2}>{client.middle_name}</Descriptions.Item>
+              )}
+              <Descriptions.Item label="ИНН">
+                <CopyField value={client.inn} />
+              </Descriptions.Item>
+              <Descriptions.Item label="Телефон">
+                <CopyField value={client.phone} />
+              </Descriptions.Item>
+              <Descriptions.Item label="Email">
+                <CopyField value={client.email} />
+              </Descriptions.Item>
               <Descriptions.Item label="Компания" span={2}>{client.company || '—'}</Descriptions.Item>
               <Descriptions.Item label="Адрес" span={2}>{client.address || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Ответственный">{client.assigned_to_data?.full_name || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Создал">{client.created_by_data?.full_name || '—'}</Descriptions.Item>
             </Descriptions>
+          </Card>
 
-            {client.custom_field_values?.length > 0 && (
-              <>
-                <Divider>Дополнительные поля</Divider>
-                <Descriptions column={2} bordered size="small">
-                  {client.custom_field_values.map((cfv) => (
-                    <Descriptions.Item key={cfv.id} label={cfv.field_name}>
-                      {cfv.value || '—'}
-                    </Descriptions.Item>
-                  ))}
-                </Descriptions>
-              </>
+          <Card
+            title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер</span></Space>}
+            style={{ marginBottom: 16 }}
+          >
+            {provider ? (
+              <Descriptions column={2} bordered size="small">
+                <Descriptions.Item label="Название" span={2}>
+                  <Text strong>{provider.name}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Тип подключения" span={2}>
+                  {provider.connection_type
+                    ? <Tag color={CONNECTION_COLORS[provider.connection_type]}>
+                        {CONNECTION_LABELS[provider.connection_type]}
+                      </Tag>
+                    : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Лицевой счёт">
+                  <CopyField value={client.personal_account} />
+                </Descriptions.Item>
+                <Descriptions.Item label="№ договора">
+                  <CopyField value={client.contract_number} />
+                </Descriptions.Item>
+                <Descriptions.Item label="Настройки провайдера" span={2}>
+                  {client.provider_settings
+                    ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings}</pre>
+                    : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Подсеть аптеки" span={2}>
+                  {client.subnet
+                    ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.subnet}</pre>
+                    : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Телефоны техподдержки" span={2}>
+                  <CopyField value={provider.support_phones}>
+                    {provider.support_phones
+                      ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{provider.support_phones}</pre>
+                      : null}
+                  </CopyField>
+                </Descriptions.Item>
+              </Descriptions>
+            ) : (
+              <Empty description="Провайдер не указан" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+                <Button type="link" onClick={() => navigate(`/clients/${id}/edit`)}>
+                  Указать провайдера
+                </Button>
+              </Empty>
             )}
           </Card>
 
-          {/* Заметки */}
           <Card title="Заметки">
             <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
               <Input.TextArea
@@ -134,16 +208,13 @@ export default function ClientDetailPage() {
                 style={{ borderRadius: '6px 0 0 6px' }}
               />
               <Button
-                type="primary"
-                icon={<SendOutlined />}
-                onClick={handleAddNote}
-                loading={noteSending}
+                type="primary" icon={<SendOutlined />}
+                onClick={handleAddNote} loading={noteSending}
                 style={{ height: 'auto', borderRadius: '0 6px 6px 0' }}
               >
                 Добавить
               </Button>
             </Space.Compact>
-
             {notes.length === 0 ? (
               <Empty description="Заметок пока нет" image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
@@ -163,7 +234,6 @@ export default function ClientDetailPage() {
         </Col>
 
         <Col span={8}>
-          {/* История изменений */}
           <Card title="История изменений">
             {client.activities?.length === 0 ? (
               <Empty description="История пуста" image={Empty.PRESENTED_IMAGE_SIMPLE} />

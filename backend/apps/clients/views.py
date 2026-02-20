@@ -4,12 +4,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity
+from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider
 from .serializers import (
     ClientListSerializer, ClientDetailSerializer, ClientWriteSerializer,
-    ClientNoteSerializer, CustomFieldDefinitionSerializer
+    ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer
 )
-from apps.accounts.permissions import CanEditClient, CanDeleteClient, CanManageCustomFields
+from apps.accounts.permissions import CanEditClient, CanManageCustomFields
 
 
 class CustomFieldDefinitionViewSet(viewsets.ModelViewSet):
@@ -26,17 +26,13 @@ class CustomFieldDefinitionViewSet(viewsets.ModelViewSet):
 class ClientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CanEditClient]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['status', 'assigned_to']
-    search_fields = ['last_name', 'first_name', 'middle_name', 'phone', 'email', 'company']
+    filterset_fields = ['status', 'provider']
+    search_fields = ['last_name', 'first_name', 'middle_name', 'phone', 'email', 'company', 'inn']
     ordering_fields = ['last_name', 'created_at', 'company']
     ordering = ['-created_at']
 
     def get_queryset(self):
-        user = self.request.user
-        qs = Client.objects.select_related('assigned_to', 'created_by')
-        if not user.has_perm_flag('can_view_all_clients'):
-            qs = qs.filter(assigned_to=user)
-        return qs
+        return Client.objects.select_related('created_by', 'provider').all()
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -61,20 +57,22 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         if not request.user.has_perm_flag('can_delete_client'):
-            return Response({'detail': 'Недостаточно прав для удаления клиента.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'detail': 'Недостаточно прав.'}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['get', 'post'])
     def notes(self, request, pk=None):
         client = self.get_object()
         if request.method == 'GET':
-            notes = client.notes.all()
-            return Response(ClientNoteSerializer(notes, many=True).data)
+            return Response(ClientNoteSerializer(client.notes.all(), many=True).data)
         serializer = ClientNoteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         note = serializer.save(client=client, author=request.user)
-        ClientActivity.objects.create(
-            client=client, user=request.user,
-            action=f'Добавлена заметка'
-        )
+        ClientActivity.objects.create(client=client, user=request.user, action='Добавлена заметка')
         return Response(ClientNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+class ProviderViewSet(viewsets.ModelViewSet):
+    queryset = Provider.objects.all()
+    serializer_class = ProviderSerializer
+    permission_classes = [IsAuthenticated, CanEditClient]

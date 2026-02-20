@@ -1,9 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet
 
 router = DefaultRouter()
 router.register('custom-fields', CustomFieldDefinitionViewSet, basename='custom-fields')
+router.register('providers', ProviderViewSet, basename='providers')
 router.register('', ClientViewSet, basename='client')
 
 urlpatterns = [

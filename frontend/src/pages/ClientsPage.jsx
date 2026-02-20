@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, Typography, Tooltip, message } from 'antd';
-import { PlusOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Select, Tag, Space, Typography, message } from 'antd';
+import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { clientsAPI } from '../api';
 import useAuthStore from '../store/authStore';
 
 const { Title } = Typography;
-
-const STATUS_COLOR = { active: 'green', inactive: 'default' };
-const STATUS_LABEL = { active: 'Активен', inactive: 'Неактивен' };
 
 export default function ClientsPage() {
   const [clients, setClients] = useState([]);
@@ -48,18 +45,19 @@ export default function ClientsPage() {
         </Button>
       ),
     },
+    { title: 'Компания', dataIndex: 'company', render: (v) => v || '—' },
+    { title: 'Провайдер', dataIndex: 'provider_name', render: (v) => v || '—' },
+    { title: 'ИНН', dataIndex: 'inn', render: (v) => v || '—' },
     { title: 'Телефон', dataIndex: 'phone', render: (v) => v || '—' },
     { title: 'Email', dataIndex: 'email', render: (v) => v || '—' },
-    { title: 'Компания', dataIndex: 'company', render: (v) => v || '—' },
     {
       title: 'Статус',
       dataIndex: 'status',
-      render: (v) => <Tag color={STATUS_COLOR[v]}>{STATUS_LABEL[v]}</Tag>,
-    },
-    {
-      title: 'Ответственный',
-      dataIndex: 'assigned_to_name',
-      render: (v) => v ? <><UserOutlined /> {v}</> : '—',
+      render: (v) => (
+        <Tag color={v === 'active' ? 'green' : 'default'}>
+          {v === 'active' ? 'Активен' : 'Неактивен'}
+        </Tag>
+      ),
     },
   ];
 
@@ -76,8 +74,8 @@ export default function ClientsPage() {
 
       <Space style={{ marginBottom: 16 }}>
         <Input.Search
-          placeholder="Поиск по ФИО, телефону, email, компании..."
-          style={{ width: 340 }}
+          placeholder="Поиск по ФИО, телефону, email, компании, ИНН..."
+          style={{ width: 380 }}
           prefix={<SearchOutlined />}
           value={search}
           onChange={(e) => setSearch(e.target.value)}

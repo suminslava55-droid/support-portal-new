@@ -12,7 +12,7 @@ import ClientsPage from './pages/ClientsPage';
 import ClientDetailPage from './pages/ClientDetailPage';
 import ClientFormPage from './pages/ClientFormPage';
 import UsersPage from './pages/UsersPage';
-import CustomFieldsPage from './pages/CustomFieldsPage';
+import ProvidersPage from './pages/ProvidersPage';
 
 dayjs.locale('ru');
 
@@ -25,12 +25,6 @@ function RequireAuth({ children }) {
 function RequireAdmin({ children }) {
   const permissions = useAuthStore((s) => s.permissions);
   if (!permissions.can_manage_users) return <Navigate to="/clients" replace />;
-  return children;
-}
-
-function RequireAdminFields({ children }) {
-  const permissions = useAuthStore((s) => s.permissions);
-  if (!permissions.can_manage_custom_fields) return <Navigate to="/clients" replace />;
   return children;
 }
 
@@ -51,9 +45,11 @@ export default function App() {
   }, []);
 
   if (initializing) {
-    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Spin size="large" />
-    </div>;
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
   }
 
   return (
@@ -63,10 +59,10 @@ export default function App() {
           <Route path="/login" element={isAuthenticated ? <Navigate to="/clients" /> : <LoginPage />} />
           <Route path="/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
           <Route path="/clients/new" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
-          <Route path="/clients/:id" element={<RequireAuth><ClientDetailPage /></RequireAuth>} />
           <Route path="/clients/:id/edit" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
+          <Route path="/clients/:id" element={<RequireAuth><ClientDetailPage /></RequireAuth>} />
           <Route path="/users" element={<RequireAuth><RequireAdmin><UsersPage /></RequireAdmin></RequireAuth>} />
-          <Route path="/custom-fields" element={<RequireAuth><RequireAdminFields><CustomFieldsPage /></RequireAdminFields></RequireAuth>} />
+          <Route path="/providers" element={<RequireAuth><ProvidersPage /></RequireAuth>} />
           <Route path="*" element={<Navigate to="/clients" />} />
         </Routes>
       </BrowserRouter>

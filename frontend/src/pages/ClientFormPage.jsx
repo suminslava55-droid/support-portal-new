@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, Card, Row, Col, Typography, Divider, message, Spin } from 'antd';
+import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
-import { clientsAPI, usersAPI, customFieldsAPI } from '../api';
+import { clientsAPI } from '../api';
+import api from '../api';
 import useAuthStore from '../store/authStore';
 
 const { Title } = Typography;
@@ -14,28 +15,18 @@ export default function ClientFormPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [users, setUsers] = useState([]);
-  const [customFields, setCustomFields] = useState([]);
+  const [providers, setProviders] = useState([]);
   const permissions = useAuthStore((s) => s.permissions);
 
   useEffect(() => {
     const init = async () => {
       setLoading(true);
       try {
-        const [usersRes, fieldsRes] = await Promise.all([
-          usersAPI.list(),
-          customFieldsAPI.list(),
-        ]);
-        setUsers(usersRes.data.results || usersRes.data);
-        setCustomFields(fieldsRes.data.results || fieldsRes.data);
-
+        const providersRes = await api.get('/clients/providers/');
+        setProviders(providersRes.data.results || providersRes.data);
         if (isEdit) {
           const { data } = await clientsAPI.get(id);
-          const customFieldsValues = {};
-          (data.custom_field_values || []).forEach((cfv) => {
-            customFieldsValues[`cf_${cfv.field}`] = cfv.value;
-          });
-          form.setFieldsValue({ ...data, ...customFieldsValues });
+          form.setFieldsValue(data);
         }
       } catch {
         message.error('Ошибка загрузки данных');
@@ -48,25 +39,13 @@ export default function ClientFormPage() {
 
   const onFinish = async (values) => {
     setSaving(true);
-    const customFieldsData = {};
-    const clientData = {};
-
-    Object.entries(values).forEach(([key, value]) => {
-      if (key.startsWith('cf_')) {
-        customFieldsData[key.replace('cf_', '')] = value || '';
-      } else {
-        clientData[key] = value;
-      }
-    });
-    clientData.custom_fields = customFieldsData;
-
     try {
       if (isEdit) {
-        await clientsAPI.update(id, clientData);
+        await clientsAPI.update(id, values);
         message.success('Клиент обновлён');
         navigate(`/clients/${id}`);
       } else {
-        const { data } = await clientsAPI.create(clientData);
+        const { data } = await clientsAPI.create(values);
         message.success('Клиент создан');
         navigate(`/clients/${data.id}`);
       }
@@ -85,10 +64,13 @@ export default function ClientFormPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} />
-        <Title level={4} style={{ margin: 0 }}>{isEdit ? 'Редактирование клиента' : 'Новый клиент'}</Title>
+        <Title level={4} style={{ margin: 0 }}>
+          {isEdit ? 'Редактирование клиента' : 'Новый клиент'}
+        </Title>
       </div>
 
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={!canEdit}>
+
         <Card title="Основная информация" style={{ marginBottom: 16 }}>
           <Row gutter={16}>
             <Col span={8}>
@@ -106,12 +88,17 @@ export default function ClientFormPage() {
                 <Input placeholder="Иванович" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={8}>
+              <Form.Item name="inn" label="ИНН">
+                <Input placeholder="123456789012" maxLength={12} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
               <Form.Item name="phone" label="Телефон">
                 <Input placeholder="+7 (999) 123-45-67" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={8}>
               <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Некорректный email' }]}>
                 <Input placeholder="example@mail.ru" />
               </Form.Item>
@@ -134,43 +121,50 @@ export default function ClientFormPage() {
                 <Input.TextArea rows={2} placeholder="г. Москва, ул. Примерная, д. 1" />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="assigned_to" label="Ответственный">
+          </Row>
+        </Card>
+
+        <Card title="Провайдер" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Item name="provider" label="Провайдер">
                 <Select
-                  placeholder="Выберите специалиста"
+                  placeholder="Выберите провайдера"
                   allowClear
-                  options={users.map((u) => ({ value: u.id, label: u.full_name || u.email }))}
+                  showSearch
+                  optionFilterProp="label"
+                  options={providers.map((p) => ({ value: p.id, label: p.name }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="personal_account" label="Лицевой счёт">
+                <Input placeholder="12345678" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="contract_number" label="№ договора">
+                <Input placeholder="ДГ-2024-001" />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="provider_settings" label="Настройки провайдера">
+                <Input.TextArea
+                  rows={4}
+                  placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="subnet" label="Подсеть аптеки">
+                <Input.TextArea
+                  rows={3}
+                  placeholder={"192.168.10.0/24\nШлюз: 192.168.10.1"}
                 />
               </Form.Item>
             </Col>
           </Row>
         </Card>
-
-        {customFields.length > 0 && (
-          <Card title="Дополнительные поля" style={{ marginBottom: 16 }}>
-            <Row gutter={16}>
-              {customFields.map((field) => (
-                <Col span={12} key={field.id}>
-                  <Form.Item
-                    name={`cf_${field.id}`}
-                    label={field.name}
-                    rules={field.is_required ? [{ required: true, message: 'Обязательное поле' }] : []}
-                  >
-                    {field.field_type === 'select' ? (
-                      <Select
-                        placeholder="Выберите значение"
-                        allowClear
-                        options={(field.options || []).map((o) => ({ value: o, label: o }))}
-                      />
-                    ) : (
-                      <Input />
-                    )}
-                  </Form.Item>
-                </Col>
-              ))}
-            </Row>
-          </Card>
-        )}
 
         {canEdit && (
           <Button type="primary" htmlType="submit" loading={saving} icon={<SaveOutlined />} size="large">
