@@ -40,6 +40,73 @@ nano .env
 - `ALLOWED_HOSTS` — ваш домен или IP, например: `94.130.1.1,support.mycompany.ru`
 - `CORS_ALLOWED_ORIGINS` — тот же домен: `http://94.130.1.1` или `https://support.mycompany.ru`
 
+Шаг 3 — Настройка переменных окружения
+Сначала создайте файл .env из шаблона:
+bashcd /opt/support-portal
+cp .env.example .env
+nano .env
+Откроется редактор с таким содержимым:
+env# База данных
+DB_NAME=support_portal
+DB_USER=postgres
+DB_PASSWORD=CHANGE_ME_STRONG_PASSWORD
+DB_HOST=db
+DB_PORT=5432
+
+# Django
+SECRET_KEY=CHANGE_ME_VERY_LONG_SECRET_KEY_HERE
+DEBUG=False
+ALLOWED_HOSTS=your-domain.com,localhost
+
+# CORS — укажите домен фронтенда
+CORS_ALLOWED_ORIGINS=https://your-domain.com,http://localhost
+Нужно заменить три вещи:
+
+1. DB_PASSWORD — пароль базы данных
+Придумайте любой надёжный пароль. Например:
+envDB_PASSWORD=qX7!mN3kP9@support
+
+2. SECRET_KEY — секретный ключ Django
+Это должна быть длинная случайная строка. Сгенерируйте прямо на сервере:
+bashopenssl rand -hex 50
+```
+Команда выдаст что-то вроде:
+```
+a3f8c2d1e4b7a9f0c3d6e2b5a8f1c4d7e0b3a6f9c2d5e8b1a4f7c0d3e6b9a2f5c8d1e4b7
+Скопируйте это значение в .env:
+envSECRET_KEY=a3f8c2d1e4b7a9f0c3d6e2b5a8f1c4d7e0b3a6f9c2d5e8b1a4f7c0d3e6b9a2f5c8d1e4b7
+
+3. ALLOWED_HOSTS и CORS_ALLOWED_ORIGINS — ваш IP или домен
+Если у вас только IP-адрес (например 94.130.1.1):
+envALLOWED_HOSTS=94.130.1.1,localhost
+CORS_ALLOWED_ORIGINS=http://94.130.1.1,http://localhost
+Если уже настроен домен (например support.mycompany.ru):
+envALLOWED_HOSTS=support.mycompany.ru,localhost
+CORS_ALLOWED_ORIGINS=https://support.mycompany.ru,http://localhost
+
+Итоговый пример заполненного .env
+envDB_NAME=support_portal
+DB_USER=postgres
+DB_PASSWORD=qX7!mN3kP9@support
+DB_HOST=db
+DB_PORT=5432
+
+SECRET_KEY=a3f8c2d1e4b7a9f0c3d6e2b5a8f1c4d7e0b3a6f9c2d5e8b1a4f7c0d3e6b9a2f5c8d1e4b7
+DEBUG=False
+ALLOWED_HOSTS=94.130.1.1,localhost
+CORS_ALLOWED_ORIGINS=http://94.130.1.1,http://localhost
+
+Сохранение файла в nano
+После редактирования нажмите:
+
+Ctrl + O — сохранить
+Enter — подтвердить имя файла
+Ctrl + X — выйти из редактора
+
+
+После этого можно переходить к шагу 4 — запуску docker compose up -d --build.
+
+
 ## 4. Запускаем
 
 ```bash
