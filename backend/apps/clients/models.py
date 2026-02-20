@@ -76,6 +76,7 @@ class Client(models.Model):
     subnet = models.CharField('Подсеть аптеки', max_length=50, blank=True)
     external_ip = models.CharField('Внешний IP', max_length=50, blank=True)
     provider_equipment = models.BooleanField('Оборудование провайдера', default=False)
+    is_draft = models.BooleanField('Черновик', default=False)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True,
         related_name='created_clients', verbose_name='Создал'
@@ -156,3 +157,24 @@ class ClientActivity(models.Model):
     class Meta:
         verbose_name = 'Активность'
         ordering = ['-created_at']
+
+
+def client_file_path(instance, filename):
+    return f'clients/{instance.client.id}/{filename}'
+
+
+class ClientFile(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='files')
+    file = models.FileField('Файл', upload_to=client_file_path)
+    name = models.CharField('Имя файла', max_length=255)
+    size = models.PositiveIntegerField('Размер', default=0)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Файл'
+        verbose_name_plural = 'Файлы'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name

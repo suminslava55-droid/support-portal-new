@@ -9,3 +9,12 @@ export const getClientNotes = (id) => api.get(`/clients/${id}/notes/`)
 export const addClientNote = (id, text) => api.post(`/clients/${id}/add_note/`, { text })
 export const getProviders = () => api.get('/clients/providers/')
 export const createProvider = (data) => api.post('/clients/providers/', data)
+export const getClientFiles = (id) => api.get(`/clients/${id}/files/`)
+export const uploadClientFile = (id, file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post(`/clients/${id}/files/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+export const deleteClientFile = (clientId, fileId) => api.delete(`/clients/${clientId}/files/${fileId}/`)

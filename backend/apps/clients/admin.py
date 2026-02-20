@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, Provider
+from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, Provider, ClientFile
 
 @admin.register(Provider)
 class ProviderAdmin(admin.ModelAdmin):
@@ -16,3 +16,7 @@ class ClientAdmin(admin.ModelAdmin):
     list_display = ['company', 'address', 'inn', 'phone', 'provider', 'status']
     list_filter = ['status', 'provider']
     search_fields = ['company', 'address', 'email', 'phone', 'inn']
+
+@admin.register(ClientFile)
+class ClientFileAdmin(admin.ModelAdmin):
+    list_display = ['name', 'client', 'size', 'uploaded_by', 'created_at']

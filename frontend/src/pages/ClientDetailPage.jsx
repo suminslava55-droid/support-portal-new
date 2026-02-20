@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Typography, Tag, Button, Timeline, Input, Space,
-  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Badge
+  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Upload, List, Badge
 } from 'antd';
 import {
   EditOutlined, ArrowLeftOutlined, DeleteOutlined,
   SendOutlined, ClockCircleOutlined, WifiOutlined, CopyOutlined,
-  CheckCircleFilled, CloseCircleFilled, SyncOutlined, MinusCircleOutlined
+  CheckCircleFilled, CloseCircleFilled, SyncOutlined, MinusCircleOutlined,
+  UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -105,18 +106,22 @@ export default function ClientDetailPage() {
   const [noteText, setNoteText] = useState('');
   const [loading, setLoading] = useState(true);
   const [noteSending, setNoteSending] = useState(false);
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const [pingResults, setPingResults] = useState({ external_ip: null, mikrotik_ip: null, server_ip: null });
   const [pinging, setPinging] = useState(false);
   const permissions = useAuthStore((s) => s.permissions);
 
   const fetchClient = useCallback(async () => {
     try {
-      const [clientRes, notesRes] = await Promise.all([
+      const [clientRes, notesRes, filesRes] = await Promise.all([
         clientsAPI.get(id),
         clientsAPI.getNotes(id),
+        clientsAPI.getFiles(id),
       ]);
       setClient(clientRes.data);
       setNotes(notesRes.data);
+      setFiles(filesRes.data);
     } catch {
       message.error('Ошибка загрузки клиента');
     } finally {
@@ -151,6 +156,44 @@ export default function ClientDetailPage() {
       checkPing();
     }
   }, [client?.id]);
+
+  const handleUpload = async ({ file }) => {
+    setUploading(true);
+    try {
+      const { data } = await clientsAPI.uploadFile(id, file);
+      setFiles((prev) => [data, ...prev]);
+      message.success(`Файл «${file.name}» загружен`);
+    } catch {
+      message.error('Ошибка загрузки файла');
+    } finally {
+      setUploading(false);
+    }
+    return false;
+  };
+
+  const handleDeleteFile = async (fileId, fileName) => {
+    try {
+      await clientsAPI.deleteFile(id, fileId);
+      setFiles((prev) => prev.filter((f) => f.id !== fileId));
+      message.success(`Файл «${fileName}» удалён`);
+    } catch {
+      message.error('Ошибка удаления файла');
+    }
+  };
+
+  const getFileIcon = (name) => {
+    const ext = (name || '').split('.').pop().toLowerCase();
+    if (['jpg','jpeg','png','gif','webp'].includes(ext)) return <FileImageOutlined style={{ color: '#1677ff', fontSize: 18 }} />;
+    if (ext === 'pdf') return <FilePdfOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />;
+    return <FileOutlined style={{ color: '#8c8c8c', fontSize: 18 }} />;
+  };
+
+  const formatSize = (bytes) => {
+    if (!bytes) return '0 Б';
+    if (bytes < 1024) return `${bytes} Б`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+  };
 
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
@@ -325,6 +368,41 @@ export default function ClientDetailPage() {
             )}
           </Card>
 
+          <Card
+            title={<Space><UploadOutlined />Файлы<Tag>{files.length}</Tag></Space>}
+            style={{ marginBottom: 16 }}
+          >
+            {files.length === 0 ? (
+              <Empty description="Файлов нет" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              <List
+                dataSource={files}
+                renderItem={(file) => (
+                  <List.Item
+                    actions={[
+                      <Tooltip title="Скачать">
+                        <Button type="link" size="small" icon={<DownloadOutlined />}
+                          href={file.url} target="_blank" rel="noreferrer" />
+                      </Tooltip>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={getFileIcon(file.name)}
+                      title={<Text ellipsis style={{ maxWidth: 260 }}>{file.name}</Text>}
+                      description={
+                        <Space size={4}>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{formatSize(file.size)}</Text>
+                          <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{file.uploaded_by_name}</Text>
+                        </Space>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
+            )}
+          </Card>
+
           <Card title="Заметки">
             <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
               <Input.TextArea
@@ -353,6 +431,7 @@ export default function ClientDetailPage() {
               ))
             )}
           </Card>
+
         </Col>
 
         <Col span={8}>

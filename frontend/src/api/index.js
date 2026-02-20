@@ -51,6 +51,17 @@ export const clientsAPI = {
   delete: (id) => api.delete(`/clients/${id}/`),
   getNotes: (id) => api.get(`/clients/${id}/notes/`),
   addNote: (id, text) => api.post(`/clients/${id}/notes/`, { text }),
+  createDraft: () => api.post('/clients/create_draft/'),
+  discardDraft: (id) => api.delete(`/clients/${id}/discard_draft/`),
+  getFiles: (id) => api.get(`/clients/${id}/files/`),
+  uploadFile: (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/clients/${id}/files/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  deleteFile: (clientId, fileId) => api.delete(`/clients/${clientId}/files/${fileId}/`),
 };
 
 export const usersAPI = {

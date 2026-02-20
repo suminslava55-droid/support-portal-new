@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox } from 'antd';
+import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox, Upload, List, Tooltip, Space } from 'antd';
+import { UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined } from '@ant-design/icons';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { clientsAPI } from '../api';
 import api from '../api';
 import useAuthStore from '../store/authStore';
@@ -23,12 +24,26 @@ export default function ClientFormPage() {
   const isEdit = Boolean(id);
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isDraftMode = new URLSearchParams(location.search).get('draft') === '1';
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState([]);
   const [mikrotikIP, setMikrotikIP] = useState('');
   const [serverIP, setServerIP] = useState('');
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [isDraft, setIsDraft] = useState(false);
   const permissions = useAuthStore((s) => s.permissions);
+
+  // Удаляем черновик если ушли без сохранения
+  useEffect(() => {
+    return () => {
+      if (isDraft && id) {
+        clientsAPI.discardDraft(id).catch(() => {});
+      }
+    };
+  }, [isDraft, id]);
 
   useEffect(() => {
     const init = async () => {
@@ -36,11 +51,25 @@ export default function ClientFormPage() {
       try {
         const providersRes = await api.get('/clients/providers/');
         setProviders(providersRes.data.results || providersRes.data);
-        if (isEdit) {
+        if (isEdit && !new URLSearchParams(window.location.search).get('draft')) {
           const { data } = await clientsAPI.get(id);
           form.setFieldsValue(data);
           setMikrotikIP(calcMikrotikIP(data.subnet, '1'));
           setServerIP(calcMikrotikIP(data.subnet, '2'));
+          const filesRes = await clientsAPI.getFiles(id);
+          setFiles(filesRes.data);
+        } else if (!isEdit) {
+          // Создаём черновик сразу при открытии формы и редиректим на его URL
+          const { data } = await clientsAPI.createDraft();
+          setIsDraft(true);
+          navigate(`/clients/${data.id}/edit?draft=1`, { replace: true });
+        } else {
+          // Это черновик - просто загружаем файлы если есть
+          try {
+            const filesRes = await clientsAPI.getFiles(id);
+            setFiles(filesRes.data);
+            setIsDraft(true);
+          } catch (e) {}
         }
       } catch {
         message.error('Ошибка загрузки данных');
@@ -51,6 +80,54 @@ export default function ClientFormPage() {
     init();
   }, [id, isEdit, form]);
 
+  const handleUpload = async ({ file }) => {
+    const currentId = id;
+    if (!currentId) {
+      message.warning('Сначала сохраните клиента, затем загрузите файлы');
+      return false;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      message.error('Файл слишком большой. Максимум 5 МБ');
+      return false;
+    }
+    setUploading(true);
+    try {
+      const { data } = await clientsAPI.uploadFile(currentId, file);
+      setFiles((prev) => [data, ...prev]);
+      message.success(`Файл «${file.name}» загружен`);
+    } catch (e) {
+      message.error(e.response?.data?.detail || 'Ошибка загрузки файла');
+    } finally {
+      setUploading(false);
+    }
+    return false;
+  };
+
+  const handleDeleteFile = async (fileId, fileName) => {
+    const currentId = id;
+    try {
+      await clientsAPI.deleteFile(currentId, fileId);
+      setFiles((prev) => prev.filter((f) => f.id !== fileId));
+      message.success(`Файл «${fileName}» удалён`);
+    } catch {
+      message.error('Ошибка удаления файла');
+    }
+  };
+
+  const getFileIcon = (name) => {
+    const ext = (name || '').split('.').pop().toLowerCase();
+    if (['jpg','jpeg','png','gif','webp'].includes(ext)) return <FileImageOutlined style={{ color: '#1677ff', fontSize: 18 }} />;
+    if (ext === 'pdf') return <FilePdfOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />;
+    return <FileOutlined style={{ color: '#8c8c8c', fontSize: 18 }} />;
+  };
+
+  const formatSize = (bytes) => {
+    if (!bytes) return '0 Б';
+    if (bytes < 1024) return `${bytes} Б`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+  };
+
   const onFinish = async (values) => {
     setSaving(true);
     try {
@@ -60,6 +137,7 @@ export default function ClientFormPage() {
         navigate(`/clients/${id}`);
       } else {
         const { data } = await clientsAPI.create(values);
+        setClientId(data.id);
         message.success('Клиент создан');
         navigate(`/clients/${data.id}`);
       }
@@ -77,7 +155,7 @@ export default function ClientFormPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} />
-        <Title level={4} style={{ margin: 0 }}>{isEdit ? 'Редактирование клиента' : 'Новый клиент'}</Title>
+        <Title level={4} style={{ margin: 0 }}>{isDraftMode ? 'Новый клиент' : isEdit ? 'Редактирование клиента' : 'Новый клиент'}</Title>
       </div>
 
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={!canEdit}>
@@ -197,9 +275,49 @@ export default function ClientFormPage() {
           </Row>
         </Card>
 
+        {id && (
+          <Card
+            title={<Space><UploadOutlined />Файлы<span style={{marginLeft:8, background:'#f0f0f0', borderRadius:10, padding:'0 8px', fontSize:12}}>{files.length}</span></Space>}
+            style={{ marginBottom: 16 }}
+          >
+            <Upload customRequest={handleUpload} showUploadList={false} multiple>
+              <Button icon={<UploadOutlined />} loading={uploading} style={{ marginBottom: 12 }}>
+                Загрузить файл (макс. 5 МБ)
+              </Button>
+            </Upload>
+            {files.length === 0 ? (
+              <div style={{ color: '#999', padding: '8px 0' }}>Файлов нет</div>
+            ) : (
+              <List
+                dataSource={files}
+                renderItem={(file) => (
+                  <List.Item
+                    actions={[
+                      <Tooltip title="Скачать">
+                        <Button type="link" size="small" icon={<DownloadOutlined />}
+                          href={file.url} target="_blank" rel="noreferrer" />
+                      </Tooltip>,
+                      <Tooltip title="Удалить">
+                        <Button type="link" danger size="small" icon={<DeleteFilled />}
+                          onClick={() => handleDeleteFile(file.id, file.name)} />
+                      </Tooltip>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={getFileIcon(file.name)}
+                      title={file.name}
+                      description={<span style={{fontSize:11}}>{formatSize(file.size)} · {file.uploaded_by_name}</span>}
+                    />
+                  </List.Item>
+                )}
+              />
+            )}
+          </Card>
+        )}
+
         {canEdit && (
           <Button type="primary" htmlType="submit" loading={saving} icon={<SaveOutlined />} size="large">
-            {isEdit ? 'Сохранить изменения' : 'Создать клиента'}
+            {isDraftMode ? 'Создать клиента' : isEdit ? 'Сохранить изменения' : 'Создать клиента'}
           </Button>
         )}
       </Form>

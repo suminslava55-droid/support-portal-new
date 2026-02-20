@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, ClientActivity, Provider
+from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, ClientActivity, Provider, ClientFile
 from apps.accounts.serializers import UserSerializer
 
 
@@ -75,3 +75,19 @@ class ClientWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
         exclude = ['created_by', 'created_at', 'updated_at']
+
+
+class ClientFileSerializer(serializers.ModelSerializer):
+    uploaded_by_name = serializers.CharField(source='uploaded_by.full_name', read_only=True)
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClientFile
+        fields = ['id', 'name', 'size', 'url', 'uploaded_by_name', 'created_at']
+        read_only_fields = ['name', 'size', 'uploaded_by', 'created_at']
+
+    def get_url(self, obj):
+        request = self.context.get('request')
+        if obj.file and request:
+            return request.build_absolute_uri(obj.file.url)
+        return None
