@@ -71,6 +71,8 @@ class Client(models.Model):
         ('dsl', 'DSL'),
         ('cable', 'Кабель'),
         ('wireless', 'Беспроводное'),
+        ('modem', 'Модем'),
+        ('mrnet', 'MR-Net'),
     ])
     provider_settings = models.TextField('Настройки провайдера', blank=True)
     subnet = models.CharField('Подсеть аптеки', max_length=50, blank=True)

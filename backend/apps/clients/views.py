@@ -175,6 +175,20 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='create_draft')
     def create_draft(self, request):
+        # Удаляем старые черновики этого пользователя (старше 1 часа)
+        from django.utils import timezone
+        from datetime import timedelta
+        old_drafts = Client.objects.filter(
+            is_draft=True,
+            created_by=request.user,
+            created_at__lt=timezone.now() - timedelta(hours=1)
+        )
+        for draft in old_drafts:
+            for f in draft.files.all():
+                f.file.delete()
+                f.delete()
+            draft.delete()
+
         client = Client.objects.create(
             is_draft=True,
             created_by=request.user,
@@ -182,7 +196,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         )
         return Response({'id': client.id}, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['delete'], url_path='discard_draft')
+    @action(detail=True, methods=['delete', 'post'], url_path='discard_draft')
     def discard_draft(self, request, pk=None):
         try:
             client = Client.objects.get(pk=pk, is_draft=True, created_by=request.user)

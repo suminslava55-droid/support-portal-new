@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox, Upload, List, Tooltip, Space } from 'antd';
 import { UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined } from '@ant-design/icons';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
@@ -34,16 +34,53 @@ export default function ClientFormPage() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [isDraft, setIsDraft] = useState(false);
+  const draftIdRef = useRef(null);
   const permissions = useAuthStore((s) => s.permissions);
 
-  // Удаляем черновик если ушли без сохранения
+  // Очищаем предыдущий незакрытый черновик при открытии формы
   useEffect(() => {
-    return () => {
-      if (isDraft && id) {
-        clientsAPI.discardDraft(id).catch(() => {});
+    const pendingDraft = localStorage.getItem('pending_draft_id');
+    if (pendingDraft) {
+      clientsAPI.discardDraft(pendingDraft).catch(() => {});
+      localStorage.removeItem('pending_draft_id');
+    }
+  }, []);
+
+  // Cleanup при уходе со страницы - используем ref для надёжности
+  useEffect(() => {
+    const handleUnload = () => {
+      const draftId = draftIdRef.current;
+      if (draftId) {
+        // sendBeacon работает даже при закрытии вкладки
+        const token = localStorage.getItem('access_token');
+        navigator.sendBeacon(
+          `/api/clients/${draftId}/discard_draft/`,
+          new Blob([JSON.stringify({})], { type: 'application/json' })
+        );
+        localStorage.removeItem('pending_draft_id');
       }
     };
-  }, [isDraft, id]);
+
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      // При размонтировании компонента удаляем черновик
+      const draftId = draftIdRef.current;
+      if (draftId) {
+        clientsAPI.discardDraft(draftId).catch(() => {});
+        localStorage.removeItem('pending_draft_id');
+        draftIdRef.current = null;
+      }
+    };
+  }, []);
+
+  // Сохраняем ID черновика в localStorage как резерв
+  useEffect(() => {
+    if (draftIdRef.current) {
+      localStorage.setItem('pending_draft_id', draftIdRef.current);
+    }
+  }, [isDraft]);
 
   useEffect(() => {
     const init = async () => {
@@ -61,6 +98,7 @@ export default function ClientFormPage() {
         } else if (!isEdit) {
           // Создаём черновик сразу при открытии формы и редиректим на его URL
           const { data } = await clientsAPI.createDraft();
+          draftIdRef.current = data.id;
           setIsDraft(true);
           navigate(`/clients/${data.id}/edit?draft=1`, { replace: true });
         } else {
@@ -230,10 +268,12 @@ export default function ClientFormPage() {
             <Col span={12}>
               <Form.Item name="connection_type" label="Тип подключения">
                 <Select placeholder="Выберите тип" allowClear options={[
-                  { value: 'fiber', label: 'Оптоволокно' },
-                  { value: 'dsl', label: 'DSL' },
-                  { value: 'cable', label: 'Кабель' },
-                  { value: 'wireless', label: 'Беспроводное' },
+                  { value: 'fiber', label: '⚡ Оптоволокно' },
+                  { value: 'dsl', label: '☎️ DSL' },
+                  { value: 'cable', label: '🔌 Кабель' },
+                  { value: 'wireless', label: '📡 Беспроводное' },
+                  { value: 'modem', label: '📶 Модем' },
+                  { value: 'mrnet', label: '↔️ MR-Net' },
                 ]} />
               </Form.Item>
             </Col>

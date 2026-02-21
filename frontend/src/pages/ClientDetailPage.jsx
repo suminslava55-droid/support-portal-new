@@ -22,9 +22,12 @@ const CONNECTION_LABELS = {
   dsl: '☎️ DSL',
   cable: '🔌 Кабель',
   wireless: '📡 Беспроводное',
+  modem: '📶 Модем',
+  mrnet: '↔️ MR-Net',
 };
 const CONNECTION_COLORS = {
   fiber: 'blue', dsl: 'orange', cable: 'green', wireless: 'purple',
+  modem: 'cyan', mrnet: 'geekblue',
 };
 
 function copyToClipboard(text) {
@@ -110,6 +113,7 @@ export default function ClientDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [pingResults, setPingResults] = useState({ external_ip: null, mikrotik_ip: null, server_ip: null });
   const [pinging, setPinging] = useState(false);
+  const [showAllActivity, setShowAllActivity] = useState(false);
   const permissions = useAuthStore((s) => s.permissions);
 
   const fetchClient = useCallback(async () => {
@@ -368,41 +372,6 @@ export default function ClientDetailPage() {
             )}
           </Card>
 
-          <Card
-            title={<Space><UploadOutlined />Файлы<Tag>{files.length}</Tag></Space>}
-            style={{ marginBottom: 16 }}
-          >
-            {files.length === 0 ? (
-              <Empty description="Файлов нет" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            ) : (
-              <List
-                dataSource={files}
-                renderItem={(file) => (
-                  <List.Item
-                    actions={[
-                      <Tooltip title="Скачать">
-                        <Button type="link" size="small" icon={<DownloadOutlined />}
-                          href={file.url} target="_blank" rel="noreferrer" />
-                      </Tooltip>,
-                    ]}
-                  >
-                    <List.Item.Meta
-                      avatar={getFileIcon(file.name)}
-                      title={<Text ellipsis style={{ maxWidth: 260 }}>{file.name}</Text>}
-                      description={
-                        <Space size={4}>
-                          <Text type="secondary" style={{ fontSize: 11 }}>{formatSize(file.size)}</Text>
-                          <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
-                          <Text type="secondary" style={{ fontSize: 11 }}>{file.uploaded_by_name}</Text>
-                        </Space>
-                      }
-                    />
-                  </List.Item>
-                )}
-              />
-            )}
-          </Card>
-
           <Card title="Заметки">
             <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
               <Input.TextArea
@@ -435,13 +404,19 @@ export default function ClientDetailPage() {
         </Col>
 
         <Col span={8}>
-          <Card title={<Space>История изменений <Tag>{client.activities?.length || 0}</Tag></Space>}>
+          <Card
+            title={<Space>История изменений <Tag>{client.activities?.length || 0}</Tag></Space>}
+            style={{ marginBottom: 16 }}
+          >
             {!client.activities?.length ? (
               <Empty description="История пуста" image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
-              <div style={{ maxHeight: 600, overflowY: 'auto' }}>
+              <>
                 <Timeline
-                  items={client.activities.map((a) => ({
+                  items={(showAllActivity
+                    ? client.activities
+                    : client.activities.slice(0, 2)
+                  ).map((a) => ({
                     dot: <span style={{ fontSize: 14 }}><ActivityIcon action={a.action} /></span>,
                     children: (
                       <div style={{ marginBottom: 4 }}>
@@ -461,7 +436,52 @@ export default function ClientDetailPage() {
                     ),
                   }))}
                 />
-              </div>
+                {client.activities.length > 2 && (
+                  <Button
+                    type="link" size="small"
+                    onClick={() => setShowAllActivity(!showAllActivity)}
+                    style={{ padding: 0 }}
+                  >
+                    {showAllActivity
+                      ? '▲ Свернуть'
+                      : `▼ Показать ещё ${client.activities.length - 2}`}
+                  </Button>
+                )}
+              </>
+            )}
+          </Card>
+
+          <Card
+            title={<Space><UploadOutlined />Файлы<Tag>{files.length}</Tag></Space>}
+          >
+            {files.length === 0 ? (
+              <Empty description="Файлов нет" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              <List
+                dataSource={files}
+                renderItem={(file) => (
+                  <List.Item
+                    actions={[
+                      <Tooltip title="Скачать">
+                        <Button type="link" size="small" icon={<DownloadOutlined />}
+                          href={file.url} target="_blank" rel="noreferrer" />
+                      </Tooltip>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={getFileIcon(file.name)}
+                      title={<Text ellipsis style={{ maxWidth: 160 }}>{file.name}</Text>}
+                      description={
+                        <Space size={4}>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{formatSize(file.size)}</Text>
+                          <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{file.uploaded_by_name}</Text>
+                        </Space>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
             )}
           </Card>
         </Col>
