@@ -180,3 +180,50 @@ class ClientFile(models.Model):
 
     def __str__(self):
         return self.name
+
+
+def encrypt_value(value):
+    if not value:
+        return ''
+    from cryptography.fernet import Fernet
+    from django.conf import settings as django_settings
+    f = Fernet(django_settings.ENCRYPTION_KEY.encode())
+    return f.encrypt(value.encode()).decode()
+
+
+def decrypt_value(value):
+    if not value:
+        return ''
+    try:
+        from cryptography.fernet import Fernet
+        from django.conf import settings as django_settings
+        f = Fernet(django_settings.ENCRYPTION_KEY.encode())
+        return f.decrypt(value.encode()).decode()
+    except Exception:
+        return ''
+
+
+class SystemSettings(models.Model):
+    ssh_user = models.CharField('SSH пользователь', max_length=100, blank=True)
+    ssh_password_encrypted = models.TextField('SSH пароль (зашифрован)', blank=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Настройки системы'
+        verbose_name_plural = 'Настройки системы'
+
+    @property
+    def ssh_password(self):
+        return decrypt_value(self.ssh_password_encrypted)
+
+    def set_ssh_password(self, value):
+        self.ssh_password_encrypted = encrypt_value(value)
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

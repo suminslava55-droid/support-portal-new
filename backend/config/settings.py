@@ -106,3 +106,4 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = '/app/media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', '')

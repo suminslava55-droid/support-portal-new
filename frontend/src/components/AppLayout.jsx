@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout, Menu, Avatar, Dropdown, Typography, Modal, Form, Input, message } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { TeamOutlined, UserOutlined, LogoutOutlined, WifiOutlined, LockOutlined } from '@ant-design/icons';
+import { TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined, WifiOutlined, LockOutlined } from '@ant-design/icons';
 import useAuthStore from '../store/authStore';
 import api from '../api';
 
@@ -21,6 +21,7 @@ export default function AppLayout({ children }) {
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
     ...(isAdmin ? [{ key: '/users', icon: <UserOutlined />, label: 'Пользователи' }] : []),
     { key: '/providers', icon: <WifiOutlined />, label: 'Провайдеры' },
+    ...(isAdmin ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Настройки' }] : []),
   ];
 
   const handleChangePassword = async () => {

@@ -82,3 +82,8 @@ export const customFieldsAPI = {
   update: (id, data) => api.patch(`/clients/custom-fields/${id}/`, data),
   delete: (id) => api.delete(`/clients/custom-fields/${id}/`),
 };
+
+export const settingsAPI = {
+  get: () => api.get('/clients/system-settings/'),
+  save: (data) => api.post('/clients/system-settings/', data),
+};
