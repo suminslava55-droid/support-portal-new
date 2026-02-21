@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Form, Input, Button, Typography, message, Spin, Divider } from 'antd';
-import { SaveOutlined, EyeInvisibleOutlined, EyeTwoTone, SettingOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Typography, message, Spin, Popconfirm, Space } from 'antd';
+import { SaveOutlined, EyeInvisibleOutlined, EyeTwoTone, SettingOutlined, DeleteOutlined } from '@ant-design/icons';
 import { settingsAPI } from '../api';
 
 const { Title, Text } = Typography;
@@ -25,6 +25,17 @@ export default function SettingsPage() {
     };
     load();
   }, [form]);
+
+  const handleClear = async () => {
+    try {
+      await settingsAPI.clear();
+      setHasPassword(false);
+      form.setFieldsValue({ ssh_user: '', ssh_password: '' });
+      message.success('SSH данные очищены');
+    } catch {
+      message.error('Ошибка очистки');
+    }
+  };
 
   const onFinish = async (values) => {
     setSaving(true);
@@ -68,9 +79,21 @@ export default function SettingsPage() {
               iconRender={(visible) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
             />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={saving} icon={<SaveOutlined />}>
-            Сохранить
-          </Button>
+          <Space>
+            <Button type="primary" htmlType="submit" loading={saving} icon={<SaveOutlined />}>
+              Сохранить
+            </Button>
+            <Popconfirm
+              title="Очистить SSH данные?"
+              description="Логин и пароль будут удалены из базы данных"
+              onConfirm={handleClear}
+              okText="Очистить"
+              okType="danger"
+              cancelText="Отмена"
+            >
+              <Button danger icon={<DeleteOutlined />}>Очистить</Button>
+            </Popconfirm>
+          </Space>
         </Card>
       </Form>
     </div>

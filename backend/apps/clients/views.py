@@ -3,14 +3,15 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile
+from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings
 from .serializers import (
     ClientListSerializer, ClientDetailSerializer, ClientWriteSerializer,
     ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer
 )
-from apps.accounts.permissions import CanEditClient, CanManageCustomFields
+from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 
 
 FIELD_LABELS = {
@@ -106,13 +107,11 @@ class ClientViewSet(viewsets.ModelViewSet):
         return Client.objects.select_related('created_by', 'provider').filter(is_draft=False)
 
     def get_object_including_draft(self):
-        """Находит клиента включая черновики - для actions файлов и пинга"""
         from django.shortcuts import get_object_or_404
         return get_object_or_404(Client, pk=self.kwargs['pk'])
 
     def get_object(self):
-        """При update/partial_update ищем включая черновики"""
-        if self.action in ('update', 'partial_update', 'ping'):
+        if self.action in ('update', 'partial_update', 'ping', 'files', 'delete_file', 'discard_draft'):
             from django.shortcuts import get_object_or_404
             obj = get_object_or_404(Client, pk=self.kwargs['pk'])
             self.check_object_permissions(self.request, obj)
@@ -135,11 +134,8 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         old = self.get_object()
-        # Если это был черновик — снимаем флаг и логируем как создание
-        extra = {}
         if old.is_draft:
-            extra['is_draft'] = False
-            client = serializer.save(**extra)
+            client = serializer.save(is_draft=False)
             ClientActivity.objects.create(
                 client=client, user=self.request.user,
                 action='Карточка клиента создана'
@@ -147,10 +143,9 @@ class ClientViewSet(viewsets.ModelViewSet):
             return
         provider_map = {p.id: p.name for p in Provider.objects.all()}
         changes = build_change_log(old, self.request.data, provider_map)
-        client = serializer.save(**extra)
+        client = serializer.save()
         if changes:
             action = 'Изменено: ' + ' | '.join(changes)
-            # Обрезаем если слишком длинное
             if len(action) > 490:
                 action = action[:490] + '...'
         else:
@@ -175,7 +170,6 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='create_draft')
     def create_draft(self, request):
-        # Удаляем старые черновики этого пользователя (старше 1 часа)
         from django.utils import timezone
         from datetime import timedelta
         old_drafts = Client.objects.filter(
@@ -188,7 +182,6 @@ class ClientViewSet(viewsets.ModelViewSet):
                 f.file.delete()
                 f.delete()
             draft.delete()
-
         client = Client.objects.create(
             is_draft=True,
             created_by=request.user,
@@ -200,7 +193,6 @@ class ClientViewSet(viewsets.ModelViewSet):
     def discard_draft(self, request, pk=None):
         try:
             client = Client.objects.get(pk=pk, is_draft=True, created_by=request.user)
-            # Удаляем файлы
             for f in client.files.all():
                 f.file.delete()
                 f.delete()
@@ -215,19 +207,14 @@ class ClientViewSet(viewsets.ModelViewSet):
         if request.method == 'GET':
             files = client.files.all()
             return Response(ClientFileSerializer(files, many=True, context={'request': request}).data)
-
         file = request.FILES.get('file')
         if not file:
             return Response({'detail': 'Файл не передан.'}, status=status.HTTP_400_BAD_REQUEST)
         if file.size > 5 * 1024 * 1024:
             return Response({'detail': 'Файл слишком большой. Максимум 5 МБ.'}, status=status.HTTP_400_BAD_REQUEST)
-
         client_file = ClientFile.objects.create(
-            client=client,
-            file=file,
-            name=file.name,
-            size=file.size,
-            uploaded_by=request.user,
+            client=client, file=file, name=file.name,
+            size=file.size, uploaded_by=request.user,
         )
         ClientActivity.objects.create(
             client=client, user=request.user,
@@ -256,28 +243,64 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='ping')
     def ping(self, request, pk=None):
-        client = self.get_object()
-        results = {}
-
+        client = self.get_object_including_draft()
         external_ip = client.external_ip or ''
         mikrotik_ip = client.mikrotik_ip or ''
-
         server_ip = client.server_ip or ''
-
-        results['external_ip'] = {
-            'ip': external_ip,
-            'alive': ping_ip(external_ip) if external_ip else None
+        results = {
+            'external_ip': {'ip': external_ip, 'alive': ping_ip(external_ip) if external_ip else None},
+            'mikrotik_ip': {'ip': mikrotik_ip, 'alive': ping_ip(mikrotik_ip) if mikrotik_ip else None},
+            'server_ip': {'ip': server_ip, 'alive': ping_ip(server_ip) if server_ip else None},
         }
-        results['mikrotik_ip'] = {
-            'ip': mikrotik_ip,
-            'alive': ping_ip(mikrotik_ip) if mikrotik_ip else None
-        }
-        results['server_ip'] = {
-            'ip': server_ip,
-            'alive': ping_ip(server_ip) if server_ip else None
-        }
-
         return Response(results)
+
+
+class FetchExternalIPView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        import paramiko
+        mikrotik_ip = request.data.get('mikrotik_ip', '').strip()
+        old_external_ip = request.data.get('old_external_ip', '').strip()
+
+        if not mikrotik_ip:
+            return Response({'error': 'Микротик IP не передан'}, status=400)
+
+        settings_obj = SystemSettings.get()
+        if not settings_obj.ssh_user:
+            return Response({'error': 'SSH пользователь не задан в настройках системы'}, status=400)
+        if not settings_obj.ssh_password_encrypted:
+            return Response({'error': 'SSH пароль не задан в настройках системы'}, status=400)
+
+        if not ping_ip(mikrotik_ip):
+            return Response({'error': f'Микротик {mikrotik_ip} недоступен'}, status=400)
+
+        try:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                mikrotik_ip,
+                username=settings_obj.ssh_user,
+                password=settings_obj.ssh_password,
+                timeout=10, port=22
+            )
+            cmd = ':put ([/tool fetch url="https://api.ipify.org" http-method=get output=user as-value]->"data")'
+            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=15)
+            new_ip = stdout.read().decode().strip()
+            ssh.close()
+
+            if not new_ip:
+                return Response({'error': 'Не удалось получить внешний IP с Микротика'}, status=400)
+
+            return Response({
+                'new_ip': new_ip,
+                'old_ip': old_external_ip,
+                'changed': new_ip != old_external_ip,
+            })
+        except paramiko.AuthenticationException:
+            return Response({'error': f'Ошибка аутентификации SSH на {mikrotik_ip}'}, status=400)
+        except Exception as e:
+            return Response({'error': f'Ошибка подключения к {mikrotik_ip}: {str(e)}'}, status=400)
 
 
 class ProviderViewSet(viewsets.ModelViewSet):

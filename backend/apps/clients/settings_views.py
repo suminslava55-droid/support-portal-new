@@ -16,6 +16,13 @@ class SystemSettingsView(APIView):
             'has_ssh_password': bool(s.ssh_password_encrypted),
         })
 
+    def delete(self, request):
+        s = SystemSettings.get()
+        s.ssh_user = ''
+        s.ssh_password_encrypted = ''
+        s.save()
+        return Response({'message': 'SSH данные очищены'})
+
     def post(self, request):
         s = SystemSettings.get()
         s.ssh_user = request.data.get('ssh_user', s.ssh_user)

@@ -62,6 +62,7 @@ export const clientsAPI = {
     });
   },
   deleteFile: (clientId, fileId) => api.delete(`/clients/${clientId}/files/${fileId}/`),
+  getExternalIP: (id) => api.get(`/clients/${id}/get_external_ip/`),
 };
 
 export const usersAPI = {
@@ -86,4 +87,5 @@ export const customFieldsAPI = {
 export const settingsAPI = {
   get: () => api.get('/clients/system-settings/'),
   save: (data) => api.post('/clients/system-settings/', data),
+  clear: () => api.delete('/clients/system-settings/'),
 };

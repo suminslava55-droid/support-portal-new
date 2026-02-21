@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox, Upload, List, Tooltip, Space } from 'antd';
-import { UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined } from '@ant-design/icons';
-import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SaveOutlined, SyncOutlined, UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined } from '@ant-design/icons';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { clientsAPI } from '../api';
 import api from '../api';
 import useAuthStore from '../store/authStore';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 function calcMikrotikIP(subnet, ending = '1') {
   if (!subnet) return '';
@@ -21,11 +20,11 @@ function calcMikrotikIP(subnet, ending = '1') {
 
 export default function ClientFormPage() {
   const { id } = useParams();
-  const isEdit = Boolean(id);
-  const [form] = Form.useForm();
   const navigate = useNavigate();
   const location = useLocation();
   const isDraftMode = new URLSearchParams(location.search).get('draft') === '1';
+  const isEdit = Boolean(id);
+  const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState([]);
@@ -33,39 +32,24 @@ export default function ClientFormPage() {
   const [serverIP, setServerIP] = useState('');
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [fetchingIP, setFetchingIP] = useState(false);
   const [isDraft, setIsDraft] = useState(false);
   const draftIdRef = useRef(null);
   const permissions = useAuthStore((s) => s.permissions);
 
-  // Очищаем предыдущий незакрытый черновик при открытии формы
-  useEffect(() => {
-    const pendingDraft = localStorage.getItem('pending_draft_id');
-    if (pendingDraft) {
-      clientsAPI.discardDraft(pendingDraft).catch(() => {});
-      localStorage.removeItem('pending_draft_id');
-    }
-  }, []);
-
-  // Cleanup при уходе со страницы - используем ref для надёжности
+  // Cleanup черновика при уходе
   useEffect(() => {
     const handleUnload = () => {
       const draftId = draftIdRef.current;
       if (draftId) {
-        // sendBeacon работает даже при закрытии вкладки
-        const token = localStorage.getItem('access_token');
-        navigator.sendBeacon(
-          `/api/clients/${draftId}/discard_draft/`,
-          new Blob([JSON.stringify({})], { type: 'application/json' })
-        );
+        navigator.sendBeacon(`/api/clients/${draftId}/discard_draft/`,
+          new Blob([JSON.stringify({})], { type: 'application/json' }));
         localStorage.removeItem('pending_draft_id');
       }
     };
-
     window.addEventListener('beforeunload', handleUnload);
-
     return () => {
       window.removeEventListener('beforeunload', handleUnload);
-      // При размонтировании компонента удаляем черновик
       const draftId = draftIdRef.current;
       if (draftId) {
         clientsAPI.discardDraft(draftId).catch(() => {});
@@ -75,39 +59,40 @@ export default function ClientFormPage() {
     };
   }, []);
 
-  // Сохраняем ID черновика в localStorage как резерв
-  useEffect(() => {
-    if (draftIdRef.current) {
-      localStorage.setItem('pending_draft_id', draftIdRef.current);
-    }
-  }, [isDraft]);
-
   useEffect(() => {
     const init = async () => {
       setLoading(true);
       try {
         const providersRes = await api.get('/clients/providers/');
         setProviders(providersRes.data.results || providersRes.data);
-        if (isEdit && !new URLSearchParams(window.location.search).get('draft')) {
+
+        if (isEdit && !isDraftMode) {
           const { data } = await clientsAPI.get(id);
           form.setFieldsValue(data);
           setMikrotikIP(calcMikrotikIP(data.subnet, '1'));
           setServerIP(calcMikrotikIP(data.subnet, '2'));
           const filesRes = await clientsAPI.getFiles(id);
           setFiles(filesRes.data);
-        } else if (!isEdit) {
-          // Создаём черновик сразу при открытии формы и редиректим на его URL
+        } else if (isEdit && isDraftMode) {
+          // Черновик — просто грузим файлы
+          try {
+            const filesRes = await clientsAPI.getFiles(id);
+            setFiles(filesRes.data);
+          } catch (e) {}
+          setIsDraft(true);
+          draftIdRef.current = id;
+          localStorage.setItem('pending_draft_id', id);
+        } else {
+          // Новый клиент — чистим старый черновик и создаём новый
+          const pendingDraft = localStorage.getItem('pending_draft_id');
+          if (pendingDraft) {
+            clientsAPI.discardDraft(pendingDraft).catch(() => {});
+            localStorage.removeItem('pending_draft_id');
+          }
           const { data } = await clientsAPI.createDraft();
           draftIdRef.current = data.id;
           setIsDraft(true);
           navigate(`/clients/${data.id}/edit?draft=1`, { replace: true });
-        } else {
-          // Это черновик - просто загружаем файлы если есть
-          try {
-            const filesRes = await clientsAPI.getFiles(id);
-            setFiles(filesRes.data);
-            setIsDraft(true);
-          } catch (e) {}
         }
       } catch {
         message.error('Ошибка загрузки данных');
@@ -116,14 +101,11 @@ export default function ClientFormPage() {
       }
     };
     init();
-  }, [id, isEdit, form]);
+  }, []);
 
   const handleUpload = async ({ file }) => {
     const currentId = id;
-    if (!currentId) {
-      message.warning('Сначала сохраните клиента, затем загрузите файлы');
-      return false;
-    }
+    if (!currentId) return false;
     if (file.size > 5 * 1024 * 1024) {
       message.error('Файл слишком большой. Максимум 5 МБ');
       return false;
@@ -142,9 +124,8 @@ export default function ClientFormPage() {
   };
 
   const handleDeleteFile = async (fileId, fileName) => {
-    const currentId = id;
     try {
-      await clientsAPI.deleteFile(currentId, fileId);
+      await clientsAPI.deleteFile(id, fileId);
       setFiles((prev) => prev.filter((f) => f.id !== fileId));
       message.success(`Файл «${fileName}» удалён`);
     } catch {
@@ -166,18 +147,67 @@ export default function ClientFormPage() {
     return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
   };
 
+  const handleGetExternalIP = async () => {
+    // Берём Микротик IP прямо из текущего значения формы
+    const subnet = form.getFieldValue('subnet');
+    const mikrotikIPValue = calcMikrotikIP(subnet, '1');
+    if (!mikrotikIPValue) {
+      message.error('Поле Микротик IP не заполнено — укажите подсеть аптеки');
+      return;
+    }
+
+    setFetchingIP(true);
+    try {
+      // Проверяем SSH настройки
+      const settingsRes = await api.get('/clients/system-settings/');
+      const sshSettings = settingsRes.data;
+      if (!sshSettings.ssh_user) {
+        message.error('SSH пользователь не задан — заполните в разделе Настройки');
+        setFetchingIP(false);
+        return;
+      }
+      if (!sshSettings.has_ssh_password) {
+        message.error('SSH пароль не задан — заполните в разделе Настройки');
+        setFetchingIP(false);
+        return;
+      }
+
+      // Передаём mikrotik_ip напрямую в запрос
+      const currentExternalIP = form.getFieldValue('external_ip') || '';
+      const { data } = await api.post('/clients/fetch_external_ip/', {
+        mikrotik_ip: mikrotikIPValue,
+        old_external_ip: currentExternalIP,
+      });
+
+      form.setFieldsValue({ external_ip: data.new_ip });
+      if (!data.old_ip) {
+        message.success(`Внешний IP получен: ${data.new_ip}`);
+      } else if (data.changed) {
+        message.success(`Внешний IP изменился: ${data.old_ip} → ${data.new_ip}`);
+      } else {
+        message.info(`Внешний IP не изменился: ${data.new_ip}`);
+      }
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка получения IP');
+    } finally {
+      setFetchingIP(false);
+    }
+  };
+
   const onFinish = async (values) => {
     setSaving(true);
     try {
-      if (isEdit) {
+      if (isEdit && !isDraftMode) {
         await clientsAPI.update(id, values);
         message.success('Клиент обновлён');
         navigate(`/clients/${id}`);
       } else {
-        const { data } = await clientsAPI.create(values);
-        setClientId(data.id);
+        await clientsAPI.update(id, { ...values, is_draft: false });
+        draftIdRef.current = null;
+        setIsDraft(false);
+        localStorage.removeItem('pending_draft_id');
         message.success('Клиент создан');
-        navigate(`/clients/${data.id}`);
+        navigate(`/clients/${id}`);
       }
     } catch {
       message.error('Ошибка сохранения');
@@ -193,7 +223,9 @@ export default function ClientFormPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} />
-        <Title level={4} style={{ margin: 0 }}>{isDraftMode ? 'Новый клиент' : isEdit ? 'Редактирование клиента' : 'Новый клиент'}</Title>
+        <Title level={4} style={{ margin: 0 }}>
+          {isDraftMode ? 'Новый клиент' : isEdit ? 'Редактирование клиента' : 'Новый клиент'}
+        </Title>
       </div>
 
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={!canEdit}>
@@ -249,10 +281,8 @@ export default function ClientFormPage() {
           <Row gutter={16}>
             <Col span={24}>
               <Form.Item name="provider" label="Провайдер">
-                <Select
-                  placeholder="Выберите провайдера" allowClear showSearch optionFilterProp="label"
-                  options={providers.map((p) => ({ value: p.id, label: p.name }))}
-                />
+                <Select placeholder="Выберите провайдера" allowClear showSearch optionFilterProp="label"
+                  options={providers.map((p) => ({ value: p.id, label: p.name }))} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -289,11 +319,32 @@ export default function ClientFormPage() {
             </Col>
             <Col span={12}>
               <Form.Item name="subnet" label="Подсеть аптеки">
-                <Input placeholder="10.1.5.0/24" onChange={(e) => { setMikrotikIP(calcMikrotikIP(e.target.value, '1')); setServerIP(calcMikrotikIP(e.target.value, '2')); }} />
+                <Input placeholder="10.1.5.0/24" onChange={(e) => {
+                  setMikrotikIP(calcMikrotikIP(e.target.value, '1'));
+                  setServerIP(calcMikrotikIP(e.target.value, '2'));
+                }} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="external_ip" label="Внешний IP">
+              <Form.Item
+                name="external_ip"
+                label={
+                  <Space size={8}>
+                    <span>Внешний IP</span>
+                    <Tooltip title="Получить внешний IP с Микротика по SSH">
+                      <Button
+                        size="small" type="primary" ghost
+                        icon={<SyncOutlined spin={fetchingIP} />}
+                        loading={fetchingIP}
+                        onClick={handleGetExternalIP}
+                        style={{ fontSize: 11, height: 22, padding: '0 8px' }}
+                      >
+                        Получить
+                      </Button>
+                    </Tooltip>
+                  </Space>
+                }
+              >
                 <Input placeholder="1.2.3.4" />
               </Form.Item>
             </Col>
@@ -316,10 +367,14 @@ export default function ClientFormPage() {
         </Card>
 
         {id && (
-          <Card
-            title={<Space><UploadOutlined />Файлы<span style={{marginLeft:8, background:'#f0f0f0', borderRadius:10, padding:'0 8px', fontSize:12}}>{files.length}</span></Space>}
-            style={{ marginBottom: 16 }}
-          >
+          <Card title={
+            <Space>
+              <UploadOutlined />Файлы
+              <span style={{ marginLeft: 8, background: '#f0f0f0', borderRadius: 10, padding: '0 8px', fontSize: 12 }}>
+                {files.length}
+              </span>
+            </Space>
+          } style={{ marginBottom: 16 }}>
             <Upload customRequest={handleUpload} showUploadList={false} multiple>
               <Button icon={<UploadOutlined />} loading={uploading} style={{ marginBottom: 12 }}>
                 Загрузить файл (макс. 5 МБ)
@@ -328,29 +383,24 @@ export default function ClientFormPage() {
             {files.length === 0 ? (
               <div style={{ color: '#999', padding: '8px 0' }}>Файлов нет</div>
             ) : (
-              <List
-                dataSource={files}
-                renderItem={(file) => (
-                  <List.Item
-                    actions={[
-                      <Tooltip title="Скачать">
-                        <Button type="link" size="small" icon={<DownloadOutlined />}
-                          href={file.url} target="_blank" rel="noreferrer" />
-                      </Tooltip>,
-                      <Tooltip title="Удалить">
-                        <Button type="link" danger size="small" icon={<DeleteFilled />}
-                          onClick={() => handleDeleteFile(file.id, file.name)} />
-                      </Tooltip>,
-                    ]}
-                  >
-                    <List.Item.Meta
-                      avatar={getFileIcon(file.name)}
-                      title={file.name}
-                      description={<span style={{fontSize:11}}>{formatSize(file.size)} · {file.uploaded_by_name}</span>}
-                    />
-                  </List.Item>
-                )}
-              />
+              <List dataSource={files} renderItem={(file) => (
+                <List.Item actions={[
+                  <Tooltip title="Скачать">
+                    <Button type="link" size="small" icon={<DownloadOutlined />}
+                      href={file.url} target="_blank" rel="noreferrer" />
+                  </Tooltip>,
+                  <Tooltip title="Удалить">
+                    <Button type="link" danger size="small" icon={<DeleteFilled />}
+                      onClick={() => handleDeleteFile(file.id, file.name)} />
+                  </Tooltip>,
+                ]}>
+                  <List.Item.Meta
+                    avatar={getFileIcon(file.name)}
+                    title={file.name}
+                    description={<span style={{ fontSize: 11 }}>{formatSize(file.size)} · {file.uploaded_by_name}</span>}
+                  />
+                </List.Item>
+              )} />
             )}
           </Card>
         )}
