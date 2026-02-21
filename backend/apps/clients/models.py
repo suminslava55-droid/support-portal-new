@@ -66,6 +66,10 @@ class Client(models.Model):
     personal_account = models.CharField('Лицевой счёт', max_length=100, blank=True)
     contract_number = models.CharField('№ договора', max_length=100, blank=True)
     tariff = models.CharField('Тариф', max_length=50, blank=True)
+    modem_number = models.CharField('Номер модема/SIM', max_length=100, blank=True)
+    modem_iccid = models.CharField('ICCID модема', max_length=100, blank=True)
+    modem_number = models.CharField('Номер модема/SIM', max_length=100, blank=True)
+    modem_iccid = models.CharField('ICCID модема', max_length=100, blank=True)
     connection_type = models.CharField('Тип подключения', max_length=50, blank=True, choices=[
         ('fiber', 'Оптоволокно'),
         ('dsl', 'DSL'),

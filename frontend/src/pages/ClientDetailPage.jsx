@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Typography, Tag, Button, Timeline, Input, Space,
-  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Upload, List, Badge
+  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Upload, List, Image, Badge
 } from 'antd';
 import {
   EditOutlined, ArrowLeftOutlined, DeleteOutlined,
@@ -296,6 +296,20 @@ export default function ClientDetailPage() {
                     ? <><Text strong>{client.tariff}</Text> <Text type="secondary">Мбит/с</Text></>
                     : '—'}
                 </Descriptions.Item>
+                {['modem', 'mrnet'].includes(client.connection_type) && (
+                  <>
+                    <Descriptions.Item label="Номер (модем/SIM)">
+                      {client.modem_number
+                        ? <CopyField value={client.modem_number} />
+                        : <Text type="secondary">—</Text>}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="ICCID модема">
+                      {client.modem_iccid
+                        ? <CopyField value={client.modem_iccid} />
+                        : <Text type="secondary">—</Text>}
+                    </Descriptions.Item>
+                  </>
+                )}
                 <Descriptions.Item label="Лицевой счёт">
                   <CopyField value={client.personal_account} />
                 </Descriptions.Item>
@@ -312,14 +326,31 @@ export default function ClientDetailPage() {
                 </Descriptions.Item>
                 <Descriptions.Item label="Внешний IP">
                   <Space>
-                    <CopyField value={client.external_ip} />
+                    {client.external_ip ? (
+                      <a href={`http://${client.external_ip}`} target="_blank" rel="noreferrer"
+                        style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                        {client.external_ip}
+                      </a>
+                    ) : <Text type="secondary">—</Text>}
+                    {client.external_ip && (
+                      <Tooltip title="Скопировать">
+                        <Button type="text" size="small"
+                          icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                          onClick={() => { copyToClipboard(client.external_ip); message.success('Скопировано!', 1); }}
+                          style={{ padding: '0 2px', height: 'auto' }}
+                        />
+                      </Tooltip>
+                    )}
                     <PingStatus status={pingResults.external_ip} ip={client.external_ip} />
                   </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Микротик IP">
                   <Space>
                     <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                      {client.mikrotik_ip || '—'}
+                      {client.mikrotik_ip
+                        ? <a href={`http://${client.mikrotik_ip}`} target="_blank" rel="noreferrer"
+                            style={{ color: 'inherit' }}>{client.mikrotik_ip}</a>
+                        : '—'}
                     </Tag>
                     {client.mikrotik_ip && (
                       <Tooltip title="Скопировать">
@@ -359,6 +390,7 @@ export default function ClientDetailPage() {
                       : null}
                   </CopyField>
                 </Descriptions.Item>
+
                 <Descriptions.Item label="Оборудование провайдера" span={2}>
                   {client.provider_equipment
                     ? <Tag color="green" style={{ fontSize: 13 }}>✓ Присутствует</Tag>
@@ -429,9 +461,11 @@ export default function ClientDetailPage() {
                             </>
                           : <Text style={{ fontSize: 13 }}>{a.action}</Text>
                         }
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                          {a.user_name} · {dayjs(a.created_at).format('DD.MM.YYYY HH:mm')}
-                        </Text>
+                        <div>
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            {a.user_name} · {dayjs(a.created_at).format('DD.MM.YYYY HH:mm')}
+                          </Text>
+                        </div>
                       </div>
                     ),
                   }))}
@@ -457,31 +491,47 @@ export default function ClientDetailPage() {
             {files.length === 0 ? (
               <Empty description="Файлов нет" image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
-              <List
-                dataSource={files}
-                renderItem={(file) => (
-                  <List.Item
-                    actions={[
-                      <Tooltip title="Скачать">
-                        <Button type="link" size="small" icon={<DownloadOutlined />}
-                          href={file.url} target="_blank" rel="noreferrer" />
-                      </Tooltip>,
-                    ]}
-                  >
-                    <List.Item.Meta
-                      avatar={getFileIcon(file.name)}
-                      title={<Text ellipsis style={{ maxWidth: 160 }}>{file.name}</Text>}
-                      description={
-                        <Space size={4}>
-                          <Text type="secondary" style={{ fontSize: 11 }}>{formatSize(file.size)}</Text>
-                          <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
-                          <Text type="secondary" style={{ fontSize: 11 }}>{file.uploaded_by_name}</Text>
-                        </Space>
-                      }
-                    />
-                  </List.Item>
-                )}
-              />
+              <Image.PreviewGroup>
+                <List
+                  dataSource={files}
+                  renderItem={(file) => {
+                    const ext = (file.name || '').split('.').pop().toLowerCase();
+                    const isImage = ['jpg','jpeg','png','gif','webp'].includes(ext);
+                    return (
+                      <List.Item
+                        actions={[
+                          <Tooltip title="Скачать">
+                            <Button type="link" size="small" icon={<DownloadOutlined />}
+                              href={file.url} download={file.name} />
+                          </Tooltip>,
+                        ]}
+                      >
+                        <List.Item.Meta
+                          avatar={
+                            isImage ? (
+                              <Image
+                                src={file.url}
+                                width={40}
+                                height={40}
+                                style={{ objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
+                                preview={{ mask: false }}
+                              />
+                            ) : getFileIcon(file.name)
+                          }
+                          title={<Text ellipsis style={{ maxWidth: 160 }}>{file.name}</Text>}
+                          description={
+                            <Space size={4}>
+                              <Text type="secondary" style={{ fontSize: 11 }}>{formatSize(file.size)}</Text>
+                              <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
+                              <Text type="secondary" style={{ fontSize: 11 }}>{file.uploaded_by_name}</Text>
+                            </Space>
+                          }
+                        />
+                      </List.Item>
+                    );
+                  }}
+                />
+              </Image.PreviewGroup>
             )}
           </Card>
         </Col>

@@ -63,6 +63,8 @@ export const clientsAPI = {
   },
   deleteFile: (clientId, fileId) => api.delete(`/clients/${clientId}/files/${fileId}/`),
   getExternalIP: (id) => api.get(`/clients/${id}/get_external_ip/`),
+  transferModem: (id, toClientId) => api.post(`/clients/${id}/transfer_modem/`, { to_client_id: toClientId }),
+  exportExcel: (params) => api.get('/clients/export_excel/', { responseType: 'blob', params }),
 };
 
 export const usersAPI = {

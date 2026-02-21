@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox, Upload, List, Tooltip, Space } from 'antd';
+import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox, Upload, List, Tooltip, Space, Modal } from 'antd';
+import { SendOutlined } from '@ant-design/icons';
 import { ArrowLeftOutlined, SaveOutlined, SyncOutlined, UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined } from '@ant-design/icons';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { clientsAPI } from '../api';
@@ -33,6 +34,11 @@ export default function ClientFormPage() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [fetchingIP, setFetchingIP] = useState(false);
+  const [connectionType, setConnectionType] = useState('');
+  const [transferModal, setTransferModal] = useState(false);
+  const [clients, setClients] = useState([]);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [transferring, setTransferring] = useState(false);
   const [isDraft, setIsDraft] = useState(false);
   const draftIdRef = useRef(null);
   const permissions = useAuthStore((s) => s.permissions);
@@ -71,6 +77,7 @@ export default function ClientFormPage() {
           form.setFieldsValue(data);
           setMikrotikIP(calcMikrotikIP(data.subnet, '1'));
           setServerIP(calcMikrotikIP(data.subnet, '2'));
+          setConnectionType(data.connection_type || '');
           const filesRes = await clientsAPI.getFiles(id);
           setFiles(filesRes.data);
         } else if (isEdit && isDraftMode) {
@@ -194,6 +201,35 @@ export default function ClientFormPage() {
     }
   };
 
+  const handleOpenTransfer = async () => {
+    try {
+      const { data } = await api.get('/clients/?page_size=1000');
+      const list = (data.results || data).filter(c => c.id !== parseInt(id));
+      setClients(list);
+      setSelectedClient(null);
+      setTransferModal(true);
+    } catch {
+      message.error('Ошибка загрузки клиентов');
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!selectedClient) { message.warning('Выберите клиента'); return; }
+    setTransferring(true);
+    try {
+      const { data } = await clientsAPI.transferModem(id, selectedClient);
+      setTransferModal(false);
+      setConnectionType('');
+      form.setFieldsValue({ connection_type: '', modem_number: '', modem_iccid: '' });
+      message.success(`Модем передан клиенту: ${data.to_client.name}`);
+      message.warning('Выберите новый тип подключения');
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка передачи');
+    } finally {
+      setTransferring(false);
+    }
+  };
+
   const onFinish = async (values) => {
     setSaving(true);
     try {
@@ -296,15 +332,37 @@ export default function ClientFormPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="connection_type" label="Тип подключения">
-                <Select placeholder="Выберите тип" allowClear options={[
-                  { value: 'fiber', label: '⚡ Оптоволокно' },
-                  { value: 'dsl', label: '☎️ DSL' },
-                  { value: 'cable', label: '🔌 Кабель' },
-                  { value: 'wireless', label: '📡 Беспроводное' },
-                  { value: 'modem', label: '📶 Модем' },
-                  { value: 'mrnet', label: '↔️ MR-Net' },
-                ]} />
+              <Form.Item
+                name="connection_type"
+                label={
+                  <Space size={8}>
+                    <span>Тип подключения</span>
+                    {isEdit && !isDraftMode && ['modem', 'mrnet'].includes(connectionType) && (
+                      <Button
+                        size="small" type="primary" ghost
+                        icon={<SendOutlined />}
+                        onClick={handleOpenTransfer}
+                        style={{ fontSize: 11, height: 22, padding: '0 8px' }}
+                      >
+                        Передать
+                      </Button>
+                    )}
+                  </Space>
+                }
+              >
+                <Select
+                  placeholder="Выберите тип"
+                  allowClear
+                  onChange={(val) => setConnectionType(val || '')}
+                  options={[
+                    { value: 'fiber', label: '⚡ Оптоволокно' },
+                    { value: 'dsl', label: '☎️ DSL' },
+                    { value: 'cable', label: '🔌 Кабель' },
+                    { value: 'wireless', label: '📡 Беспроводное' },
+                    { value: 'modem', label: '📶 Модем' },
+                    { value: 'mrnet', label: '↔️ MR-Net' },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -312,6 +370,21 @@ export default function ClientFormPage() {
                 <Input placeholder="100" suffix="Мбит/с" />
               </Form.Item>
             </Col>
+            {['modem', 'mrnet'].includes(connectionType) && (
+              <>
+                <Col span={12}>
+                  <Form.Item name="modem_number" label="Номер (модем/SIM)">
+                    <Input placeholder="+7 (999) 123-45-67" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="modem_iccid" label="ICCID модема">
+                    <Input placeholder="89701xxxxxxxxxxxxxxx" />
+                  </Form.Item>
+                </Col>
+
+              </>
+            )}
             <Col span={24}>
               <Form.Item name="provider_settings" label="Настройки провайдера">
                 <Input.TextArea rows={4} placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"} />
@@ -411,6 +484,29 @@ export default function ClientFormPage() {
           </Button>
         )}
       </Form>
+
+      <Modal
+        title="Передать модем другому клиенту"
+        open={transferModal}
+        onCancel={() => setTransferModal(false)}
+        onOk={handleTransfer}
+        okText="Передать"
+        okButtonProps={{ danger: true, loading: transferring }}
+        cancelText="Отмена"
+      >
+        <p style={{ marginBottom: 12 }}>Выберите клиента которому передаёте модем. После передачи тип подключения у текущего клиента будет очищен.</p>
+        <Select
+          showSearch
+          placeholder="Начните вводить адрес или компанию..."
+          style={{ width: '100%' }}
+          optionFilterProp="label"
+          onChange={setSelectedClient}
+          options={clients.map(c => ({
+            value: c.id,
+            label: c.company ? `${c.company} — ${c.address || ''}` : (c.address || `Клиент #${c.id}`)
+          }))}
+        />
+      </Modal>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, Typography, message } from 'antd';
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Select, Tag, Space, Typography, message, Tooltip} from 'antd';
+import { PlusOutlined, FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { clientsAPI } from '../api';
 import useAuthStore from '../store/authStore';
@@ -15,6 +15,20 @@ export default function ClientsPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const navigate = useNavigate();
   const permissions = useAuthStore((s) => s.permissions);
+
+  const handleExport = async () => {
+    try {
+      const { data } = await clientsAPI.exportExcel({ search: search || undefined, status: status || undefined });
+      const url = window.URL.createObjectURL(new Blob([data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `clients_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('Ошибка экспорта');
+    }
+  };
 
   const fetchClients = useCallback(async (page = 1) => {
     setLoading(true);
@@ -91,6 +105,9 @@ export default function ClientsPage() {
             { value: 'inactive', label: 'Неактивен' },
           ]}
         />
+        <Tooltip title="Экспорт в Excel">
+          <Button icon={<FileExcelOutlined />} onClick={handleExport} style={{ color: '#217346', borderColor: '#217346' }} />
+        </Tooltip>
       </Space>
 
       <Table

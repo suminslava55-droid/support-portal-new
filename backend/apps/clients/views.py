@@ -34,6 +34,8 @@ FIELD_LABELS = {
     'external_ip': 'Внешний IP',
     'connection_type': 'Тип подключения',
     'tariff': 'Тариф',
+    'modem_number': 'Номер модема/SIM',
+    'modem_iccid': 'ICCID модема',
     'provider_equipment': 'Оборудование провайдера',
 }
 
@@ -168,6 +170,108 @@ class ClientViewSet(viewsets.ModelViewSet):
         ClientActivity.objects.create(client=client, user=request.user, action='Добавлена заметка')
         return Response(ClientNoteSerializer(note).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['get'], url_path='export_excel')
+    def export_excel(self, request):
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from django.http import HttpResponse
+
+        qs = Client.objects.select_related('provider').filter(is_draft=False)
+        search = request.query_params.get('search', '').strip()
+        status_filter = request.query_params.get('status', '').strip()
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(company__icontains=search) | Q(address__icontains=search) |
+                Q(phone__icontains=search) | Q(email__icontains=search) |
+                Q(inn__icontains=search) | Q(pharmacy_code__icontains=search)
+            )
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        clients = qs.order_by('-created_at')
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Клиенты'
+
+        # Стили
+        header_font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
+        header_fill = PatternFill('solid', start_color='1677FF')
+        header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell_align = Alignment(vertical='center', wrap_text=True)
+        thin = Side(style='thin', color='CCCCCC')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        CONNECTION_LABELS = {
+            'fiber': 'Оптоволокно', 'dsl': 'DSL', 'cable': 'Кабель',
+            'wireless': 'Беспроводное', 'modem': 'Модем', 'mrnet': 'MR-Net',
+        }
+
+        headers = [
+            ('ID', 5), ('Адрес', 35), ('Компания', 25), ('ИНН', 14),
+            ('Телефон', 16), ('Email', 25), ('Код аптеки', 12), ('ICCID', 22),
+            ('Статус', 10), ('Провайдер', 20), ('Тип подключения', 18),
+            ('Тариф (Мбит/с)', 14), ('Лицевой счёт', 16), ('№ договора', 20),
+            ('Подсеть', 16), ('Внешний IP', 14), ('Микротик IP', 14), ('Сервер IP', 12),
+            ('Номер модема', 16), ('ICCID модема', 22),
+            ('Оборудование провайдера', 12),
+        ]
+
+        for col, (header, width) in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = border
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = width
+
+        ws.row_dimensions[1].height = 35
+
+        STATUS_LABELS = {'active': 'Активен', 'inactive': 'Неактивен'}
+
+        for row, c in enumerate(clients, 2):
+            values = [
+                c.id,
+                c.address or '',
+                c.company or '',
+                c.inn or '',
+                c.phone or '',
+                c.email or '',
+                c.pharmacy_code or '',
+                c.iccid or '',
+                STATUS_LABELS.get(c.status, c.status),
+                c.provider.name if c.provider else '',
+                CONNECTION_LABELS.get(c.connection_type, c.connection_type or ''),
+                c.tariff or '',
+                c.personal_account or '',
+                c.contract_number or '',
+                c.subnet or '',
+                c.external_ip or '',
+                c.mikrotik_ip or '',
+                c.server_ip or '',
+                c.modem_number or '',
+                c.modem_iccid or '',
+                'Присутствует' if c.provider_equipment else 'Отсутствует',
+            ]
+            fill = PatternFill('solid', start_color='F8FBFF') if row % 2 == 0 else PatternFill('solid', start_color='FFFFFF')
+            for col, value in enumerate(values, 1):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.font = Font(name='Arial', size=10)
+                cell.alignment = cell_align
+                cell.border = border
+                cell.fill = fill
+            ws.row_dimensions[row].height = 20
+
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:{openpyxl.utils.get_column_letter(len(headers))}1'
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="clients.xlsx"'
+        wb.save(response)
+        return response
+
     @action(detail=False, methods=['post'], url_path='create_draft')
     def create_draft(self, request):
         from django.utils import timezone
@@ -240,6 +344,53 @@ class ClientViewSet(viewsets.ModelViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except ClientFile.DoesNotExist:
             return Response({'detail': 'Файл не найден.'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['post'], url_path='transfer_modem')
+    def transfer_modem(self, request, pk=None):
+        from_client = self.get_object()
+        to_client_id = request.data.get('to_client_id')
+
+        if not to_client_id:
+            return Response({'error': 'Не указан клиент для передачи'}, status=400)
+
+        try:
+            to_client = Client.objects.get(pk=to_client_id, is_draft=False)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=400)
+
+        if from_client.pk == to_client.pk:
+            return Response({'error': 'Нельзя передать самому себе'}, status=400)
+
+        # Копируем данные модема
+        to_client.connection_type = from_client.connection_type
+        to_client.modem_number = from_client.modem_number
+        to_client.modem_iccid = from_client.modem_iccid
+        to_client.save()
+
+        # Логируем у получателя
+        ClientActivity.objects.create(
+            client=to_client, user=request.user,
+            action=f'Получен модем от клиента #{from_client.pk} ({from_client.company or from_client.address or "—"}): '
+                   f'тип={from_client.connection_type}, номер={from_client.modem_number}, ICCID={from_client.modem_iccid}'
+        )
+
+        # Очищаем у отправителя
+        old_type = from_client.connection_type
+        from_client.connection_type = ''
+        from_client.modem_number = ''
+        from_client.modem_iccid = ''
+        from_client.save()
+
+        # Логируем у отправителя
+        ClientActivity.objects.create(
+            client=from_client, user=request.user,
+            action=f'Модем передан клиенту #{to_client.pk} ({to_client.company or to_client.address or "—"})'
+        )
+
+        return Response({
+            'success': True,
+            'to_client': {'id': to_client.pk, 'name': to_client.company or to_client.address or f'#{to_client.pk}'},
+        })
 
     @action(detail=True, methods=['get'], url_path='ping')
     def ping(self, request, pk=None):
