@@ -313,6 +313,52 @@ export default function ClientFormPage() {
           </Row>
         </Card>
 
+        <Card title="Сеть" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="subnet" label="Подсеть аптеки">
+                <Input placeholder="10.1.5.0/24" onChange={(e) => {
+                  setMikrotikIP(calcMikrotikIP(e.target.value, '1'));
+                  setServerIP(calcMikrotikIP(e.target.value, '2'));
+                }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="external_ip"
+                label={
+                  <Space size={8}>
+                    <span>Внешний IP</span>
+                    <Tooltip title="Получить внешний IP с Микротика по SSH">
+                      <Button
+                        size="small" type="primary" ghost
+                        icon={<SyncOutlined spin={fetchingIP} />}
+                        loading={fetchingIP}
+                        onClick={handleGetExternalIP}
+                        style={{ fontSize: 11, height: 22, padding: '0 8px' }}
+                      >
+                        Получить
+                      </Button>
+                    </Tooltip>
+                  </Space>
+                }
+              >
+                <Input placeholder="1.2.3.4" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Микротик IP">
+                <Input value={mikrotikIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Сервер IP">
+                <Input value={serverIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
         <Card title="Провайдер" style={{ marginBottom: 16 }}>
           <Row gutter={16}>
             <Col span={24}>
@@ -382,53 +428,11 @@ export default function ClientFormPage() {
                     <Input placeholder="89701xxxxxxxxxxxxxxx" />
                   </Form.Item>
                 </Col>
-
               </>
             )}
             <Col span={24}>
               <Form.Item name="provider_settings" label="Настройки провайдера">
                 <Input.TextArea rows={4} placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="subnet" label="Подсеть аптеки">
-                <Input placeholder="10.1.5.0/24" onChange={(e) => {
-                  setMikrotikIP(calcMikrotikIP(e.target.value, '1'));
-                  setServerIP(calcMikrotikIP(e.target.value, '2'));
-                }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="external_ip"
-                label={
-                  <Space size={8}>
-                    <span>Внешний IP</span>
-                    <Tooltip title="Получить внешний IP с Микротика по SSH">
-                      <Button
-                        size="small" type="primary" ghost
-                        icon={<SyncOutlined spin={fetchingIP} />}
-                        loading={fetchingIP}
-                        onClick={handleGetExternalIP}
-                        style={{ fontSize: 11, height: 22, padding: '0 8px' }}
-                      >
-                        Получить
-                      </Button>
-                    </Tooltip>
-                  </Space>
-                }
-              >
-                <Input placeholder="1.2.3.4" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Микротик IP">
-                <Input value={mikrotikIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Сервер IP">
-                <Input value={serverIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
               </Form.Item>
             </Col>
             <Col span={24}>

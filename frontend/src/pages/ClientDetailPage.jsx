@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   EditOutlined, ArrowLeftOutlined, DeleteOutlined,
-  SendOutlined, ClockCircleOutlined, WifiOutlined, CopyOutlined,
+  SendOutlined, ClockCircleOutlined, WifiOutlined, CopyOutlined, GlobalOutlined,
   CheckCircleFilled, CloseCircleFilled, SyncOutlined, MinusCircleOutlined,
   UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined
 } from '@ant-design/icons';
@@ -268,7 +268,7 @@ export default function ClientDetailPage() {
           </Card>
 
           <Card
-            title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер</span></Space>}
+            title={<Space><GlobalOutlined style={{ color: '#1677ff' }} /><span>Сеть</span></Space>}
             extra={
               <Tooltip title="Проверить доступность IP">
                 <Button
@@ -279,6 +279,73 @@ export default function ClientDetailPage() {
                 </Button>
               </Tooltip>
             }
+            style={{ marginBottom: 16 }}
+          >
+            <Descriptions column={2} bordered size="small">
+              <Descriptions.Item label="Подсеть аптеки">
+                <CopyField value={client.subnet} />
+              </Descriptions.Item>
+              <Descriptions.Item label="Внешний IP">
+                <Space>
+                  {client.external_ip ? (
+                    <a href={`http://${client.external_ip}`} target="_blank" rel="noreferrer"
+                      style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                      {client.external_ip}
+                    </a>
+                  ) : <Text type="secondary">—</Text>}
+                  {client.external_ip && (
+                    <Tooltip title="Скопировать">
+                      <Button type="text" size="small"
+                        icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                        onClick={() => { copyToClipboard(client.external_ip); message.success('Скопировано!', 1); }}
+                        style={{ padding: '0 2px', height: 'auto' }}
+                      />
+                    </Tooltip>
+                  )}
+                  <PingStatus status={pingResults.external_ip} ip={client.external_ip} />
+                </Space>
+              </Descriptions.Item>
+              <Descriptions.Item label="Микротик IP">
+                <Space>
+                  <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                    {client.mikrotik_ip
+                      ? <a href={`http://${client.mikrotik_ip}`} target="_blank" rel="noreferrer"
+                          style={{ color: 'inherit' }}>{client.mikrotik_ip}</a>
+                      : '—'}
+                  </Tag>
+                  {client.mikrotik_ip && (
+                    <Tooltip title="Скопировать">
+                      <Button type="text" size="small"
+                        icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                        onClick={() => { copyToClipboard(client.mikrotik_ip); message.success('Скопировано!', 1); }}
+                        style={{ padding: '0 2px', height: 'auto' }}
+                      />
+                    </Tooltip>
+                  )}
+                  <PingStatus status={pingResults.mikrotik_ip} ip={client.mikrotik_ip} />
+                </Space>
+              </Descriptions.Item>
+              <Descriptions.Item label="Сервер IP">
+                <Space>
+                  <Tag color="purple" style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                    {client.server_ip || '—'}
+                  </Tag>
+                  {client.server_ip && (
+                    <Tooltip title="Скопировать">
+                      <Button type="text" size="small"
+                        icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                        onClick={() => { copyToClipboard(client.server_ip); message.success('Скопировано!', 1); }}
+                        style={{ padding: '0 2px', height: 'auto' }}
+                      />
+                    </Tooltip>
+                  )}
+                  <PingStatus status={pingResults.server_ip} ip={client.server_ip} />
+                </Space>
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
+          <Card
+            title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер</span></Space>}
             style={{ marginBottom: 16 }}
           >
             {provider ? (
@@ -321,68 +388,7 @@ export default function ClientDetailPage() {
                     ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings}</pre>
                     : '—'}
                 </Descriptions.Item>
-                <Descriptions.Item label="Подсеть аптеки">
-                  <CopyField value={client.subnet} />
-                </Descriptions.Item>
-                <Descriptions.Item label="Внешний IP">
-                  <Space>
-                    {client.external_ip ? (
-                      <a href={`http://${client.external_ip}`} target="_blank" rel="noreferrer"
-                        style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                        {client.external_ip}
-                      </a>
-                    ) : <Text type="secondary">—</Text>}
-                    {client.external_ip && (
-                      <Tooltip title="Скопировать">
-                        <Button type="text" size="small"
-                          icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                          onClick={() => { copyToClipboard(client.external_ip); message.success('Скопировано!', 1); }}
-                          style={{ padding: '0 2px', height: 'auto' }}
-                        />
-                      </Tooltip>
-                    )}
-                    <PingStatus status={pingResults.external_ip} ip={client.external_ip} />
-                  </Space>
-                </Descriptions.Item>
-                <Descriptions.Item label="Микротик IP">
-                  <Space>
-                    <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                      {client.mikrotik_ip
-                        ? <a href={`http://${client.mikrotik_ip}`} target="_blank" rel="noreferrer"
-                            style={{ color: 'inherit' }}>{client.mikrotik_ip}</a>
-                        : '—'}
-                    </Tag>
-                    {client.mikrotik_ip && (
-                      <Tooltip title="Скопировать">
-                        <Button type="text" size="small"
-                          icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                          onClick={() => { copyToClipboard(client.mikrotik_ip); message.success('Скопировано!', 1); }}
-                          style={{ padding: '0 2px', height: 'auto' }}
-                        />
-                      </Tooltip>
-                    )}
-                    <PingStatus status={pingResults.mikrotik_ip} ip={client.mikrotik_ip} />
 
-                  </Space>
-                </Descriptions.Item>
-                <Descriptions.Item label="Сервер IP">
-                  <Space>
-                    <Tag color="purple" style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                      {client.server_ip || '—'}
-                    </Tag>
-                    {client.server_ip && (
-                      <Tooltip title="Скопировать">
-                        <Button type="text" size="small"
-                          icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                          onClick={() => { copyToClipboard(client.server_ip); message.success('Скопировано!', 1); }}
-                          style={{ padding: '0 2px', height: 'auto' }}
-                        />
-                      </Tooltip>
-                    )}
-                    <PingStatus status={pingResults.server_ip} ip={client.server_ip} />
-
-                  </Space>
-                </Descriptions.Item>
                 <Descriptions.Item label="Телефоны техподдержки" span={2}>
                   <CopyField value={provider.support_phones}>
                     {provider.support_phones
