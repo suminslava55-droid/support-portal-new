@@ -64,6 +64,7 @@ class ClientDetailSerializer(serializers.ModelSerializer):
     notes = ClientNoteSerializer(many=True, read_only=True)
     activities = ClientActivitySerializer(many=True, read_only=True)
     provider_data = ProviderSerializer(source='provider', read_only=True)
+    provider2_data = ProviderSerializer(source='provider2', read_only=True)
 
     class Meta:
         model = Client

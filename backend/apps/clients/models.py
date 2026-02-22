@@ -68,8 +68,6 @@ class Client(models.Model):
     tariff = models.CharField('Тариф', max_length=50, blank=True)
     modem_number = models.CharField('Номер модема/SIM', max_length=100, blank=True)
     modem_iccid = models.CharField('ICCID модема', max_length=100, blank=True)
-    modem_number = models.CharField('Номер модема/SIM', max_length=100, blank=True)
-    modem_iccid = models.CharField('ICCID модема', max_length=100, blank=True)
     connection_type = models.CharField('Тип подключения', max_length=50, blank=True, choices=[
         ('fiber', 'Оптоволокно'),
         ('dsl', 'DSL'),
@@ -79,6 +77,28 @@ class Client(models.Model):
         ('mrnet', 'MR-Net'),
     ])
     provider_settings = models.TextField('Настройки провайдера', blank=True)
+
+    # Провайдер 2
+    provider2 = models.ForeignKey(
+        Provider, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='clients2', verbose_name='Провайдер 2'
+    )
+    personal_account2 = models.CharField('Лицевой счёт 2', max_length=100, blank=True)
+    contract_number2 = models.CharField('№ договора 2', max_length=100, blank=True)
+    tariff2 = models.CharField('Тариф 2', max_length=50, blank=True)
+    connection_type2 = models.CharField('Тип подключения 2', max_length=50, blank=True, choices=[
+        ('fiber', 'Оптоволокно'),
+        ('dsl', 'DSL'),
+        ('cable', 'Кабель'),
+        ('wireless', 'Беспроводное'),
+        ('modem', 'Модем'),
+        ('mrnet', 'MR-Net'),
+    ])
+    modem_number2 = models.CharField('Номер модема/SIM 2', max_length=100, blank=True)
+    modem_iccid2 = models.CharField('ICCID модема 2', max_length=100, blank=True)
+    provider_settings2 = models.TextField('Настройки провайдера 2', blank=True)
+    provider_equipment2 = models.BooleanField('Оборудование провайдера 2', default=False)
+
     subnet = models.CharField('Подсеть аптеки', max_length=50, blank=True)
     external_ip = models.CharField('Внешний IP', max_length=50, blank=True)
     provider_equipment = models.BooleanField('Оборудование провайдера', default=False)

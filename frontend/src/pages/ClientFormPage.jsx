@@ -19,6 +19,134 @@ function calcMikrotikIP(subnet, ending = '1') {
   return '';
 }
 
+const CONNECTION_LABELS_TRANSFER = {
+  fiber: '⚡ Оптоволокно', dsl: '☎️ DSL', cable: '🔌 Кабель',
+  wireless: '📡 Беспроводное', modem: '📶 Модем', mrnet: '↔️ MR-Net',
+};
+
+function TransferStep1({ visible, transferFromSlot, clients, selectedClient, onSelect }) {
+  if (!visible) return null;
+  return (
+    <div>
+      <p style={{ marginBottom: 12, color: '#666' }}>
+        После передачи все поля провайдера {transferFromSlot} у текущего клиента будут очищены.
+      </p>
+      <Select
+        showSearch
+        placeholder="Начните вводить адрес или компанию..."
+        style={{ width: '100%' }}
+        optionFilterProp="label"
+        value={selectedClient}
+        onChange={onSelect}
+        options={clients.map(c => ({
+          value: c.id,
+          label: c.company ? `${c.company} — ${c.address || ''}` : (c.address || `Клиент #${c.id}`)
+        }))}
+      />
+    </div>
+  );
+}
+
+function SlotCard({ slot, isSelected, onSelect }) {
+  const hasData = !!(slot.provider || slot.personal_account || slot.contract_number);
+  const tooltipContent = hasData ? (
+    <div style={{ fontSize: 12 }}>
+      <div><b>Провайдер:</b> {slot.provider?.name || '—'}</div>
+      <div><b>Тип:</b> {CONNECTION_LABELS_TRANSFER[slot.connection_type] || '—'}</div>
+      <div><b>Лицевой счёт:</b> {slot.personal_account || '—'}</div>
+      <div><b>№ договора:</b> {slot.contract_number || '—'}</div>
+    </div>
+  ) : null;
+
+  const card = (
+    <div
+      onClick={() => onSelect(slot.key)}
+      style={{
+        flex: 1,
+        border: `2px solid ${isSelected ? '#1677ff' : hasData ? '#52c41a' : '#d9d9d9'}`,
+        borderRadius: 8,
+        padding: '16px 12px',
+        cursor: 'pointer',
+        background: isSelected ? '#e6f4ff' : hasData ? '#f6ffed' : '#fafafa',
+        textAlign: 'center',
+        transition: 'all 0.2s',
+        userSelect: 'none',
+      }}
+    >
+      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>{slot.label}</div>
+      {hasData ? (
+        <>
+          <div style={{ color: '#52c41a', fontSize: 12, fontWeight: 500, marginBottom: 4 }}>● Заполнен</div>
+          <div style={{ fontSize: 12, color: '#555' }}>{slot.provider?.name || '—'}</div>
+          {slot.connection_type && (
+            <div style={{ fontSize: 11, color: '#888' }}>{CONNECTION_LABELS_TRANSFER[slot.connection_type]}</div>
+          )}
+        </>
+      ) : (
+        <div style={{ color: '#bbb', fontSize: 12 }}>○ Пустой</div>
+      )}
+      {isSelected && (
+        <div style={{ marginTop: 8, color: '#1677ff', fontSize: 12, fontWeight: 500 }}>✓ Выбран</div>
+      )}
+    </div>
+  );
+
+  return hasData ? (
+    <Tooltip title={tooltipContent} placement="top">{card}</Tooltip>
+  ) : card;
+}
+
+function TransferStep2({ visible, selectedClientDetail, selectedToSlot, onSelectSlot }) {
+  if (!visible) return null;
+  if (!selectedClientDetail) {
+    return <div style={{ textAlign: 'center', padding: 24, color: '#999' }}>Загрузка данных клиента...</div>;
+  }
+
+  const clientName = selectedClientDetail.company || selectedClientDetail.address || `Клиент #${selectedClientDetail.id}`;
+  const slots = [
+    {
+      key: '1',
+      label: 'Провайдер 1',
+      provider: selectedClientDetail.provider_data,
+      connection_type: selectedClientDetail.connection_type,
+      personal_account: selectedClientDetail.personal_account,
+      contract_number: selectedClientDetail.contract_number,
+    },
+    {
+      key: '2',
+      label: 'Провайдер 2',
+      provider: selectedClientDetail.provider2_data,
+      connection_type: selectedClientDetail.connection_type2,
+      personal_account: selectedClientDetail.personal_account2,
+      contract_number: selectedClientDetail.contract_number2,
+    },
+  ];
+  const selectedSlot = slots.find(s => s.key === selectedToSlot);
+
+  return (
+    <div>
+      <p style={{ marginBottom: 16, color: '#666' }}>
+        Клиент: <strong>{clientName}</strong>. Выберите слот для записи:
+      </p>
+      <div style={{ display: 'flex', gap: 12 }}>
+        {slots.map(slot => (
+          <SlotCard
+            key={slot.key}
+            slot={slot}
+            isSelected={selectedToSlot === slot.key}
+            onSelect={onSelectSlot}
+          />
+        ))}
+      </div>
+      {selectedToSlot && selectedSlot?.provider && (
+        <div style={{ marginTop: 12, padding: '8px 12px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6, fontSize: 12, color: '#d46b08' }}>
+          ⚠️ Данные в слоте «{selectedSlot.label}» будут перезаписаны
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ClientFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -35,9 +163,15 @@ export default function ClientFormPage() {
   const [uploading, setUploading] = useState(false);
   const [fetchingIP, setFetchingIP] = useState(false);
   const [connectionType, setConnectionType] = useState('');
+  const [connectionType2, setConnectionType2] = useState('');
+  const [showProvider2, setShowProvider2] = useState(false);
   const [transferModal, setTransferModal] = useState(false);
+  const [transferStep, setTransferStep] = useState(1);       // 1 = выбор клиента, 2 = выбор слота
+  const [transferFromSlot, setTransferFromSlot] = useState('1');
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
+  const [selectedClientDetail, setSelectedClientDetail] = useState(null);
+  const [selectedToSlot, setSelectedToSlot] = useState(null);
   const [transferring, setTransferring] = useState(false);
   const [isDraft, setIsDraft] = useState(false);
   const draftIdRef = useRef(null);
@@ -78,6 +212,10 @@ export default function ClientFormPage() {
           setMikrotikIP(calcMikrotikIP(data.subnet, '1'));
           setServerIP(calcMikrotikIP(data.subnet, '2'));
           setConnectionType(data.connection_type || '');
+          setConnectionType2(data.connection_type2 || '');
+          if (data.provider2 || data.personal_account2 || data.contract_number2) {
+            setShowProvider2(true);
+          }
           const filesRes = await clientsAPI.getFiles(id);
           setFiles(filesRes.data);
         } else if (isEdit && isDraftMode) {
@@ -201,28 +339,61 @@ export default function ClientFormPage() {
     }
   };
 
-  const handleOpenTransfer = async () => {
+  const handleOpenTransfer = async (fromSlot = '1') => {
     try {
       const { data } = await api.get('/clients/?page_size=1000');
       const list = (data.results || data).filter(c => c.id !== parseInt(id));
       setClients(list);
       setSelectedClient(null);
+      setSelectedClientDetail(null);
+      setSelectedToSlot(null);
+      setTransferFromSlot(fromSlot);
+      setTransferStep(1);
       setTransferModal(true);
     } catch {
       message.error('Ошибка загрузки клиентов');
     }
   };
 
+  const handleSelectTransferClient = async (clientId) => {
+    setSelectedClient(clientId);
+    setSelectedClientDetail(null);
+    setSelectedToSlot(null);
+    try {
+      const { data } = await api.get(`/clients/${clientId}/`);
+      setSelectedClientDetail(data);
+    } catch {
+      message.error('Ошибка загрузки данных клиента');
+    }
+  };
+
   const handleTransfer = async () => {
     if (!selectedClient) { message.warning('Выберите клиента'); return; }
+    if (!selectedToSlot) { message.warning('Выберите слот провайдера'); return; }
     setTransferring(true);
     try {
-      const { data } = await clientsAPI.transferModem(id, selectedClient);
+      const { data } = await api.post(`/clients/${id}/transfer_modem/`, {
+        to_client_id: selectedClient,
+        from_slot: transferFromSlot,
+        to_slot: selectedToSlot,
+      });
       setTransferModal(false);
-      setConnectionType('');
-      form.setFieldsValue({ connection_type: '', modem_number: '', modem_iccid: '' });
-      message.success(`Модем передан клиенту: ${data.to_client.name}`);
-      message.warning('Выберите новый тип подключения');
+      // Очищаем поля исходного слота в форме
+      const sfx = transferFromSlot === '1' ? '' : '2';
+      form.setFieldsValue({
+        [`provider${sfx}`]: undefined,
+        [`personal_account${sfx}`]: '',
+        [`contract_number${sfx}`]: '',
+        [`tariff${sfx}`]: '',
+        [`connection_type${sfx}`]: undefined,
+        [`modem_number${sfx}`]: '',
+        [`modem_iccid${sfx}`]: '',
+        [`provider_settings${sfx}`]: '',
+        [`provider_equipment${sfx}`]: false,
+      });
+      if (transferFromSlot === '1') setConnectionType('');
+      else setConnectionType2('');
+      message.success(`Провайдер ${transferFromSlot} передан клиенту: ${data.to_client.name}`);
     } catch (e) {
       message.error(e.response?.data?.error || 'Ошибка передачи');
     } finally {
@@ -359,7 +530,39 @@ export default function ClientFormPage() {
           </Row>
         </Card>
 
-        <Card title="Провайдер" style={{ marginBottom: 16 }}>
+        {/* ===== ПРОВАЙДЕР 1 ===== */}
+        <Card
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <span>Провайдер 1</span>
+              <Space>
+                {!showProvider2 && (
+                  <Button
+                    size="small" type="dashed"
+                    onClick={() => setShowProvider2(true)}
+                    style={{ fontSize: 12 }}
+                  >
+                    + Добавить провайдер 2
+                  </Button>
+                )}
+                <Button
+                  size="small" danger type="text"
+                  onClick={() => {
+                    form.setFieldsValue({
+                      provider: undefined, personal_account: '', contract_number: '',
+                      tariff: '', connection_type: undefined, modem_number: '', modem_iccid: '',
+                      provider_settings: '', provider_equipment: false,
+                    });
+                    setConnectionType('');
+                  }}
+                >
+                  Очистить
+                </Button>
+              </Space>
+            </div>
+          }
+          style={{ marginBottom: 16 }}
+        >
           <Row gutter={16}>
             <Col span={24}>
               <Form.Item name="provider" label="Провайдер">
@@ -387,7 +590,7 @@ export default function ClientFormPage() {
                       <Button
                         size="small" type="primary" ghost
                         icon={<SendOutlined />}
-                        onClick={handleOpenTransfer}
+                        onClick={() => handleOpenTransfer('1')}
                         style={{ fontSize: 11, height: 22, padding: '0 8px' }}
                       >
                         Передать
@@ -443,6 +646,114 @@ export default function ClientFormPage() {
           </Row>
         </Card>
 
+        {/* ===== ПРОВАЙДЕР 2 ===== */}
+        {showProvider2 && (
+          <Card
+            title={
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <span>Провайдер 2</span>
+                <Button
+                  size="small" danger type="text"
+                  onClick={() => {
+                    form.setFieldsValue({
+                      provider2: undefined, personal_account2: '', contract_number2: '',
+                      tariff2: '', connection_type2: undefined, modem_number2: '', modem_iccid2: '',
+                      provider_settings2: '', provider_equipment2: false,
+                    });
+                    setConnectionType2('');
+                    setShowProvider2(false);
+                  }}
+                >
+                  Очистить
+                </Button>
+              </div>
+            }
+            style={{ marginBottom: 16, borderColor: '#91caff' }}
+          >
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.Item name="provider2" label="Провайдер">
+                  <Select placeholder="Выберите провайдера" allowClear showSearch optionFilterProp="label"
+                    options={providers.map((p) => ({ value: p.id, label: p.name }))} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="personal_account2" label="Лицевой счёт">
+                  <Input placeholder="12345678" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="contract_number2" label="№ договора">
+                  <Input placeholder="ДГ-2024-001" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="connection_type2"
+                  label={
+                    <Space size={8}>
+                      <span>Тип подключения</span>
+                      {isEdit && !isDraftMode && ['modem', 'mrnet'].includes(connectionType2) && (
+                        <Button
+                          size="small" type="primary" ghost
+                          icon={<SendOutlined />}
+                          onClick={() => handleOpenTransfer('2')}
+                          style={{ fontSize: 11, height: 22, padding: '0 8px' }}
+                        >
+                          Передать
+                        </Button>
+                      )}
+                    </Space>
+                  }
+                >
+                  <Select
+                    placeholder="Выберите тип"
+                    allowClear
+                    onChange={(val) => setConnectionType2(val || '')}
+                    options={[
+                      { value: 'fiber', label: '⚡ Оптоволокно' },
+                      { value: 'dsl', label: '☎️ DSL' },
+                      { value: 'cable', label: '🔌 Кабель' },
+                      { value: 'wireless', label: '📡 Беспроводное' },
+                      { value: 'modem', label: '📶 Модем' },
+                      { value: 'mrnet', label: '↔️ MR-Net' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="tariff2" label="Тариф (Мбит/с)">
+                  <Input placeholder="100" suffix="Мбит/с" />
+                </Form.Item>
+              </Col>
+              {['modem', 'mrnet'].includes(connectionType2) && (
+                <>
+                  <Col span={12}>
+                    <Form.Item name="modem_number2" label="Номер (модем/SIM)">
+                      <Input placeholder="+7 (999) 123-45-67" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="modem_iccid2" label="ICCID модема">
+                      <Input placeholder="89701xxxxxxxxxxxxxxx" />
+                    </Form.Item>
+                  </Col>
+                </>
+              )}
+              <Col span={24}>
+                <Form.Item name="provider_settings2" label="Настройки провайдера">
+                  <Input.TextArea rows={4} placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"} />
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item name="provider_equipment2" valuePropName="checked">
+                  <Checkbox>Оборудование провайдера на объекте</Checkbox>
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+        )}
+
         {id && (
           <Card title={
             <Space>
@@ -490,25 +801,59 @@ export default function ClientFormPage() {
       </Form>
 
       <Modal
-        title="Передать модем другому клиенту"
+        title={
+          transferStep === 1
+            ? 'Шаг 1 из 2 — Выберите клиента'
+            : `Шаг 2 из 2 — Куда записать провайдер ${transferFromSlot}?`
+        }
         open={transferModal}
         onCancel={() => setTransferModal(false)}
-        onOk={handleTransfer}
-        okText="Передать"
-        okButtonProps={{ danger: true, loading: transferring }}
-        cancelText="Отмена"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div>
+              {transferStep === 2 && (
+                <Button onClick={() => { setTransferStep(1); setSelectedToSlot(null); }}>
+                  ← Назад
+                </Button>
+              )}
+            </div>
+            <Space>
+              <Button onClick={() => setTransferModal(false)}>Отмена</Button>
+              {transferStep === 1 ? (
+                <Button
+                  type="primary"
+                  disabled={!selectedClient}
+                  onClick={() => setTransferStep(2)}
+                >
+                  Далее →
+                </Button>
+              ) : (
+                <Button
+                  type="primary" danger
+                  disabled={!selectedToSlot}
+                  loading={transferring}
+                  onClick={handleTransfer}
+                >
+                  Передать
+                </Button>
+              )}
+            </Space>
+          </div>
+        }
+        width={500}
       >
-        <p style={{ marginBottom: 12 }}>Выберите клиента которому передаёте модем. После передачи тип подключения у текущего клиента будет очищен.</p>
-        <Select
-          showSearch
-          placeholder="Начните вводить адрес или компанию..."
-          style={{ width: '100%' }}
-          optionFilterProp="label"
-          onChange={setSelectedClient}
-          options={clients.map(c => ({
-            value: c.id,
-            label: c.company ? `${c.company} — ${c.address || ''}` : (c.address || `Клиент #${c.id}`)
-          }))}
+        <TransferStep1
+          visible={transferStep === 1}
+          transferFromSlot={transferFromSlot}
+          clients={clients}
+          selectedClient={selectedClient}
+          onSelect={handleSelectTransferClient}
+        />
+        <TransferStep2
+          visible={transferStep === 2}
+          selectedClientDetail={selectedClientDetail}
+          selectedToSlot={selectedToSlot}
+          onSelectSlot={setSelectedToSlot}
         />
       </Modal>
     </div>

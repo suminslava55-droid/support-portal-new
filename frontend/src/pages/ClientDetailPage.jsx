@@ -345,7 +345,7 @@ export default function ClientDetailPage() {
             </Descriptions>
           </Card>
           <Card
-            title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер</span></Space>}
+            title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер 1</span></Space>}
             style={{ marginBottom: 16 }}
           >
             {provider ? (
@@ -410,6 +410,63 @@ export default function ClientDetailPage() {
             )}
           </Card>
 
+          {/* ===== ПРОВАЙДЕР 2 ===== */}
+          {client.provider2_data && (
+            <Card
+              title={<Space><WifiOutlined style={{ color: '#4096ff' }} /><span>Провайдер 2</span></Space>}
+              style={{ marginBottom: 16, borderColor: '#91caff' }}
+            >
+              <Descriptions column={2} bordered size="small">
+                <Descriptions.Item label="Название" span={2}>
+                  <Text strong>{client.provider2_data.name}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Тип подключения">
+                  {client.connection_type2
+                    ? <Tag color={CONNECTION_COLORS[client.connection_type2]}>{CONNECTION_LABELS[client.connection_type2]}</Tag>
+                    : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Тариф">
+                  {client.tariff2
+                    ? <><Text strong>{client.tariff2}</Text> <Text type="secondary">Мбит/с</Text></>
+                    : '—'}
+                </Descriptions.Item>
+                {['modem', 'mrnet'].includes(client.connection_type2) && (
+                  <>
+                    <Descriptions.Item label="Номер (модем/SIM)">
+                      {client.modem_number2 ? <CopyField value={client.modem_number2} /> : <Text type="secondary">—</Text>}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="ICCID модема">
+                      {client.modem_iccid2 ? <CopyField value={client.modem_iccid2} /> : <Text type="secondary">—</Text>}
+                    </Descriptions.Item>
+                  </>
+                )}
+                <Descriptions.Item label="Лицевой счёт">
+                  <CopyField value={client.personal_account2} />
+                </Descriptions.Item>
+                <Descriptions.Item label="№ договора">
+                  <CopyField value={client.contract_number2} />
+                </Descriptions.Item>
+                <Descriptions.Item label="Настройки провайдера" span={2}>
+                  {client.provider_settings2
+                    ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings2}</pre>
+                    : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Телефоны техподдержки" span={2}>
+                  <CopyField value={client.provider2_data.support_phones}>
+                    {client.provider2_data.support_phones
+                      ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider2_data.support_phones}</pre>
+                      : null}
+                  </CopyField>
+                </Descriptions.Item>
+                <Descriptions.Item label="Оборудование провайдера" span={2}>
+                  {client.provider_equipment2
+                    ? <Tag color="green" style={{ fontSize: 13 }}>✓ Присутствует</Tag>
+                    : <Tag color="red" style={{ fontSize: 13 }}>✗ Отсутствует</Tag>}
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+          )}
+
           <Card title="Заметки">
             <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
               <Input.TextArea
@@ -465,7 +522,16 @@ export default function ClientDetailPage() {
                                 <div key={i} style={{ fontSize: 12, paddingLeft: 8, color: '#333' }}>• {item}</div>
                               ))}
                             </>
-                          : <Text style={{ fontSize: 13 }}>{a.action}</Text>
+                          : (a.action.includes('\n')
+                            ? <div>
+                                {a.action.split('\n').map((line, i) => (
+                                  <div key={i} style={{ fontSize: 13, color: '#333', lineHeight: '1.6' }}>
+                                    {line}
+                                  </div>
+                                ))}
+                              </div>
+                            : <Text style={{ fontSize: 13 }}>{a.action}</Text>
+                          )
                         }
                         <div>
                           <Text type="secondary" style={{ fontSize: 11 }}>
@@ -493,6 +559,20 @@ export default function ClientDetailPage() {
 
           <Card
             title={<Space><UploadOutlined />Файлы<Tag>{files.length}</Tag></Space>}
+            extra={
+              permissions.can_edit_client && (
+                <Upload
+                  showUploadList={false}
+                  beforeUpload={() => false}
+                  onChange={handleUpload}
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                >
+                  <Button size="small" icon={<UploadOutlined />} loading={uploading}>
+                    Загрузить
+                  </Button>
+                </Upload>
+              )
+            }
           >
             {files.length === 0 ? (
               <Empty description="Файлов нет" image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -510,6 +590,20 @@ export default function ClientDetailPage() {
                             <Button type="link" size="small" icon={<DownloadOutlined />}
                               href={file.url} download={file.name} />
                           </Tooltip>,
+                          permissions.can_edit_client && (
+                            <Popconfirm
+                              title="Удалить файл?"
+                              description={file.name}
+                              onConfirm={() => handleDeleteFile(file.id, file.name)}
+                              okText="Удалить"
+                              cancelText="Отмена"
+                              okType="danger"
+                            >
+                              <Tooltip title="Удалить">
+                                <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                              </Tooltip>
+                            </Popconfirm>
+                          ),
                         ]}
                       >
                         <List.Item.Meta

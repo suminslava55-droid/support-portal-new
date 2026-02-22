@@ -37,6 +37,14 @@ FIELD_LABELS = {
     'modem_number': 'Номер модема/SIM',
     'modem_iccid': 'ICCID модема',
     'provider_equipment': 'Оборудование провайдера',
+    'provider2_id': 'Провайдер 2',
+    'personal_account2': 'Лицевой счёт 2',
+    'contract_number2': '№ договора 2',
+    'tariff2': 'Тариф 2',
+    'connection_type2': 'Тип подключения 2',
+    'modem_number2': 'Номер модема/SIM 2',
+    'modem_iccid2': 'ICCID модема 2',
+    'provider_equipment2': 'Оборудование провайдера 2',
 }
 
 STATUS_LABELS = {'active': 'Активен', 'inactive': 'Неактивен'}
@@ -349,6 +357,8 @@ class ClientViewSet(viewsets.ModelViewSet):
     def transfer_modem(self, request, pk=None):
         from_client = self.get_object()
         to_client_id = request.data.get('to_client_id')
+        from_slot = str(request.data.get('from_slot', '1'))  # '1' или '2'
+        to_slot = str(request.data.get('to_slot', '1'))      # '1' или '2'
 
         if not to_client_id:
             return Response({'error': 'Не указан клиент для передачи'}, status=400)
@@ -361,30 +371,72 @@ class ClientViewSet(viewsets.ModelViewSet):
         if from_client.pk == to_client.pk:
             return Response({'error': 'Нельзя передать самому себе'}, status=400)
 
-        # Копируем данные модема
-        to_client.connection_type = from_client.connection_type
-        to_client.modem_number = from_client.modem_number
-        to_client.modem_iccid = from_client.modem_iccid
+        # Суффиксы полей в зависимости от слота
+        from_sfx = '' if from_slot == '1' else '2'
+        to_sfx   = '' if to_slot   == '1' else '2'
+
+        PROVIDER_FIELDS = [
+            'provider', 'personal_account', 'contract_number', 'tariff',
+            'connection_type', 'modem_number', 'modem_iccid',
+            'provider_settings', 'provider_equipment',
+        ]
+
+        # Читаем данные из исходного слота
+        from_data = {}
+        for f in PROVIDER_FIELDS:
+            from_data[f] = getattr(from_client, f + from_sfx, None)
+
+        # Записываем в целевой слот получателя
+        for f in PROVIDER_FIELDS:
+            setattr(to_client, f + to_sfx, from_data[f])
         to_client.save()
 
-        # Логируем у получателя
-        ClientActivity.objects.create(
-            client=to_client, user=request.user,
-            action=f'Получен модем от клиента #{from_client.pk} ({from_client.company or from_client.address or "—"}): '
-                   f'тип={from_client.connection_type}, номер={from_client.modem_number}, ICCID={from_client.modem_iccid}'
+        # Готовим читаемые значения для логов
+        prov_name = (from_data['provider'].name if from_data['provider'] else '—')
+        from_name = from_client.company or from_client.address or f'Клиент #{from_client.pk}'
+        to_name   = to_client.company   or to_client.address   or f'Клиент #{to_client.pk}'
+        conn_labels = {
+            'fiber': 'Оптоволокно', 'dsl': 'DSL', 'cable': 'Кабель',
+            'wireless': 'Беспроводное', 'modem': 'Модем', 'mrnet': 'MR-Net',
+        }
+        conn_label = conn_labels.get(from_data['connection_type'] or '', from_data['connection_type'] or '—')
+        equip_label = 'Присутствует' if from_data['provider_equipment'] else 'Отсутствует'
+
+        log_fields = (
+            f'Провайдер: {prov_name}\n'
+            f'Тип: {conn_label}\n'
+            f'Тариф: {from_data["tariff"] or "—"} Мбит/с\n'
+            f'Лицевой счёт: {from_data["personal_account"] or "—"}\n'
+            f'№ договора: {from_data["contract_number"] or "—"}\n'
+            f'Номер модема: {from_data["modem_number"] or "—"}\n'
+            f'ICCID модема: {from_data["modem_iccid"] or "—"}\n'
+            f'Оборудование: {equip_label}'
         )
 
-        # Очищаем у отправителя
-        old_type = from_client.connection_type
-        from_client.connection_type = ''
-        from_client.modem_number = ''
-        from_client.modem_iccid = ''
+        # Лог у получателя — что получили и от кого
+        ClientActivity.objects.create(
+            client=to_client, user=request.user,
+            action=(
+                f'Получен провайдер {to_slot} от клиента «{from_name}»:\n{log_fields}'
+            )
+        )
+
+        # Очищаем исходный слот отправителя
+        EMPTY_VALUES = {
+            'provider': None, 'personal_account': '', 'contract_number': '', 'tariff': '',
+            'connection_type': '', 'modem_number': '', 'modem_iccid': '',
+            'provider_settings': '', 'provider_equipment': False,
+        }
+        for f, empty in EMPTY_VALUES.items():
+            setattr(from_client, f + from_sfx, empty)
         from_client.save()
 
-        # Логируем у отправителя
+        # Лог у отправителя — что передали и кому
         ClientActivity.objects.create(
             client=from_client, user=request.user,
-            action=f'Модем передан клиенту #{to_client.pk} ({to_client.company or to_client.address or "—"})'
+            action=(
+                f'Провайдер {from_slot} передан клиенту «{to_name}» в слот {to_slot}:\n{log_fields}'
+            )
         )
 
         return Response({
