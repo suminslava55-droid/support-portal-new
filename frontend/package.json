@@ -10,7 +10,8 @@
     "@ant-design/icons": "^5.2.6",
     "axios": "^1.6.0",
     "dayjs": "^1.11.10",
-    "zustand": "^4.4.7"
+    "zustand": "^4.4.7",
+    "recharts": "^2.10.0"
   },
   "scripts": {
     "start": "react-scripts start",

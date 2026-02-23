@@ -9,6 +9,7 @@ import useThemeStore from './store/themeStore';
 import { authAPI } from './api';
 import AppLayout from './components/AppLayout';
 import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
 import ClientsPage from './pages/ClientsPage';
 import ClientDetailPage from './pages/ClientDetailPage';
 import SettingsPage from './pages/SettingsPage';
@@ -77,7 +78,8 @@ export default function App() {
     >
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={isAuthenticated ? <Navigate to="/clients" /> : <LoginPage />} />
+          <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" /> : <LoginPage />} />
+          <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
           <Route path="/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
           <Route path="/clients/new" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
           <Route path="/clients/:id/edit" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
@@ -85,7 +87,7 @@ export default function App() {
           <Route path="/users" element={<RequireAuth><RequireAdmin><UsersPage /></RequireAdmin></RequireAuth>} />
           <Route path="/providers" element={<RequireAuth><ProvidersPage /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><RequireAdmin><SettingsPage /></RequireAdmin></RequireAuth>} />
-          <Route path="*" element={<Navigate to="/clients" />} />
+          <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </BrowserRouter>
     </ConfigProvider>

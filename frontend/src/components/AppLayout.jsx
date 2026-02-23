@@ -3,7 +3,7 @@ import { Layout, Menu, Avatar, Dropdown, Typography, Modal, Form, Input, message
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
-  WifiOutlined, LockOutlined, BulbOutlined, BulbFilled,
+  WifiOutlined, LockOutlined, BulbOutlined, BulbFilled, DashboardOutlined,
 } from '@ant-design/icons';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
@@ -23,6 +23,7 @@ export default function AppLayout({ children }) {
   const isAdmin = user?.role_data?.name === 'admin' || user?.is_superuser;
 
   const menuItems = [
+    { key: '/dashboard', icon: <DashboardOutlined />, label: 'Дашборд' },
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
     ...(isAdmin ? [{ key: '/users', icon: <UserOutlined />, label: 'Пользователи' }] : []),
     { key: '/providers', icon: <WifiOutlined />, label: 'Провайдеры' },

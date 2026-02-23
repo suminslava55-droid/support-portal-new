@@ -614,3 +614,90 @@ class ProviderViewSet(viewsets.ModelViewSet):
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
     permission_classes = [IsAuthenticated, CanEditClient]
+
+
+class DashboardStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Count
+        from django.utils import timezone
+        from datetime import timedelta
+
+        clients = Client.objects.filter(is_draft=False)
+        now = timezone.now()
+        month_ago = now - timedelta(days=30)
+        week_ago = now - timedelta(days=7)
+
+        total = clients.count()
+        active = clients.filter(status='active').count()
+        inactive = clients.filter(status='inactive').count()
+        new_month = clients.filter(created_at__gte=month_ago).count()
+        new_week = clients.filter(created_at__gte=week_ago).count()
+
+        # По провайдерам
+        by_provider = list(
+            clients.filter(provider__isnull=False)
+            .values('provider__name')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:8]
+        )
+        by_provider_data = [{'name': r['provider__name'], 'value': r['count']} for r in by_provider]
+        no_provider = clients.filter(provider__isnull=True).count()
+        if no_provider > 0:
+            by_provider_data.append({'name': 'Без провайдера', 'value': no_provider})
+
+        # По типу подключения
+        conn_labels = {
+            'fiber': 'Оптоволокно', 'dsl': 'DSL', 'cable': 'Кабель',
+            'wireless': 'Беспроводное', 'modem': 'Модем', 'mrnet': 'MR-Net',
+        }
+        by_connection = list(
+            clients.filter(connection_type__isnull=False)
+            .exclude(connection_type='')
+            .values('connection_type')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+        )
+        by_connection_data = [
+            {'name': conn_labels.get(r['connection_type'], r['connection_type']), 'value': r['count']}
+            for r in by_connection
+        ]
+
+        # Новые клиенты по месяцам (последние 6 месяцев)
+        monthly = []
+        for i in range(5, -1, -1):
+            d = now - timedelta(days=30 * i)
+            month_start = d.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if i > 0:
+                next_month = (d + timedelta(days=32)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            else:
+                next_month = now
+            cnt = clients.filter(created_at__gte=month_start, created_at__lt=next_month).count()
+            month_names = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
+                           'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
+            monthly.append({'month': month_names[month_start.month - 1], 'count': cnt})
+
+        # Последние активности (глобальные)
+        recent_activities = []
+        for a in ClientActivity.objects.select_related('user', 'client').order_by('-created_at')[:10]:
+            recent_activities.append({
+                'id': a.id,
+                'action': a.action,
+                'user_name': a.user.full_name or a.user.username if a.user else '—',
+                'client_id': a.client_id,
+                'client_name': a.client.address or a.client.company or f'Клиент #{a.client_id}',
+                'created_at': a.created_at.isoformat(),
+            })
+
+        return Response({
+            'total': total,
+            'active': active,
+            'inactive': inactive,
+            'new_month': new_month,
+            'new_week': new_week,
+            'by_provider': by_provider_data,
+            'by_connection': by_connection_data,
+            'monthly': monthly,
+            'recent_activities': recent_activities,
+        })
