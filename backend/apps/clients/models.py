@@ -57,7 +57,7 @@ class Client(models.Model):
     email = models.EmailField('Email', blank=True)
     pharmacy_code = models.CharField('Код аптеки', max_length=50, blank=True)
     company = models.CharField('Компания / организация', max_length=200, blank=True)
-    address = models.TextField('Адрес', blank=True)
+    address = models.TextField('Адрес')
     status = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
     provider = models.ForeignKey(
         Provider, on_delete=models.SET_NULL, null=True, blank=True,
@@ -211,7 +211,10 @@ def encrypt_value(value):
         return ''
     from cryptography.fernet import Fernet
     from django.conf import settings as django_settings
-    f = Fernet(django_settings.ENCRYPTION_KEY.encode())
+    key = getattr(django_settings, 'ENCRYPTION_KEY', '').strip()
+    if not key:
+        raise ValueError('ENCRYPTION_KEY не задан в .env файле сервера')
+    f = Fernet(key.encode())
     return f.encrypt(value.encode()).decode()
 
 
@@ -221,7 +224,10 @@ def decrypt_value(value):
     try:
         from cryptography.fernet import Fernet
         from django.conf import settings as django_settings
-        f = Fernet(django_settings.ENCRYPTION_KEY.encode())
+        key = getattr(django_settings, 'ENCRYPTION_KEY', '').strip()
+        if not key:
+            return ''
+        f = Fernet(key.encode())
         return f.decrypt(value.encode()).decode()
     except Exception:
         return ''

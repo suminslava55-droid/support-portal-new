@@ -403,6 +403,10 @@ export default function ClientFormPage() {
   };
 
   const onFinish = async (values) => {
+    if (!values.address || !values.address.trim()) {
+      message.error('Адрес обязателен для заполнения');
+      return;
+    }
     setSaving(true);
     try {
       if (isEdit && !isDraftMode) {
@@ -436,7 +440,7 @@ export default function ClientFormPage() {
         </Title>
       </div>
 
-      <Form form={form} layout="vertical" onFinish={onFinish} disabled={!canEdit}>
+      <Form form={form} layout="vertical" onFinish={onFinish} onFinishFailed={() => message.error('Адрес обязателен для заполнения')} disabled={!canEdit}>
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -451,7 +455,7 @@ export default function ClientFormPage() {
                   <Card title="Основная информация" style={{ marginBottom: 16 }}>
                     <Row gutter={16}>
                       <Col span={24}>
-                        <Form.Item name="address" label="Адрес">
+                        <Form.Item name="address" label="Адрес" rules={[{ required: true, message: '' }]}>
                           <Input.TextArea rows={2} placeholder="г. Новосибирск, ул. Примерная, д. 1" />
                         </Form.Item>
                       </Col>

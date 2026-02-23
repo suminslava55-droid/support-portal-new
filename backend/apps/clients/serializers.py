@@ -77,6 +77,11 @@ class ClientWriteSerializer(serializers.ModelSerializer):
         model = Client
         exclude = ['created_by', 'created_at', 'updated_at']
 
+    def validate_address(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError('Адрес обязателен для заполнения.')
+        return value.strip()
+
 
 class ClientFileSerializer(serializers.ModelSerializer):
     uploaded_by_name = serializers.CharField(source='uploaded_by.full_name', read_only=True)
