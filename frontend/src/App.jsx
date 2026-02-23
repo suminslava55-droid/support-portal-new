@@ -9,6 +9,7 @@ import useThemeStore from './store/themeStore';
 import { authAPI } from './api';
 import AppLayout from './components/AppLayout';
 import LoginPage from './pages/LoginPage';
+import CalendarPage from './pages/CalendarPage';
 import ClientsPage from './pages/ClientsPage';
 import ClientDetailPage from './pages/ClientDetailPage';
 import SettingsPage from './pages/SettingsPage';
@@ -78,6 +79,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={isAuthenticated ? <Navigate to="/clients" /> : <LoginPage />} />
+          <Route path="/calendar" element={<RequireAuth><CalendarPage /></RequireAuth>} />
           <Route path="/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
           <Route path="/clients/new" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
           <Route path="/clients/:id/edit" element={<RequireAuth><ClientFormPage /></RequireAuth>} />

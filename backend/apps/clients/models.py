@@ -274,3 +274,29 @@ class SystemSettings(models.Model):
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+
+class DutySchedule(models.Model):
+    DUTY_TYPES = [
+        ('phone', 'Телефон'),
+        ('day', 'Работа днём'),
+        ('phone_day', 'Телефон + день'),
+        ('vacation', 'Отпуск'),
+        ('busy', 'Занят'),
+    ]
+
+    user = models.ForeignKey('accounts.User', on_delete=models.CASCADE,
+                              related_name='duty_schedules', verbose_name='Пользователь')
+    date = models.DateField('Дата')
+    duty_type = models.CharField('Тип', max_length=20, choices=DUTY_TYPES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'date')
+        ordering = ['date', 'user']
+        verbose_name = 'График дежурств'
+        verbose_name_plural = 'График дежурств'
+
+    def __str__(self):
+        return f'{self.user} — {self.date} — {self.get_duty_type_display()}'

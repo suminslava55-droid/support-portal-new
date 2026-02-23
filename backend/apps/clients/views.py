@@ -6,10 +6,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings
+from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings, DutySchedule
 from .serializers import (
     ClientListSerializer, ClientDetailSerializer, ClientWriteSerializer,
-    ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer
+    ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer,
+    DutyScheduleSerializer,
 )
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 
@@ -614,3 +615,148 @@ class ProviderViewSet(viewsets.ModelViewSet):
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
     permission_classes = [IsAuthenticated, CanEditClient]
+
+
+class DashboardStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Count
+        from django.utils import timezone
+        from datetime import timedelta
+
+        clients = Client.objects.filter(is_draft=False)
+        now = timezone.now()
+        month_ago = now - timedelta(days=30)
+        week_ago = now - timedelta(days=7)
+
+        total = clients.count()
+        active = clients.filter(status='active').count()
+        inactive = clients.filter(status='inactive').count()
+        new_month = clients.filter(created_at__gte=month_ago).count()
+        new_week = clients.filter(created_at__gte=week_ago).count()
+
+        # По провайдерам
+        by_provider = list(
+            clients.filter(provider__isnull=False)
+            .values('provider__name')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:8]
+        )
+        by_provider_data = [{'name': r['provider__name'], 'value': r['count']} for r in by_provider]
+        no_provider = clients.filter(provider__isnull=True).count()
+        if no_provider > 0:
+            by_provider_data.append({'name': 'Без провайдера', 'value': no_provider})
+
+        # По типу подключения
+        conn_labels = {
+            'fiber': 'Оптоволокно', 'dsl': 'DSL', 'cable': 'Кабель',
+            'wireless': 'Беспроводное', 'modem': 'Модем', 'mrnet': 'MR-Net',
+        }
+        by_connection = list(
+            clients.filter(connection_type__isnull=False)
+            .exclude(connection_type='')
+            .values('connection_type')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+        )
+        by_connection_data = [
+            {'name': conn_labels.get(r['connection_type'], r['connection_type']), 'value': r['count']}
+            for r in by_connection
+        ]
+
+        # Новые клиенты по месяцам (последние 6 месяцев)
+        monthly = []
+        for i in range(5, -1, -1):
+            d = now - timedelta(days=30 * i)
+            month_start = d.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if i > 0:
+                next_month = (d + timedelta(days=32)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            else:
+                next_month = now
+            cnt = clients.filter(created_at__gte=month_start, created_at__lt=next_month).count()
+            month_names = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
+                           'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
+            monthly.append({'month': month_names[month_start.month - 1], 'count': cnt})
+
+        # Последние активности (глобальные)
+        recent_activities = []
+        for a in ClientActivity.objects.select_related('user', 'client').order_by('-created_at')[:10]:
+            recent_activities.append({
+                'id': a.id,
+                'action': a.action,
+                'user_name': a.user.full_name or a.user.username if a.user else '—',
+                'client_id': a.client_id,
+                'client_name': a.client.address or a.client.company or f'Клиент #{a.client_id}',
+                'created_at': a.created_at.isoformat(),
+            })
+
+        return Response({
+            'total': total,
+            'active': active,
+            'inactive': inactive,
+            'new_month': new_month,
+            'new_week': new_week,
+            'by_provider': by_provider_data,
+            'by_connection': by_connection_data,
+            'monthly': monthly,
+            'recent_activities': recent_activities,
+        })
+
+
+class DutyScheduleViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = DutyScheduleSerializer
+
+    def get_queryset(self):
+        qs = DutySchedule.objects.select_related('user')
+        year = self.request.query_params.get('year')
+        month = self.request.query_params.get('month')
+        if year and month:
+            qs = qs.filter(date__year=year, date__month=month)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def set_duty(self, request):
+        user_id = request.data.get('user_id')
+        date = request.data.get('date')
+        duty_type = request.data.get('duty_type')
+
+        if not user_id or not date:
+            return Response({'error': 'user_id и date обязательны'}, status=400)
+
+        if duty_type is None or duty_type == '':
+            # Удаляем запись если тип не выбран
+            DutySchedule.objects.filter(user_id=user_id, date=date).delete()
+            return Response({'status': 'deleted'})
+
+        obj, created = DutySchedule.objects.update_or_create(
+            user_id=user_id, date=date,
+            defaults={'duty_type': duty_type}
+        )
+        return Response(DutyScheduleSerializer(obj).data)
+
+    @action(detail=False, methods=['get'])
+    def report(self, request):
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        qs = DutySchedule.objects.select_related('user')
+        if year and month:
+            qs = qs.filter(date__year=year, date__month=month)
+
+        from django.db.models import Count
+        from apps.accounts.models import User
+
+        users = User.objects.filter(is_active=True).order_by('full_name', 'last_name')
+        duty_types = ['phone', 'day', 'phone_day', 'vacation', 'busy']
+        labels = {'phone': 'Телефон', 'day': 'Работа днём', 'phone_day': 'Телефон + день', 'vacation': 'Отпуск', 'busy': 'Занят'}
+
+        report = []
+        for u in users:
+            row = {'user_id': u.id, 'user_name': u.full_name or u.username, 'totals': {}}
+            for dt in duty_types:
+                row['totals'][dt] = qs.filter(user=u, duty_type=dt).count()
+            row['total'] = sum(row['totals'].values())
+            report.append(row)
+
+        return Response({'report': report, 'labels': labels})

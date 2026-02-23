@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, ClientActivity, Provider, ClientFile
+from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, ClientActivity, Provider, ClientFile, DutySchedule
 from apps.accounts.serializers import UserSerializer
 
 
@@ -97,3 +97,13 @@ class ClientFileSerializer(serializers.ModelSerializer):
         if obj.file and request:
             return request.build_absolute_uri(obj.file.url)
         return None
+
+
+class DutyScheduleSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
+    duty_type_display = serializers.CharField(source='get_duty_type_display', read_only=True)
+
+    class Meta:
+        model = DutySchedule
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
