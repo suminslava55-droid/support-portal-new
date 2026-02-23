@@ -109,6 +109,10 @@ export default function ClientsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [providerFilter, setProviderFilter] = useState([]);
+  const [sortField, setSortField] = useState('');
+  const [sortOrder, setSortOrder] = useState('');
+  const [allProviders, setAllProviders] = useState([]);
   const navigate = useNavigate();
   const permissions = useAuthStore((s) => s.permissions);
 
@@ -121,13 +125,29 @@ export default function ClientsPage() {
   const [exporting, setExporting] = useState(false);
   const [selectedFields, setSelectedFields] = useState(ALL_FIELD_KEYS);
 
-  const fetchClients = useCallback(async (page = 1) => {
+  // Load providers for filter
+  useEffect(() => {
+    import('../api').then(({ default: api }) => {
+      api.get('/clients/providers/?page_size=1000').then(({ data }) => {
+        setAllProviders(data.results || data);
+      }).catch(() => {});
+    });
+  }, []);
+
+  const fetchClients = useCallback(async (page = 1, sf, so) => {
     setLoading(true);
+    const activeSortField = sf !== undefined ? sf : sortField;
+    const activeSortOrder = so !== undefined ? so : sortOrder;
+    const fieldMap = { provider_name: 'provider__name' };
+    const backendField = activeSortField ? (fieldMap[activeSortField] || activeSortField) : '';
+    const ordering = backendField ? (activeSortOrder === 'descend' ? `-${backendField}` : backendField) : undefined;
     try {
       const { data } = await clientsAPI.list({
         page,
         search: search || undefined,
         status: status || undefined,
+        provider: providerFilter.length ? providerFilter.join(',') : undefined,
+        ordering,
       });
       setClients(data.results);
       setPagination((p) => ({ ...p, total: data.count, current: page }));
@@ -136,9 +156,17 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, status]);
+  }, [search, status, providerFilter, sortField, sortOrder]);
 
   useEffect(() => { fetchClients(1); }, [fetchClients]);
+
+  const handleTableChange = (pag, _filters, sorter) => {
+    const newField = sorter.field || '';
+    const newOrder = sorter.order || '';
+    setSortField(newField);
+    setSortOrder(newOrder);
+    fetchClients(pag.current, newField, newOrder);
+  };
 
   const openExportModal = async () => {
     setExportStep(1);
@@ -199,6 +227,8 @@ export default function ClientsPage() {
   const columns = [
     {
       title: 'Адрес', dataIndex: 'address',
+      sorter: true,
+      sortOrder: sortField === 'address' ? sortOrder : null,
       render: (address, r) => (
         <Button type="link" onClick={() => navigate(`/clients/${r.id}`)}
           style={{ padding: 0, fontWeight: 500, textAlign: 'left', whiteSpace: 'normal', height: 'auto' }}>
@@ -206,13 +236,13 @@ export default function ClientsPage() {
         </Button>
       ),
     },
-    { title: 'Компания', dataIndex: 'company', render: v => v || '—' },
-    { title: 'ИНН', dataIndex: 'inn', render: v => v || '—' },
-    { title: 'Провайдер', dataIndex: 'provider_name', render: v => v || '—' },
-    { title: 'Телефон', dataIndex: 'phone', render: v => v || '—' },
-    { title: 'Email', dataIndex: 'email', render: v => v || '—' },
+    { title: 'Компания', dataIndex: 'company', sorter: true, sortOrder: sortField === 'company' ? sortOrder : null, render: v => v || '—' },
+    { title: 'ИНН', dataIndex: 'inn', sorter: true, sortOrder: sortField === 'inn' ? sortOrder : null, render: v => v || '—' },
+    { title: 'Провайдер', dataIndex: 'provider_name', sorter: true, sortOrder: sortField === 'provider_name' ? sortOrder : null, render: v => v || '—' },
+    { title: 'Телефон', dataIndex: 'phone', sorter: true, sortOrder: sortField === 'phone' ? sortOrder : null, render: v => v || '—' },
+    { title: 'Email', dataIndex: 'email', sorter: true, sortOrder: sortField === 'email' ? sortOrder : null, render: v => v || '—' },
     {
-      title: 'Статус', dataIndex: 'status',
+      title: 'Статус', dataIndex: 'status', sorter: true, sortOrder: sortField === 'status' ? sortOrder : null,
       render: v => (
         <Tag color={v === 'active' ? 'green' : 'default'}>
           {v === 'active' ? 'Активен' : 'Неактивен'}
@@ -253,6 +283,16 @@ export default function ClientsPage() {
             { value: 'inactive', label: 'Неактивен' },
           ]}
         />
+        <Select
+          mode="multiple"
+          placeholder="Провайдер"
+          style={{ minWidth: 180, maxWidth: 320 }}
+          allowClear
+          maxTagCount={2}
+          value={providerFilter}
+          onChange={v => setProviderFilter(v || [])}
+          options={allProviders.map(p => ({ value: p.id, label: p.name }))}
+        />
         <Tooltip title="Экспорт в Excel">
           <Button
             icon={<FileExcelOutlined />}
@@ -265,10 +305,10 @@ export default function ClientsPage() {
       <Table
         columns={columns} dataSource={clients} rowKey="id"
         loading={loading} bordered size="middle"
+        onChange={handleTableChange}
         pagination={{
           ...pagination, showSizeChanger: false,
           showTotal: total => `Всего: ${total}`,
-          onChange: fetchClients,
         }}
       />
 

@@ -110,11 +110,18 @@ class ClientViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status', 'provider']
     search_fields = ['company', 'address', 'phone', 'email', 'inn', 'pharmacy_code']
-    ordering_fields = ['company', 'address', 'created_at']
+    ordering_fields = ['company', 'address', 'inn', 'phone', 'email', 'status', 'created_at', 'provider__name']
     ordering = ['-created_at']
 
     def get_queryset(self):
-        return Client.objects.select_related('created_by', 'provider').filter(is_draft=False)
+        qs = Client.objects.select_related('created_by', 'provider').filter(is_draft=False)
+        # Мультивыбор провайдеров
+        providers_param = self.request.query_params.get('provider', '')
+        if providers_param:
+            provider_ids = [p.strip() for p in providers_param.split(',') if p.strip().isdigit()]
+            if provider_ids:
+                qs = qs.filter(provider__id__in=provider_ids)
+        return qs
 
     def get_object_including_draft(self):
         from django.shortcuts import get_object_or_404

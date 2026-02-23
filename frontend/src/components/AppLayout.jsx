@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Avatar, Dropdown, Typography, Modal, Form, Input, message } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Typography, Modal, Form, Input, message, Switch } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined, WifiOutlined, LockOutlined } from '@ant-design/icons';
+import {
+  TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
+  WifiOutlined, LockOutlined, BulbOutlined, BulbFilled,
+} from '@ant-design/icons';
 import useAuthStore from '../store/authStore';
+import useThemeStore from '../store/themeStore';
 import api from '../api';
 
 const { Header, Sider, Content } = Layout;
@@ -11,6 +15,7 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  const { isDark, toggleTheme } = useThemeStore();
   const [pwdModalOpen, setPwdModalOpen] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
   const [form] = Form.useForm();
@@ -50,12 +55,28 @@ export default function AppLayout({ children }) {
   const userMenu = {
     items: [
       { key: 'change-password', icon: <LockOutlined />, label: 'Сменить пароль' },
+      {
+        key: 'theme',
+        icon: isDark ? <BulbFilled style={{ color: '#fadb14' }} /> : <BulbOutlined />,
+        label: (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, minWidth: 160 }}>
+            <span>Тёмная тема</span>
+            <Switch
+              size="small"
+              checked={isDark}
+              onChange={toggleTheme}
+              onClick={(_, e) => e.stopPropagation()}
+            />
+          </div>
+        ),
+      },
       { type: 'divider' },
       { key: 'logout', icon: <LogoutOutlined />, label: 'Выйти', danger: true },
     ],
     onClick: ({ key }) => {
       if (key === 'logout') { logout(); navigate('/login'); }
       if (key === 'change-password') { setPwdModalOpen(true); }
+      if (key === 'theme') { toggleTheme(); }
     },
   };
 
@@ -63,14 +84,18 @@ export default function AppLayout({ children }) {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="light" width={220} style={{ boxShadow: '2px 0 8px rgba(0,0,0,0.06)' }}>
-        <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid #f0f0f0' }}>
+      <Sider theme={isDark ? 'dark' : 'light'} width={220} style={{ boxShadow: '2px 0 8px rgba(0,0,0,0.06)' }}>
+        <div style={{
+          padding: '20px 16px 16px',
+          borderBottom: isDark ? '1px solid #303030' : '1px solid #f0f0f0',
+        }}>
           <Typography.Text strong style={{ fontSize: 16, color: '#1677ff' }}>
             Портал поддержки
           </Typography.Text>
         </div>
         <Menu
           mode="inline"
+          theme={isDark ? 'dark' : 'light'}
           selectedKeys={[selectedKey]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
@@ -80,9 +105,15 @@ export default function AppLayout({ children }) {
 
       <Layout>
         <Header style={{
-          background: '#fff', padding: '0 24px', display: 'flex',
-          justifyContent: 'flex-end', alignItems: 'center',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)', position: 'sticky', top: 0, zIndex: 10
+          background: isDark ? '#141414' : '#fff',
+          padding: '0 24px',
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
         }}>
           <Dropdown menu={userMenu} placement="bottomRight" trigger={['click']}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -98,8 +129,8 @@ export default function AppLayout({ children }) {
           </Dropdown>
         </Header>
 
-        <Content style={{ padding: 24, background: '#f5f5f5', minHeight: 'calc(100vh - 64px)' }}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 8, minHeight: '100%' }}>
+        <Content style={{ padding: 24, minHeight: 'calc(100vh - 64px)' }}>
+          <div style={{ padding: 24, borderRadius: 8, minHeight: '100%' }}>
             {children}
           </div>
         </Content>

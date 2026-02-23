@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, Spin } from 'antd';
+import { ConfigProvider, Spin, theme as antTheme } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import useAuthStore from './store/authStore';
+import useThemeStore from './store/themeStore';
 import { authAPI } from './api';
 import AppLayout from './components/AppLayout';
 import LoginPage from './pages/LoginPage';
@@ -32,6 +33,7 @@ function RequireAdmin({ children }) {
 
 export default function App() {
   const { setUser, isAuthenticated } = useAuthStore();
+  const isDark = useThemeStore((s) => s.isDark);
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
@@ -66,7 +68,13 @@ export default function App() {
   }
 
   return (
-    <ConfigProvider locale={ruRU} theme={{ token: { colorPrimary: '#1677ff', borderRadius: 6 } }}>
+    <ConfigProvider
+      locale={ruRU}
+      theme={{
+        algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+        token: { colorPrimary: '#1677ff', borderRadius: 6 },
+      }}
+    >
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={isAuthenticated ? <Navigate to="/clients" /> : <LoginPage />} />
