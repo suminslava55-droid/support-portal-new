@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Typography, Tag, Button, Timeline, Input, Space,
-  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Upload, List, Image, Badge
+  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Upload, List, Image, Badge, Tabs
 } from 'antd';
 import {
   EditOutlined, ArrowLeftOutlined, DeleteOutlined,
@@ -114,6 +114,7 @@ export default function ClientDetailPage() {
   const [pingResults, setPingResults] = useState({ external_ip: null, mikrotik_ip: null, server_ip: null });
   const [pinging, setPinging] = useState(false);
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [activeTab, setActiveTab] = useState('info');
   const permissions = useAuthStore((s) => s.permissions);
 
   const fetchClient = useCallback(async () => {
@@ -255,219 +256,249 @@ export default function ClientDetailPage() {
 
       <Row gutter={16}>
         <Col span={16}>
-          <Card title="Информация о клиенте" style={{ marginBottom: 16 }}>
-            <Descriptions column={2} bordered size="small">
-              <Descriptions.Item label="Адрес" span={2}>{client.address || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Компания">{client.company || '—'}</Descriptions.Item>
-              <Descriptions.Item label="ИНН"><CopyField value={client.inn} /></Descriptions.Item>
-              <Descriptions.Item label="Телефон"><CopyField value={client.phone} /></Descriptions.Item>
-              <Descriptions.Item label="ICCID"><CopyField value={client.iccid} /></Descriptions.Item>
-              <Descriptions.Item label="Email"><CopyField value={client.email} /></Descriptions.Item>
-              <Descriptions.Item label="Код аптеки"><CopyField value={client.pharmacy_code} /></Descriptions.Item>
-            </Descriptions>
-          </Card>
-
-          <Card
-            title={<Space><GlobalOutlined style={{ color: '#1677ff' }} /><span>Сеть</span></Space>}
-            extra={
-              <Tooltip title="Проверить доступность IP">
-                <Button
-                  size="small" icon={<SyncOutlined spin={pinging} />}
-                  onClick={checkPing} loading={pinging}
-                >
-                  Проверить доступность
-                </Button>
-              </Tooltip>
-            }
-            style={{ marginBottom: 16 }}
-          >
-            <Descriptions column={2} bordered size="small">
-              <Descriptions.Item label="Подсеть аптеки">
-                <CopyField value={client.subnet} />
-              </Descriptions.Item>
-              <Descriptions.Item label="Внешний IP">
-                <Space>
-                  {client.external_ip ? (
-                    <a href={`http://${client.external_ip}`} target="_blank" rel="noreferrer"
-                      style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                      {client.external_ip}
-                    </a>
-                  ) : <Text type="secondary">—</Text>}
-                  {client.external_ip && (
-                    <Tooltip title="Скопировать">
-                      <Button type="text" size="small"
-                        icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                        onClick={() => { copyToClipboard(client.external_ip); message.success('Скопировано!', 1); }}
-                        style={{ padding: '0 2px', height: 'auto' }}
-                      />
-                    </Tooltip>
-                  )}
-                  <PingStatus status={pingResults.external_ip} ip={client.external_ip} />
-                </Space>
-              </Descriptions.Item>
-              <Descriptions.Item label="Микротик IP">
-                <Space>
-                  <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                    {client.mikrotik_ip
-                      ? <a href={`http://${client.mikrotik_ip}`} target="_blank" rel="noreferrer"
-                          style={{ color: 'inherit' }}>{client.mikrotik_ip}</a>
-                      : '—'}
-                  </Tag>
-                  {client.mikrotik_ip && (
-                    <Tooltip title="Скопировать">
-                      <Button type="text" size="small"
-                        icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                        onClick={() => { copyToClipboard(client.mikrotik_ip); message.success('Скопировано!', 1); }}
-                        style={{ padding: '0 2px', height: 'auto' }}
-                      />
-                    </Tooltip>
-                  )}
-                  <PingStatus status={pingResults.mikrotik_ip} ip={client.mikrotik_ip} />
-                </Space>
-              </Descriptions.Item>
-              <Descriptions.Item label="Сервер IP">
-                <Space>
-                  <Tag color="purple" style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                    {client.server_ip || '—'}
-                  </Tag>
-                  {client.server_ip && (
-                    <Tooltip title="Скопировать">
-                      <Button type="text" size="small"
-                        icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                        onClick={() => { copyToClipboard(client.server_ip); message.success('Скопировано!', 1); }}
-                        style={{ padding: '0 2px', height: 'auto' }}
-                      />
-                    </Tooltip>
-                  )}
-                  <PingStatus status={pingResults.server_ip} ip={client.server_ip} />
-                </Space>
-              </Descriptions.Item>
-            </Descriptions>
-          </Card>
-          <Card
-            title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер 1</span></Space>}
-            style={{ marginBottom: 16 }}
-          >
-            {provider ? (
-              <Descriptions column={2} bordered size="small">
-                <Descriptions.Item label="Название" span={2}>
-                  <Text strong>{provider.name}</Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="Тип подключения">
-                  {client.connection_type
-                    ? <Tag color={CONNECTION_COLORS[client.connection_type]}>{CONNECTION_LABELS[client.connection_type]}</Tag>
-                    : '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Тариф">
-                  {client.tariff
-                    ? <><Text strong>{client.tariff}</Text> <Text type="secondary">Мбит/с</Text></>
-                    : '—'}
-                </Descriptions.Item>
-                {['modem', 'mrnet'].includes(client.connection_type) && (
+          <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            style={{ marginBottom: 0 }}
+            items={[
+              {
+                key: 'info',
+                label: 'Информация',
+                children: (
                   <>
-                    <Descriptions.Item label="Номер (модем/SIM)">
-                      {client.modem_number
-                        ? <CopyField value={client.modem_number} />
-                        : <Text type="secondary">—</Text>}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="ICCID модема">
-                      {client.modem_iccid
-                        ? <CopyField value={client.modem_iccid} />
-                        : <Text type="secondary">—</Text>}
-                    </Descriptions.Item>
+                    <Card title="Информация о клиенте" style={{ marginBottom: 16 }}>
+                      <Descriptions column={2} bordered size="small">
+                        <Descriptions.Item label="Адрес" span={2}>{client.address || '—'}</Descriptions.Item>
+                        <Descriptions.Item label="Компания">{client.company || '—'}</Descriptions.Item>
+                        <Descriptions.Item label="ИНН"><CopyField value={client.inn} /></Descriptions.Item>
+                        <Descriptions.Item label="Телефон"><CopyField value={client.phone} /></Descriptions.Item>
+                        <Descriptions.Item label="ICCID"><CopyField value={client.iccid} /></Descriptions.Item>
+                        <Descriptions.Item label="Email"><CopyField value={client.email} /></Descriptions.Item>
+                        <Descriptions.Item label="Код аптеки"><CopyField value={client.pharmacy_code} /></Descriptions.Item>
+                      </Descriptions>
+                    </Card>
+
+                    <Card
+                      title={<Space><GlobalOutlined style={{ color: '#1677ff' }} /><span>Сеть</span></Space>}
+                      extra={
+                        <Tooltip title="Проверить доступность IP">
+                          <Button
+                            size="small" icon={<SyncOutlined spin={pinging} />}
+                            onClick={checkPing} loading={pinging}
+                          >
+                            Проверить доступность
+                          </Button>
+                        </Tooltip>
+                      }
+                      style={{ marginBottom: 16 }}
+                    >
+                      <Descriptions column={2} bordered size="small">
+                        <Descriptions.Item label="Подсеть аптеки">
+                          <CopyField value={client.subnet} />
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Внешний IP">
+                          <Space>
+                            {client.external_ip ? (
+                              <a href={`http://${client.external_ip}`} target="_blank" rel="noreferrer"
+                                style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                                {client.external_ip}
+                              </a>
+                            ) : <Text type="secondary">—</Text>}
+                            {client.external_ip && (
+                              <Tooltip title="Скопировать">
+                                <Button type="text" size="small"
+                                  icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                                  onClick={() => { copyToClipboard(client.external_ip); message.success('Скопировано!', 1); }}
+                                  style={{ padding: '0 2px', height: 'auto' }}
+                                />
+                              </Tooltip>
+                            )}
+                            <PingStatus status={pingResults.external_ip} ip={client.external_ip} />
+                          </Space>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Микротик IP">
+                          <Space>
+                            <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                              {client.mikrotik_ip
+                                ? <a href={`http://${client.mikrotik_ip}`} target="_blank" rel="noreferrer"
+                                    style={{ color: 'inherit' }}>{client.mikrotik_ip}</a>
+                                : '—'}
+                            </Tag>
+                            {client.mikrotik_ip && (
+                              <Tooltip title="Скопировать">
+                                <Button type="text" size="small"
+                                  icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                                  onClick={() => { copyToClipboard(client.mikrotik_ip); message.success('Скопировано!', 1); }}
+                                  style={{ padding: '0 2px', height: 'auto' }}
+                                />
+                              </Tooltip>
+                            )}
+                            <PingStatus status={pingResults.mikrotik_ip} ip={client.mikrotik_ip} />
+                          </Space>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Сервер IP">
+                          <Space>
+                            <Tag color="purple" style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                              {client.server_ip || '—'}
+                            </Tag>
+                            {client.server_ip && (
+                              <Tooltip title="Скопировать">
+                                <Button type="text" size="small"
+                                  icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                                  onClick={() => { copyToClipboard(client.server_ip); message.success('Скопировано!', 1); }}
+                                  style={{ padding: '0 2px', height: 'auto' }}
+                                />
+                              </Tooltip>
+                            )}
+                            <PingStatus status={pingResults.server_ip} ip={client.server_ip} />
+                          </Space>
+                        </Descriptions.Item>
+                      </Descriptions>
+                    </Card>
                   </>
-                )}
-                <Descriptions.Item label="Лицевой счёт">
-                  <CopyField value={client.personal_account} />
-                </Descriptions.Item>
-                <Descriptions.Item label="№ договора">
-                  <CopyField value={client.contract_number} />
-                </Descriptions.Item>
-                <Descriptions.Item label="Настройки провайдера" span={2}>
-                  {client.provider_settings
-                    ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings}</pre>
-                    : '—'}
-                </Descriptions.Item>
-
-                <Descriptions.Item label="Телефоны техподдержки" span={2}>
-                  <CopyField value={provider.support_phones}>
-                    {provider.support_phones
-                      ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{provider.support_phones}</pre>
-                      : null}
-                  </CopyField>
-                </Descriptions.Item>
-
-                <Descriptions.Item label="Оборудование провайдера" span={2}>
-                  {client.provider_equipment
-                    ? <Tag color="green" style={{ fontSize: 13 }}>✓ Присутствует</Tag>
-                    : <Tag color="red" style={{ fontSize: 13 }}>✗ Отсутствует</Tag>}
-                </Descriptions.Item>
-              </Descriptions>
-            ) : (
-              <Empty description="Провайдер не указан" image={Empty.PRESENTED_IMAGE_SIMPLE}>
-                <Button type="link" onClick={() => navigate(`/clients/${id}/edit`)}>Указать провайдера</Button>
-              </Empty>
-            )}
-          </Card>
-
-          {/* ===== ПРОВАЙДЕР 2 ===== */}
-          {client.provider2_data && (
-            <Card
-              title={<Space><WifiOutlined style={{ color: '#4096ff' }} /><span>Провайдер 2</span></Space>}
-              style={{ marginBottom: 16, borderColor: '#91caff' }}
-            >
-              <Descriptions column={2} bordered size="small">
-                <Descriptions.Item label="Название" span={2}>
-                  <Text strong>{client.provider2_data.name}</Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="Тип подключения">
-                  {client.connection_type2
-                    ? <Tag color={CONNECTION_COLORS[client.connection_type2]}>{CONNECTION_LABELS[client.connection_type2]}</Tag>
-                    : '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Тариф">
-                  {client.tariff2
-                    ? <><Text strong>{client.tariff2}</Text> <Text type="secondary">Мбит/с</Text></>
-                    : '—'}
-                </Descriptions.Item>
-                {['modem', 'mrnet'].includes(client.connection_type2) && (
+                ),
+              },
+              {
+                key: 'providers',
+                label: (
+                  <Space size={4}>
+                    <WifiOutlined />
+                    Провайдеры
+                    {(client.provider_data || client.provider2_data) && (
+                      <Tag color="blue" style={{ marginLeft: 2, fontSize: 11 }}>
+                        {[client.provider_data, client.provider2_data].filter(Boolean).length}
+                      </Tag>
+                    )}
+                  </Space>
+                ),
+                children: (
                   <>
-                    <Descriptions.Item label="Номер (модем/SIM)">
-                      {client.modem_number2 ? <CopyField value={client.modem_number2} /> : <Text type="secondary">—</Text>}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="ICCID модема">
-                      {client.modem_iccid2 ? <CopyField value={client.modem_iccid2} /> : <Text type="secondary">—</Text>}
-                    </Descriptions.Item>
-                  </>
-                )}
-                <Descriptions.Item label="Лицевой счёт">
-                  <CopyField value={client.personal_account2} />
-                </Descriptions.Item>
-                <Descriptions.Item label="№ договора">
-                  <CopyField value={client.contract_number2} />
-                </Descriptions.Item>
-                <Descriptions.Item label="Настройки провайдера" span={2}>
-                  {client.provider_settings2
-                    ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings2}</pre>
-                    : '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Телефоны техподдержки" span={2}>
-                  <CopyField value={client.provider2_data.support_phones}>
-                    {client.provider2_data.support_phones
-                      ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider2_data.support_phones}</pre>
-                      : null}
-                  </CopyField>
-                </Descriptions.Item>
-                <Descriptions.Item label="Оборудование провайдера" span={2}>
-                  {client.provider_equipment2
-                    ? <Tag color="green" style={{ fontSize: 13 }}>✓ Присутствует</Tag>
-                    : <Tag color="red" style={{ fontSize: 13 }}>✗ Отсутствует</Tag>}
-                </Descriptions.Item>
-              </Descriptions>
-            </Card>
-          )}
+                    <Card
+                      title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер 1</span></Space>}
+                      style={{ marginBottom: 16 }}
+                    >
+                      {provider ? (
+                        <Descriptions column={2} bordered size="small">
+                          <Descriptions.Item label="Название" span={2}>
+                            <Text strong>{provider.name}</Text>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Тип подключения">
+                            {client.connection_type
+                              ? <Tag color={CONNECTION_COLORS[client.connection_type]}>{CONNECTION_LABELS[client.connection_type]}</Tag>
+                              : '—'}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Тариф">
+                            {client.tariff
+                              ? <><Text strong>{client.tariff}</Text> <Text type="secondary">Мбит/с</Text></>
+                              : '—'}
+                          </Descriptions.Item>
+                          {['modem', 'mrnet'].includes(client.connection_type) && (
+                            <>
+                              <Descriptions.Item label="Номер (модем/SIM)">
+                                {client.modem_number
+                                  ? <CopyField value={client.modem_number} />
+                                  : <Text type="secondary">—</Text>}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="ICCID модема">
+                                {client.modem_iccid
+                                  ? <CopyField value={client.modem_iccid} />
+                                  : <Text type="secondary">—</Text>}
+                              </Descriptions.Item>
+                            </>
+                          )}
+                          <Descriptions.Item label="Лицевой счёт">
+                            <CopyField value={client.personal_account} />
+                          </Descriptions.Item>
+                          <Descriptions.Item label="№ договора">
+                            <CopyField value={client.contract_number} />
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Настройки провайдера" span={2}>
+                            {client.provider_settings
+                              ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings}</pre>
+                              : '—'}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Телефоны техподдержки" span={2}>
+                            <CopyField value={provider.support_phones}>
+                              {provider.support_phones
+                                ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{provider.support_phones}</pre>
+                                : null}
+                            </CopyField>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Оборудование провайдера" span={2}>
+                            {client.provider_equipment
+                              ? <Tag color="green" style={{ fontSize: 13 }}>✓ Присутствует</Tag>
+                              : <Tag color="red" style={{ fontSize: 13 }}>✗ Отсутствует</Tag>}
+                          </Descriptions.Item>
+                        </Descriptions>
+                      ) : (
+                        <Empty description="Провайдер не указан" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+                          <Button type="link" onClick={() => navigate(`/clients/${id}/edit`)}>Указать провайдера</Button>
+                        </Empty>
+                      )}
+                    </Card>
 
-          <Card title="Заметки">
+                    {client.provider2_data && (
+                      <Card
+                        title={<Space><WifiOutlined style={{ color: '#4096ff' }} /><span>Провайдер 2</span></Space>}
+                        style={{ marginBottom: 16, borderColor: '#91caff' }}
+                      >
+                        <Descriptions column={2} bordered size="small">
+                          <Descriptions.Item label="Название" span={2}>
+                            <Text strong>{client.provider2_data.name}</Text>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Тип подключения">
+                            {client.connection_type2
+                              ? <Tag color={CONNECTION_COLORS[client.connection_type2]}>{CONNECTION_LABELS[client.connection_type2]}</Tag>
+                              : '—'}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Тариф">
+                            {client.tariff2
+                              ? <><Text strong>{client.tariff2}</Text> <Text type="secondary">Мбит/с</Text></>
+                              : '—'}
+                          </Descriptions.Item>
+                          {['modem', 'mrnet'].includes(client.connection_type2) && (
+                            <>
+                              <Descriptions.Item label="Номер (модем/SIM)">
+                                {client.modem_number2 ? <CopyField value={client.modem_number2} /> : <Text type="secondary">—</Text>}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="ICCID модема">
+                                {client.modem_iccid2 ? <CopyField value={client.modem_iccid2} /> : <Text type="secondary">—</Text>}
+                              </Descriptions.Item>
+                            </>
+                          )}
+                          <Descriptions.Item label="Лицевой счёт">
+                            <CopyField value={client.personal_account2} />
+                          </Descriptions.Item>
+                          <Descriptions.Item label="№ договора">
+                            <CopyField value={client.contract_number2} />
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Настройки провайдера" span={2}>
+                            {client.provider_settings2
+                              ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings2}</pre>
+                              : '—'}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Телефоны техподдержки" span={2}>
+                            <CopyField value={client.provider2_data.support_phones}>
+                              {client.provider2_data.support_phones
+                                ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider2_data.support_phones}</pre>
+                                : null}
+                            </CopyField>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Оборудование провайдера" span={2}>
+                            {client.provider_equipment2
+                              ? <Tag color="green" style={{ fontSize: 13 }}>✓ Присутствует</Tag>
+                              : <Tag color="red" style={{ fontSize: 13 }}>✗ Отсутствует</Tag>}
+                          </Descriptions.Item>
+                        </Descriptions>
+                      </Card>
+                    )}
+                  </>
+                ),
+              },
+            ]}
+          />
+
+          <Card title="Заметки" style={{ marginTop: 16 }}>
             <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
               <Input.TextArea
                 value={noteText} onChange={(e) => setNoteText(e.target.value)}
@@ -524,10 +555,11 @@ export default function ClientDetailPage() {
                             </>
                           : (a.action.includes('\n')
                             ? <div>
-                                {a.action.split('\n').map((line, i) => (
-                                  <div key={i} style={{ fontSize: 13, color: '#333', lineHeight: '1.6' }}>
-                                    {line}
-                                  </div>
+                                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>
+                                  {a.action.split('\n')[0]}
+                                </div>
+                                {a.action.split('\n').slice(1).map((line, i) => (
+                                  <div key={i} style={{ fontSize: 12, paddingLeft: 8, color: '#333', lineHeight: '1.6' }}>• {line}</div>
                                 ))}
                               </div>
                             : <Text style={{ fontSize: 13 }}>{a.action}</Text>

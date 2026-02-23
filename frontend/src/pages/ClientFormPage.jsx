@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox, Upload, List, Tooltip, Space, Modal } from 'antd';
+import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox, Upload, List, Tooltip, Space, Modal, Tabs } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import { ArrowLeftOutlined, SaveOutlined, SyncOutlined, UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined } from '@ant-design/icons';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
@@ -174,6 +174,7 @@ export default function ClientFormPage() {
   const [selectedToSlot, setSelectedToSlot] = useState(null);
   const [transferring, setTransferring] = useState(false);
   const [isDraft, setIsDraft] = useState(false);
+  const [activeTab, setActiveTab] = useState('info');
   const draftIdRef = useRef(null);
   const permissions = useAuthStore((s) => s.permissions);
 
@@ -436,365 +437,394 @@ export default function ClientFormPage() {
       </div>
 
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={!canEdit}>
-        <Card title="Основная информация" style={{ marginBottom: 16 }}>
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Item name="address" label="Адрес">
-                <Input.TextArea rows={2} placeholder="г. Новосибирск, ул. Примерная, д. 1" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="company" label="Компания / организация">
-                <Input placeholder="ООО «Название»" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="inn" label="ИНН">
-                <Input placeholder="123456789012" maxLength={12} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="phone" label="Телефон">
-                <Input placeholder="+7 (999) 123-45-67" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="iccid" label="ICCID">
-                <Input placeholder="89701xxxxxxxxxxxxxxx" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Некорректный email' }]}>
-                <Input placeholder="example@mail.ru" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="pharmacy_code" label="Код аптеки">
-                <Input placeholder="APT-001" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="status" label="Статус" initialValue="active">
-                <Select options={[
-                  { value: 'active', label: 'Активен' },
-                  { value: 'inactive', label: 'Неактивен' },
-                ]} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        <Card title="Сеть" style={{ marginBottom: 16 }}>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="subnet" label="Подсеть аптеки">
-                <Input placeholder="10.1.5.0/24" onChange={(e) => {
-                  setMikrotikIP(calcMikrotikIP(e.target.value, '1'));
-                  setServerIP(calcMikrotikIP(e.target.value, '2'));
-                }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="external_ip"
-                label={
-                  <Space size={8}>
-                    <span>Внешний IP</span>
-                    <Tooltip title="Получить внешний IP с Микротика по SSH">
-                      <Button
-                        size="small" type="primary" ghost
-                        icon={<SyncOutlined spin={fetchingIP} />}
-                        loading={fetchingIP}
-                        onClick={handleGetExternalIP}
-                        style={{ fontSize: 11, height: 22, padding: '0 8px' }}
-                      >
-                        Получить
-                      </Button>
-                    </Tooltip>
-                  </Space>
-                }
-              >
-                <Input placeholder="1.2.3.4" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Микротик IP">
-                <Input value={mikrotikIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Сервер IP">
-                <Input value={serverIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* ===== ПРОВАЙДЕР 1 ===== */}
-        <Card
-          title={
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-              <span>Провайдер 1</span>
-              <Space>
-                {!showProvider2 && (
-                  <Button
-                    size="small" type="dashed"
-                    onClick={() => setShowProvider2(true)}
-                    style={{ fontSize: 12 }}
-                  >
-                    + Добавить провайдер 2
-                  </Button>
-                )}
-                <Button
-                  size="small" danger type="text"
-                  onClick={() => {
-                    form.setFieldsValue({
-                      provider: undefined, personal_account: '', contract_number: '',
-                      tariff: '', connection_type: undefined, modem_number: '', modem_iccid: '',
-                      provider_settings: '', provider_equipment: false,
-                    });
-                    setConnectionType('');
-                  }}
-                >
-                  Очистить
-                </Button>
-              </Space>
-            </div>
-          }
-          style={{ marginBottom: 16 }}
-        >
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Item name="provider" label="Провайдер">
-                <Select placeholder="Выберите провайдера" allowClear showSearch optionFilterProp="label"
-                  options={providers.map((p) => ({ value: p.id, label: p.name }))} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="personal_account" label="Лицевой счёт">
-                <Input placeholder="12345678" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="contract_number" label="№ договора">
-                <Input placeholder="ДГ-2024-001" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="connection_type"
-                label={
-                  <Space size={8}>
-                    <span>Тип подключения</span>
-                    {isEdit && !isDraftMode && ['modem', 'mrnet'].includes(connectionType) && (
-                      <Button
-                        size="small" type="primary" ghost
-                        icon={<SendOutlined />}
-                        onClick={() => handleOpenTransfer('1')}
-                        style={{ fontSize: 11, height: 22, padding: '0 8px' }}
-                      >
-                        Передать
-                      </Button>
-                    )}
-                  </Space>
-                }
-              >
-                <Select
-                  placeholder="Выберите тип"
-                  allowClear
-                  onChange={(val) => setConnectionType(val || '')}
-                  options={[
-                    { value: 'fiber', label: '⚡ Оптоволокно' },
-                    { value: 'dsl', label: '☎️ DSL' },
-                    { value: 'cable', label: '🔌 Кабель' },
-                    { value: 'wireless', label: '📡 Беспроводное' },
-                    { value: 'modem', label: '📶 Модем' },
-                    { value: 'mrnet', label: '↔️ MR-Net' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="tariff" label="Тариф (Мбит/с)">
-                <Input placeholder="100" suffix="Мбит/с" />
-              </Form.Item>
-            </Col>
-            {['modem', 'mrnet'].includes(connectionType) && (
-              <>
-                <Col span={12}>
-                  <Form.Item name="modem_number" label="Номер (модем/SIM)">
-                    <Input placeholder="+7 (999) 123-45-67" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="modem_iccid" label="ICCID модема">
-                    <Input placeholder="89701xxxxxxxxxxxxxxx" />
-                  </Form.Item>
-                </Col>
-              </>
-            )}
-            <Col span={24}>
-              <Form.Item name="provider_settings" label="Настройки провайдера">
-                <Input.TextArea rows={4} placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"} />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item name="provider_equipment" valuePropName="checked">
-                <Checkbox>Оборудование провайдера на объекте</Checkbox>
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* ===== ПРОВАЙДЕР 2 ===== */}
-        {showProvider2 && (
-          <Card
-            title={
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                <span>Провайдер 2</span>
-                <Button
-                  size="small" danger type="text"
-                  onClick={() => {
-                    form.setFieldsValue({
-                      provider2: undefined, personal_account2: '', contract_number2: '',
-                      tariff2: '', connection_type2: undefined, modem_number2: '', modem_iccid2: '',
-                      provider_settings2: '', provider_equipment2: false,
-                    });
-                    setConnectionType2('');
-                    setShowProvider2(false);
-                  }}
-                >
-                  Очистить
-                </Button>
-              </div>
-            }
-            style={{ marginBottom: 16, borderColor: '#91caff' }}
-          >
-            <Row gutter={16}>
-              <Col span={24}>
-                <Form.Item name="provider2" label="Провайдер">
-                  <Select placeholder="Выберите провайдера" allowClear showSearch optionFilterProp="label"
-                    options={providers.map((p) => ({ value: p.id, label: p.name }))} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="personal_account2" label="Лицевой счёт">
-                  <Input placeholder="12345678" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="contract_number2" label="№ договора">
-                  <Input placeholder="ДГ-2024-001" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="connection_type2"
-                  label={
-                    <Space size={8}>
-                      <span>Тип подключения</span>
-                      {isEdit && !isDraftMode && ['modem', 'mrnet'].includes(connectionType2) && (
-                        <Button
-                          size="small" type="primary" ghost
-                          icon={<SendOutlined />}
-                          onClick={() => handleOpenTransfer('2')}
-                          style={{ fontSize: 11, height: 22, padding: '0 8px' }}
-                        >
-                          Передать
-                        </Button>
-                      )}
-                    </Space>
-                  }
-                >
-                  <Select
-                    placeholder="Выберите тип"
-                    allowClear
-                    onChange={(val) => setConnectionType2(val || '')}
-                    options={[
-                      { value: 'fiber', label: '⚡ Оптоволокно' },
-                      { value: 'dsl', label: '☎️ DSL' },
-                      { value: 'cable', label: '🔌 Кабель' },
-                      { value: 'wireless', label: '📡 Беспроводное' },
-                      { value: 'modem', label: '📶 Модем' },
-                      { value: 'mrnet', label: '↔️ MR-Net' },
-                    ]}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="tariff2" label="Тариф (Мбит/с)">
-                  <Input placeholder="100" suffix="Мбит/с" />
-                </Form.Item>
-              </Col>
-              {['modem', 'mrnet'].includes(connectionType2) && (
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          style={{ marginBottom: 0 }}
+          items={[
+            {
+              key: 'info',
+              label: 'Информация',
+              forceRender: true,
+              children: (
                 <>
-                  <Col span={12}>
-                    <Form.Item name="modem_number2" label="Номер (модем/SIM)">
-                      <Input placeholder="+7 (999) 123-45-67" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="modem_iccid2" label="ICCID модема">
-                      <Input placeholder="89701xxxxxxxxxxxxxxx" />
-                    </Form.Item>
-                  </Col>
-                </>
-              )}
-              <Col span={24}>
-                <Form.Item name="provider_settings2" label="Настройки провайдера">
-                  <Input.TextArea rows={4} placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"} />
-                </Form.Item>
-              </Col>
-              <Col span={24}>
-                <Form.Item name="provider_equipment2" valuePropName="checked">
-                  <Checkbox>Оборудование провайдера на объекте</Checkbox>
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-        )}
+                  <Card title="Основная информация" style={{ marginBottom: 16 }}>
+                    <Row gutter={16}>
+                      <Col span={24}>
+                        <Form.Item name="address" label="Адрес">
+                          <Input.TextArea rows={2} placeholder="г. Новосибирск, ул. Примерная, д. 1" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="company" label="Компания / организация">
+                          <Input placeholder="ООО «Название»" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="inn" label="ИНН">
+                          <Input placeholder="123456789012" maxLength={12} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="phone" label="Телефон">
+                          <Input placeholder="+7 (999) 123-45-67" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="iccid" label="ICCID">
+                          <Input placeholder="89701xxxxxxxxxxxxxxx" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Некорректный email' }]}>
+                          <Input placeholder="example@mail.ru" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="pharmacy_code" label="Код аптеки">
+                          <Input placeholder="APT-001" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="status" label="Статус" initialValue="active">
+                          <Select options={[
+                            { value: 'active', label: 'Активен' },
+                            { value: 'inactive', label: 'Неактивен' },
+                          ]} />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </Card>
 
-        {id && (
-          <Card title={
-            <Space>
-              <UploadOutlined />Файлы
-              <span style={{ marginLeft: 8, background: '#f0f0f0', borderRadius: 10, padding: '0 8px', fontSize: 12 }}>
-                {files.length}
-              </span>
-            </Space>
-          } style={{ marginBottom: 16 }}>
-            <Upload customRequest={handleUpload} showUploadList={false} multiple>
-              <Button icon={<UploadOutlined />} loading={uploading} style={{ marginBottom: 12 }}>
-                Загрузить файл (макс. 5 МБ)
-              </Button>
-            </Upload>
-            {files.length === 0 ? (
-              <div style={{ color: '#999', padding: '8px 0' }}>Файлов нет</div>
-            ) : (
-              <List dataSource={files} renderItem={(file) => (
-                <List.Item actions={[
-                  <Tooltip title="Скачать">
-                    <Button type="link" size="small" icon={<DownloadOutlined />}
-                      href={file.url} target="_blank" rel="noreferrer" />
-                  </Tooltip>,
-                  <Tooltip title="Удалить">
-                    <Button type="link" danger size="small" icon={<DeleteFilled />}
-                      onClick={() => handleDeleteFile(file.id, file.name)} />
-                  </Tooltip>,
-                ]}>
-                  <List.Item.Meta
-                    avatar={getFileIcon(file.name)}
-                    title={file.name}
-                    description={<span style={{ fontSize: 11 }}>{formatSize(file.size)} · {file.uploaded_by_name}</span>}
-                  />
-                </List.Item>
-              )} />
-            )}
-          </Card>
-        )}
+                  <Card title="Сеть" style={{ marginBottom: 16 }}>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item name="subnet" label="Подсеть аптеки">
+                          <Input placeholder="10.1.5.0/24" onChange={(e) => {
+                            setMikrotikIP(calcMikrotikIP(e.target.value, '1'));
+                            setServerIP(calcMikrotikIP(e.target.value, '2'));
+                          }} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="external_ip"
+                          label={
+                            <Space size={8}>
+                              <span>Внешний IP</span>
+                              <Tooltip title="Получить внешний IP с Микротика по SSH">
+                                <Button
+                                  size="small" type="primary" ghost
+                                  icon={<SyncOutlined spin={fetchingIP} />}
+                                  loading={fetchingIP}
+                                  onClick={handleGetExternalIP}
+                                  style={{ fontSize: 11, height: 22, padding: '0 8px' }}
+                                >
+                                  Получить
+                                </Button>
+                              </Tooltip>
+                            </Space>
+                          }
+                        >
+                          <Input placeholder="1.2.3.4" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item label="Микротик IP">
+                          <Input value={mikrotikIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item label="Сервер IP">
+                          <Input value={serverIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </Card>
+
+                  {id && (
+                    <Card title={
+                      <Space>
+                        <UploadOutlined />Файлы
+                        <span style={{ marginLeft: 8, background: '#f0f0f0', borderRadius: 10, padding: '0 8px', fontSize: 12 }}>
+                          {files.length}
+                        </span>
+                      </Space>
+                    } style={{ marginBottom: 16 }}>
+                      <Upload customRequest={handleUpload} showUploadList={false} multiple>
+                        <Button icon={<UploadOutlined />} loading={uploading} style={{ marginBottom: 12 }}>
+                          Загрузить файл (макс. 5 МБ)
+                        </Button>
+                      </Upload>
+                      {files.length === 0 ? (
+                        <div style={{ color: '#999', padding: '8px 0' }}>Файлов нет</div>
+                      ) : (
+                        <List dataSource={files} renderItem={(file) => (
+                          <List.Item actions={[
+                            <Tooltip title="Скачать">
+                              <Button type="link" size="small" icon={<DownloadOutlined />}
+                                href={file.url} target="_blank" rel="noreferrer" />
+                            </Tooltip>,
+                            <Tooltip title="Удалить">
+                              <Button type="link" danger size="small" icon={<DeleteFilled />}
+                                onClick={() => handleDeleteFile(file.id, file.name)} />
+                            </Tooltip>,
+                          ]}>
+                            <List.Item.Meta
+                              avatar={getFileIcon(file.name)}
+                              title={file.name}
+                              description={<span style={{ fontSize: 11 }}>{formatSize(file.size)} · {file.uploaded_by_name}</span>}
+                            />
+                          </List.Item>
+                        )} />
+                      )}
+                    </Card>
+                  )}
+                </>
+              ),
+            },
+            {
+              key: 'providers',
+              label: (
+                <Space size={4}>
+                  Провайдеры
+                  {showProvider2 && <span style={{ background: '#1677ff', color: '#fff', borderRadius: 8, fontSize: 11, padding: '0 6px' }}>2</span>}
+                </Space>
+              ),
+              forceRender: true,
+              children: (
+                <>
+                  {/* ===== ПРОВАЙДЕР 1 ===== */}
+                  <Card
+                    title={
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                        <span>Провайдер 1</span>
+                        <Space>
+                          {!showProvider2 && (
+                            <Button
+                              size="small" type="dashed"
+                              onClick={() => setShowProvider2(true)}
+                              style={{ fontSize: 12 }}
+                            >
+                              + Добавить провайдер 2
+                            </Button>
+                          )}
+                          <Button
+                            size="small" danger type="text"
+                            onClick={() => {
+                              form.setFieldsValue({
+                                provider: undefined, personal_account: '', contract_number: '',
+                                tariff: '', connection_type: undefined, modem_number: '', modem_iccid: '',
+                                provider_settings: '', provider_equipment: false,
+                              });
+                              setConnectionType('');
+                            }}
+                          >
+                            Очистить
+                          </Button>
+                        </Space>
+                      </div>
+                    }
+                    style={{ marginBottom: 16 }}
+                  >
+                    <Row gutter={16}>
+                      <Col span={24}>
+                        <Form.Item name="provider" label="Провайдер">
+                          <Select placeholder="Выберите провайдера" allowClear showSearch optionFilterProp="label"
+                            options={providers.map((p) => ({ value: p.id, label: p.name }))} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="personal_account" label="Лицевой счёт">
+                          <Input placeholder="12345678" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="contract_number" label="№ договора">
+                          <Input placeholder="ДГ-2024-001" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="connection_type"
+                          label={
+                            <Space size={8}>
+                              <span>Тип подключения</span>
+                              {isEdit && !isDraftMode && ['modem', 'mrnet'].includes(connectionType) && (
+                                <Button
+                                  size="small" type="primary" ghost
+                                  icon={<SendOutlined />}
+                                  onClick={() => handleOpenTransfer('1')}
+                                  style={{ fontSize: 11, height: 22, padding: '0 8px' }}
+                                >
+                                  Передать
+                                </Button>
+                              )}
+                            </Space>
+                          }
+                        >
+                          <Select
+                            placeholder="Выберите тип"
+                            allowClear
+                            onChange={(val) => setConnectionType(val || '')}
+                            options={[
+                              { value: 'fiber', label: '⚡ Оптоволокно' },
+                              { value: 'dsl', label: '☎️ DSL' },
+                              { value: 'cable', label: '🔌 Кабель' },
+                              { value: 'wireless', label: '📡 Беспроводное' },
+                              { value: 'modem', label: '📶 Модем' },
+                              { value: 'mrnet', label: '↔️ MR-Net' },
+                            ]}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="tariff" label="Тариф (Мбит/с)">
+                          <Input placeholder="100" suffix="Мбит/с" />
+                        </Form.Item>
+                      </Col>
+                      {['modem', 'mrnet'].includes(connectionType) && (
+                        <>
+                          <Col span={12}>
+                            <Form.Item name="modem_number" label="Номер (модем/SIM)">
+                              <Input placeholder="+7 (999) 123-45-67" />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item name="modem_iccid" label="ICCID модема">
+                              <Input placeholder="89701xxxxxxxxxxxxxxx" />
+                            </Form.Item>
+                          </Col>
+                        </>
+                      )}
+                      <Col span={24}>
+                        <Form.Item name="provider_settings" label="Настройки провайдера">
+                          <Input.TextArea rows={4} placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={24}>
+                        <Form.Item name="provider_equipment" valuePropName="checked">
+                          <Checkbox>Оборудование провайдера на объекте</Checkbox>
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </Card>
+
+                  {/* ===== ПРОВАЙДЕР 2 ===== */}
+                  {showProvider2 && (
+                    <Card
+                      title={
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                          <span>Провайдер 2</span>
+                          <Button
+                            size="small" danger type="text"
+                            onClick={() => {
+                              form.setFieldsValue({
+                                provider2: undefined, personal_account2: '', contract_number2: '',
+                                tariff2: '', connection_type2: undefined, modem_number2: '', modem_iccid2: '',
+                                provider_settings2: '', provider_equipment2: false,
+                              });
+                              setConnectionType2('');
+                              setShowProvider2(false);
+                            }}
+                          >
+                            Очистить
+                          </Button>
+                        </div>
+                      }
+                      style={{ marginBottom: 16, borderColor: '#91caff' }}
+                    >
+                      <Row gutter={16}>
+                        <Col span={24}>
+                          <Form.Item name="provider2" label="Провайдер">
+                            <Select placeholder="Выберите провайдера" allowClear showSearch optionFilterProp="label"
+                              options={providers.map((p) => ({ value: p.id, label: p.name }))} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name="personal_account2" label="Лицевой счёт">
+                            <Input placeholder="12345678" />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name="contract_number2" label="№ договора">
+                            <Input placeholder="ДГ-2024-001" />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item
+                            name="connection_type2"
+                            label={
+                              <Space size={8}>
+                                <span>Тип подключения</span>
+                                {isEdit && !isDraftMode && ['modem', 'mrnet'].includes(connectionType2) && (
+                                  <Button
+                                    size="small" type="primary" ghost
+                                    icon={<SendOutlined />}
+                                    onClick={() => handleOpenTransfer('2')}
+                                    style={{ fontSize: 11, height: 22, padding: '0 8px' }}
+                                  >
+                                    Передать
+                                  </Button>
+                                )}
+                              </Space>
+                            }
+                          >
+                            <Select
+                              placeholder="Выберите тип"
+                              allowClear
+                              onChange={(val) => setConnectionType2(val || '')}
+                              options={[
+                                { value: 'fiber', label: '⚡ Оптоволокно' },
+                                { value: 'dsl', label: '☎️ DSL' },
+                                { value: 'cable', label: '🔌 Кабель' },
+                                { value: 'wireless', label: '📡 Беспроводное' },
+                                { value: 'modem', label: '📶 Модем' },
+                                { value: 'mrnet', label: '↔️ MR-Net' },
+                              ]}
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name="tariff2" label="Тариф (Мбит/с)">
+                            <Input placeholder="100" suffix="Мбит/с" />
+                          </Form.Item>
+                        </Col>
+                        {['modem', 'mrnet'].includes(connectionType2) && (
+                          <>
+                            <Col span={12}>
+                              <Form.Item name="modem_number2" label="Номер (модем/SIM)">
+                                <Input placeholder="+7 (999) 123-45-67" />
+                              </Form.Item>
+                            </Col>
+                            <Col span={12}>
+                              <Form.Item name="modem_iccid2" label="ICCID модема">
+                                <Input placeholder="89701xxxxxxxxxxxxxxx" />
+                              </Form.Item>
+                            </Col>
+                          </>
+                        )}
+                        <Col span={24}>
+                          <Form.Item name="provider_settings2" label="Настройки провайдера">
+                            <Input.TextArea rows={4} placeholder={"IP: 192.168.1.1\nМаска: 255.255.255.0\nШлюз: 192.168.1.254\nDNS: 8.8.8.8"} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={24}>
+                          <Form.Item name="provider_equipment2" valuePropName="checked">
+                            <Checkbox>Оборудование провайдера на объекте</Checkbox>
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </Card>
+                  )}
+                </>
+              ),
+            },
+          ]}
+        />
 
         {canEdit && (
-          <Button type="primary" htmlType="submit" loading={saving} icon={<SaveOutlined />} size="large">
+          <Button type="primary" htmlType="submit" loading={saving} icon={<SaveOutlined />} size="large" style={{ marginTop: 16 }}>
             {isDraftMode ? 'Создать клиента' : isEdit ? 'Сохранить изменения' : 'Создать клиента'}
           </Button>
         )}
