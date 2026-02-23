@@ -247,6 +247,23 @@ class SystemSettings(models.Model):
         self.pk = 1
         super().save(*args, **kwargs)
 
+    # Email / SMTP
+    smtp_host = models.CharField('SMTP сервер', max_length=200, blank=True)
+    smtp_port = models.PositiveIntegerField('SMTP порт', default=465)
+    smtp_user = models.CharField('SMTP пользователь', max_length=200, blank=True)
+    smtp_password_encrypted = models.TextField('SMTP пароль (зашифрован)', blank=True)
+    smtp_from_email = models.CharField('Отправитель (From)', max_length=200, blank=True)
+    smtp_from_name = models.CharField('Имя отправителя', max_length=200, blank=True)
+    smtp_use_ssl = models.BooleanField('Использовать SSL', default=True)
+    smtp_use_tls = models.BooleanField('Использовать TLS (STARTTLS)', default=False)
+
+    @property
+    def smtp_password(self):
+        return decrypt_value(self.smtp_password_encrypted)
+
+    def set_smtp_password(self, value):
+        self.smtp_password_encrypted = encrypt_value(value)
+
     @classmethod
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)

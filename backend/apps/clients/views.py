@@ -178,15 +178,37 @@ class ClientViewSet(viewsets.ModelViewSet):
         ClientActivity.objects.create(client=client, user=request.user, action='Добавлена заметка')
         return Response(ClientNoteSerializer(note).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['get'], url_path='export_excel')
+    @action(detail=False, methods=['get', 'post'], url_path='export_excel')
     def export_excel(self, request):
         import openpyxl
+        import io
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         from django.http import HttpResponse
+        from .models import SystemSettings
 
-        qs = Client.objects.select_related('provider').filter(is_draft=False)
-        search = request.query_params.get('search', '').strip()
-        status_filter = request.query_params.get('status', '').strip()
+        # Параметры
+        if request.method == 'POST':
+            params = request.data
+        else:
+            params = request.query_params
+
+        search = params.get('search', '').strip()
+        status_filter = params.get('status', '').strip()
+        send_via = params.get('send_via', 'file')  # 'file' или 'email'
+        to_email = params.get('to_email', '').strip()
+        # fields — список выбранных групп: 'basic', 'network', 'provider1', 'provider2'
+        fields_raw = params.get('fields', '')
+        if isinstance(fields_raw, list):
+            selected_fields = set(fields_raw)
+        else:
+            selected_fields = set(f.strip() for f in fields_raw.split(',') if f.strip()) if fields_raw else None
+
+        # Если ничего не выбрано — выбираем всё
+        ALL_GROUPS = {'basic', 'network', 'provider1', 'provider2'}
+        if not selected_fields:
+            selected_fields = ALL_GROUPS
+
+        qs = Client.objects.select_related('provider', 'provider2').filter(is_draft=False)
         if search:
             from django.db.models import Q
             qs = qs.filter(
@@ -198,86 +220,161 @@ class ClientViewSet(viewsets.ModelViewSet):
             qs = qs.filter(status=status_filter)
         clients = qs.order_by('-created_at')
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = 'Клиенты'
-
-        # Стили
-        header_font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
-        header_fill = PatternFill('solid', start_color='1677FF')
-        header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
-        cell_align = Alignment(vertical='center', wrap_text=True)
-        thin = Side(style='thin', color='CCCCCC')
-        border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
         CONNECTION_LABELS = {
             'fiber': 'Оптоволокно', 'dsl': 'DSL', 'cable': 'Кабель',
             'wireless': 'Беспроводное', 'modem': 'Модем', 'mrnet': 'MR-Net',
         }
-
-        headers = [
-            ('ID', 5), ('Адрес', 35), ('Компания', 25), ('ИНН', 14),
-            ('Телефон', 16), ('Email', 25), ('Код аптеки', 12), ('ICCID', 22),
-            ('Статус', 10), ('Провайдер', 20), ('Тип подключения', 18),
-            ('Тариф (Мбит/с)', 14), ('Лицевой счёт', 16), ('№ договора', 20),
-            ('Подсеть', 16), ('Внешний IP', 14), ('Микротик IP', 14), ('Сервер IP', 12),
-            ('Номер модема', 16), ('ICCID модема', 22),
-            ('Оборудование провайдера', 12),
-        ]
-
-        for col, (header, width) in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = header_align
-            cell.border = border
-            ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = width
-
-        ws.row_dimensions[1].height = 35
-
         STATUS_LABELS = {'active': 'Активен', 'inactive': 'Неактивен'}
 
+        # Все возможные поля (ключ -> заголовок, ширина, getter)
+        ALL_FIELDS = {
+            'address':       ('Адрес',       35, lambda c: c.address or ''),
+            'company':       ('Компания',    25, lambda c: c.company or ''),
+            'inn':           ('ИНН',         14, lambda c: c.inn or ''),
+            'phone':         ('Телефон',     16, lambda c: c.phone or ''),
+            'email':         ('Email',       25, lambda c: c.email or ''),
+            'pharmacy_code': ('Код аптеки',  12, lambda c: c.pharmacy_code or ''),
+            'iccid':         ('ICCID',       22, lambda c: c.iccid or ''),
+            'status':        ('Статус',      10, lambda c: STATUS_LABELS.get(c.status, c.status)),
+            'subnet':        ('Подсеть',     16, lambda c: c.subnet or ''),
+            'external_ip':   ('Внешний IP',  14, lambda c: c.external_ip or ''),
+            'mikrotik_ip':   ('Микротик IP', 14, lambda c: c.mikrotik_ip or ''),
+            'server_ip':     ('Сервер IP',   12, lambda c: c.server_ip or ''),
+        }
+        PROVIDER1_FIELDS = [
+            ('Провайдер 1',               20, lambda c: c.provider.name if c.provider else ''),
+            ('Тип подключения 1',         18, lambda c: CONNECTION_LABELS.get(c.connection_type, c.connection_type or '')),
+            ('Тариф 1 (Мбит/с)',          14, lambda c: c.tariff or ''),
+            ('Лицевой счёт 1',            16, lambda c: c.personal_account or ''),
+            ('№ договора 1',              20, lambda c: c.contract_number or ''),
+            ('Номер модема 1',            16, lambda c: c.modem_number or ''),
+            ('ICCID модема 1',            22, lambda c: c.modem_iccid or ''),
+            ('Оборудование провайдера 1', 12, lambda c: 'Присутствует' if c.provider_equipment else 'Отсутствует'),
+        ]
+        PROVIDER2_FIELDS = [
+            ('Провайдер 2',               20, lambda c: c.provider2.name if c.provider2 else ''),
+            ('Тип подключения 2',         18, lambda c: CONNECTION_LABELS.get(c.connection_type2, c.connection_type2 or '')),
+            ('Тариф 2 (Мбит/с)',          14, lambda c: c.tariff2 or ''),
+            ('Лицевой счёт 2',            16, lambda c: c.personal_account2 or ''),
+            ('№ договора 2',              20, lambda c: c.contract_number2 or ''),
+            ('Номер модема 2',            16, lambda c: c.modem_number2 or ''),
+            ('ICCID модема 2',            22, lambda c: c.modem_iccid2 or ''),
+            ('Оборудование провайдера 2', 12, lambda c: 'Присутствует' if c.provider_equipment2 else 'Отсутствует'),
+        ]
+
+        # Порядок следования полей в файле
+        FIELD_ORDER = [
+            'address', 'company', 'inn', 'phone', 'email',
+            'pharmacy_code', 'iccid', 'status',
+            'subnet', 'external_ip', 'mikrotik_ip', 'server_ip',
+        ]
+
+        headers = []
+        for key in FIELD_ORDER:
+            if key in selected_fields:
+                headers.append(ALL_FIELDS[key])
+        if 'provider1' in selected_fields:
+            headers += PROVIDER1_FIELDS
+        if 'provider2' in selected_fields:
+            headers += PROVIDER2_FIELDS
+
+        # Строим книгу
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Клиенты'
+
+        header_font  = Font(name='Arial', bold=True, color='FFFFFF', size=11)
+        header_fill  = PatternFill('solid', start_color='1677FF')
+        header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell_align   = Alignment(vertical='center', wrap_text=True)
+        thin   = Side(style='thin', color='CCCCCC')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        for col, (title, width, _) in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=title)
+            cell.font      = header_font
+            cell.fill      = header_fill
+            cell.alignment = header_align
+            cell.border    = border
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = width
+        ws.row_dimensions[1].height = 35
+
         for row, c in enumerate(clients, 2):
-            values = [
-                c.id,
-                c.address or '',
-                c.company or '',
-                c.inn or '',
-                c.phone or '',
-                c.email or '',
-                c.pharmacy_code or '',
-                c.iccid or '',
-                STATUS_LABELS.get(c.status, c.status),
-                c.provider.name if c.provider else '',
-                CONNECTION_LABELS.get(c.connection_type, c.connection_type or ''),
-                c.tariff or '',
-                c.personal_account or '',
-                c.contract_number or '',
-                c.subnet or '',
-                c.external_ip or '',
-                c.mikrotik_ip or '',
-                c.server_ip or '',
-                c.modem_number or '',
-                c.modem_iccid or '',
-                'Присутствует' if c.provider_equipment else 'Отсутствует',
-            ]
             fill = PatternFill('solid', start_color='F8FBFF') if row % 2 == 0 else PatternFill('solid', start_color='FFFFFF')
-            for col, value in enumerate(values, 1):
-                cell = ws.cell(row=row, column=col, value=value)
-                cell.font = Font(name='Arial', size=10)
+            for col, (_, _, getter) in enumerate(headers, 1):
+                cell = ws.cell(row=row, column=col, value=getter(c))
+                cell.font      = Font(name='Arial', size=10)
                 cell.alignment = cell_align
-                cell.border = border
-                cell.fill = fill
+                cell.border    = border
+                cell.fill      = fill
             ws.row_dimensions[row].height = 20
 
         ws.freeze_panes = 'A2'
         ws.auto_filter.ref = f'A1:{openpyxl.utils.get_column_letter(len(headers))}1'
 
+        filename = f'clients_{__import__("datetime").date.today()}.xlsx'
+
+        # Сохраняем в буфер
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        excel_bytes = buf.read()
+
+        # Отправка на email
+        if send_via == 'email':
+            if not to_email:
+                return Response({'error': 'Не указан email для отправки'}, status=400)
+            s = SystemSettings.get()
+            if not s.smtp_host or not s.smtp_user or not s.smtp_password_encrypted or not s.smtp_from_email:
+                return Response({'error': 'SMTP настройки не заполнены'}, status=400)
+            try:
+                import smtplib, ssl
+                from email.mime.multipart import MIMEMultipart
+                from email.mime.base import MIMEBase
+                from email.mime.text import MIMEText
+                from email import encoders
+
+                from_addr = f'{s.smtp_from_name} <{s.smtp_from_email}>' if s.smtp_from_name else s.smtp_from_email
+                msg = MIMEMultipart()
+                msg['Subject'] = f'Выгрузка клиентов — {__import__("datetime").date.today()}'
+                msg['From']    = from_addr
+                msg['To']      = to_email
+                msg.attach(MIMEText(
+                    f'<html><body style="font-family:Arial,sans-serif;padding:20px;">'                    f'<h2 style="color:#1677ff;">Выгрузка клиентов</h2>'                    f'<p>Во вложении файл Excel с выгрузкой клиентов на {__import__("datetime").date.today()}.</p>'                    f'<p style="color:#999;font-size:12px;">Support Portal</p>'                    f'</body></html>', 'html', 'utf-8'
+                ))
+                part = MIMEBase('application', 'vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                part.set_payload(excel_bytes)
+                encoders.encode_base64(part)
+                part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+                msg.attach(part)
+
+                if s.smtp_use_ssl:
+                    ctx = ssl.create_default_context()
+                    with smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, context=ctx, timeout=10) as srv:
+                        srv.login(s.smtp_user, s.smtp_password)
+                        srv.sendmail(s.smtp_from_email, to_email, msg.as_string())
+                elif s.smtp_use_tls:
+                    with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10) as srv:
+                        srv.ehlo(); srv.starttls(); srv.ehlo()
+                        srv.login(s.smtp_user, s.smtp_password)
+                        srv.sendmail(s.smtp_from_email, to_email, msg.as_string())
+                else:
+                    with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10) as srv:
+                        srv.login(s.smtp_user, s.smtp_password)
+                        srv.sendmail(s.smtp_from_email, to_email, msg.as_string())
+
+                return Response({'success': True, 'message': f'Файл отправлен на {to_email}'})
+            except smtplib.SMTPAuthenticationError:
+                return Response({'error': 'Ошибка аутентификации SMTP'}, status=400)
+            except Exception as e:
+                return Response({'error': f'Ошибка отправки: {str(e)}'}, status=400)
+
+        # Скачать файл
         response = HttpResponse(
+            excel_bytes,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = 'attachment; filename="clients.xlsx"'
-        wb.save(response)
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
     @action(detail=False, methods=['post'], url_path='create_draft')

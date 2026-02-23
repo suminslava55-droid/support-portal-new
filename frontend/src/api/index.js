@@ -65,6 +65,8 @@ export const clientsAPI = {
   getExternalIP: (id) => api.get(`/clients/${id}/get_external_ip/`),
   transferModem: (id, toClientId) => api.post(`/clients/${id}/transfer_modem/`, { to_client_id: toClientId }),
   exportExcel: (params) => api.get('/clients/export_excel/', { responseType: 'blob', params }),
+  exportExcelPost: (data) => api.post('/clients/export_excel/', data, { responseType: 'blob' }),
+  exportExcelEmail: (data) => api.post('/clients/export_excel/', data),
 };
 
 export const usersAPI = {
@@ -89,5 +91,6 @@ export const customFieldsAPI = {
 export const settingsAPI = {
   get: () => api.get('/clients/system-settings/'),
   save: (data) => api.post('/clients/system-settings/', data),
-  clear: () => api.delete('/clients/system-settings/'),
+  clear: (section) => api.delete(`/clients/system-settings/?section=${section || 'ssh'}`),
+  testEmail: (toEmail) => api.post('/clients/system-settings/test-email/', { to_email: toEmail }),
 };
