@@ -263,7 +263,7 @@ export default function ClientDetailPage() {
             items={[
               {
                 key: 'info',
-                label: 'Информация',
+                label: <span>📋 Информация</span>,
                 children: (
                   <>
                     <Card title="Информация о клиенте" style={{ marginBottom: 16 }}>
@@ -362,7 +362,7 @@ export default function ClientDetailPage() {
                 key: 'providers',
                 label: (
                   <Space size={4}>
-                    <WifiOutlined />
+                    🌐
                     Провайдеры
                     {(client.provider_data || client.provider2_data) && (
                       <Tag color="blue" style={{ marginLeft: 2, fontSize: 11 }}>
@@ -495,7 +495,29 @@ export default function ClientDetailPage() {
                   </>
                 ),
               },
-            ]}
+                            {
+                key: 'kkt',
+                label: '🧾 ККТ',
+                children: (
+                  <div style={{
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    padding: '80px 0',
+                  }}>
+                    <div style={{fontSize: 72, marginBottom: 20}}>🧾</div>
+                    <div style={{
+                      fontSize: 28, fontWeight: 700, color: '#bbb',
+                      letterSpacing: 3, marginBottom: 8,
+                    }}>
+                      Coming Soon
+                    </div>
+                    <div style={{fontSize: 14, color: '#ccc'}}>
+                      Раздел ККТ находится в разработке
+                    </div>
+                  </div>
+                ),
+              },
+]}
           />
 
           <Card title="Заметки" style={{ marginTop: 16 }}>
