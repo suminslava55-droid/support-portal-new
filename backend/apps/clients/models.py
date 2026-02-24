@@ -300,3 +300,21 @@ class DutySchedule(models.Model):
 
     def __str__(self):
         return f'{self.user} — {self.date} — {self.get_duty_type_display()}'
+
+
+class CustomHoliday(models.Model):
+    """Кастомные выходные/рабочие дни (переносы, праздники)"""
+    date = models.DateField('Дата', unique=True)
+    is_holiday = models.BooleanField('Выходной', default=True)  # True=выходной, False=рабочий
+    note = models.CharField('Примечание', max_length=200, blank=True)
+    created_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True,
+                                    verbose_name='Создал')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date']
+        verbose_name = 'Особый день'
+        verbose_name_plural = 'Особые дни'
+
+    def __str__(self):
+        return f'{self.date} — {"Выходной" if self.is_holiday else "Рабочий"}'

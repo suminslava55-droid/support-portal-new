@@ -21,10 +21,11 @@ export default function AppLayout({ children }) {
   const [form] = Form.useForm();
 
   const isAdmin = user?.role_data?.name === 'admin' || user?.is_superuser;
+  const isCommunications = user?.role_data?.name === 'communications';
 
   const menuItems = [
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
-    { key: '/calendar', icon: <CalendarOutlined />, label: 'Календарь' },
+    ...(!isCommunications ? [{ key: '/calendar', icon: <CalendarOutlined />, label: 'Календарь' }] : []),
     ...(isAdmin ? [{ key: '/users', icon: <UserOutlined />, label: 'Пользователи' }] : []),
     { key: '/providers', icon: <WifiOutlined />, label: 'Провайдеры' },
     ...(isAdmin ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Настройки' }] : []),

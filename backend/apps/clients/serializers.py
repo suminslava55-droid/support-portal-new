@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, ClientActivity, Provider, ClientFile, DutySchedule
+from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, ClientActivity, Provider, ClientFile, DutySchedule, CustomHoliday
 from apps.accounts.serializers import UserSerializer
 
 
@@ -107,3 +107,10 @@ class DutyScheduleSerializer(serializers.ModelSerializer):
         model = DutySchedule
         fields = '__all__'
         read_only_fields = ['created_at', 'updated_at']
+
+
+class CustomHolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomHoliday
+        fields = '__all__'
+        read_only_fields = ['created_by', 'created_at']

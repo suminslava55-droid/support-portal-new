@@ -6,11 +6,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings, DutySchedule
+from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings, DutySchedule, CustomHoliday
 from .serializers import (
     ClientListSerializer, ClientDetailSerializer, ClientWriteSerializer,
     ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer,
-    DutyScheduleSerializer,
+    DutyScheduleSerializer, CustomHolidaySerializer,
 )
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 
@@ -717,6 +717,50 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
         return qs
 
     @action(detail=False, methods=['post'])
+    def clear_month(self, request):
+        from apps.accounts.permissions import IsAdmin
+        if not (request.user.is_superuser or (request.user.role and request.user.role.name == 'admin')):
+            return Response({'error': 'Недостаточно прав'}, status=403)
+        year = request.data.get('year')
+        month = request.data.get('month')
+        if not year or not month:
+            return Response({'error': 'year и month обязательны'}, status=400)
+        deleted, _ = DutySchedule.objects.filter(date__year=year, date__month=month).delete()
+        return Response({'deleted': deleted})
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        qs = CustomHoliday.objects.all()
+        if year and month:
+            qs = qs.filter(date__year=year, date__month=month)
+        return Response(CustomHolidaySerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'])
+    def holidays(self, request):
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        qs = CustomHoliday.objects.all()
+        if year and month:
+            qs = qs.filter(date__year=year, date__month=month)
+        return Response(CustomHolidaySerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'])
+    def toggle_holiday(self, request):
+        date = request.data.get('date')
+        is_holiday = request.data.get('is_holiday')
+        note = request.data.get('note', '')
+        if not date:
+            return Response({'error': 'date обязателен'}, status=400)
+        if is_holiday is None:
+            # Удалить кастомный день
+            CustomHoliday.objects.filter(date=date).delete()
+            return Response({'status': 'deleted'})
+        obj, _ = CustomHoliday.objects.update_or_create(
+            date=date,
+            defaults={'is_holiday': is_holiday, 'note': note, 'created_by': request.user}
+        )
+        return Response(CustomHolidaySerializer(obj).data)
+
+    @action(detail=False, methods=['post'])
     def set_duty(self, request):
         user_id = request.data.get('user_id')
         date = request.data.get('date')
@@ -744,19 +788,28 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
         if year and month:
             qs = qs.filter(date__year=year, date__month=month)
 
-        from django.db.models import Count
         from apps.accounts.models import User
 
-        users = User.objects.filter(is_active=True).order_by('full_name', 'last_name')
+        users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
         duty_types = ['phone', 'day', 'phone_day', 'vacation', 'busy']
-        labels = {'phone': 'Телефон', 'day': 'Работа днём', 'phone_day': 'Телефон + день', 'vacation': 'Отпуск', 'busy': 'Занят'}
+        labels = {
+            'phone': 'Телефон',
+            'day': 'Работа днём',
+            'phone_day': 'Телефон + день',
+            'vacation': 'Отпуск',
+            'busy': 'Занят',
+        }
 
-        report = []
+        report_data = []
         for u in users:
-            row = {'user_id': u.id, 'user_name': u.full_name or u.username, 'totals': {}}
+            row = {
+                'user_id': u.id,
+                'user_name': u.full_name or u.email,
+                'totals': {},
+            }
             for dt in duty_types:
                 row['totals'][dt] = qs.filter(user=u, duty_type=dt).count()
             row['total'] = sum(row['totals'].values())
-            report.append(row)
+            report_data.append(row)
 
-        return Response({'report': report, 'labels': labels})
+        return Response({'report': report_data, 'labels': labels})

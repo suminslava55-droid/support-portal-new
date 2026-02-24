@@ -32,6 +32,13 @@ function RequireAdmin({ children }) {
   return children;
 }
 
+function RequireCalendar({ children }) {
+  const user = useAuthStore((s) => s.user);
+  const isCommunications = user?.role_data?.name === 'communications';
+  if (isCommunications) return <Navigate to="/clients" replace />;
+  return children;
+}
+
 export default function App() {
   const { setUser, isAuthenticated } = useAuthStore();
   const isDark = useThemeStore((s) => s.isDark);
@@ -79,7 +86,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={isAuthenticated ? <Navigate to="/clients" /> : <LoginPage />} />
-          <Route path="/calendar" element={<RequireAuth><CalendarPage /></RequireAuth>} />
+          <Route path="/calendar" element={<RequireAuth><RequireCalendar><CalendarPage /></RequireCalendar></RequireAuth>} />
           <Route path="/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
           <Route path="/clients/new" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
           <Route path="/clients/:id/edit" element={<RequireAuth><ClientFormPage /></RequireAuth>} />

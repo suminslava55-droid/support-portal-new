@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Select, Switch, Typography, message, Tag, Popconfirm } from 'antd';
+import { Table, Button, Modal, Form, Input, Select, Switch, Typography, message, Tag, Popconfirm, DatePicker } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { usersAPI, rolesAPI } from '../api';
+import dayjs from 'dayjs';
 
 const { Title } = Typography;
 
@@ -30,18 +31,25 @@ export default function UsersPage() {
 
   const openModal = (user = null) => {
     setEditingUser(user);
-    form.setFieldsValue(user || { is_active: true });
+    form.setFieldsValue(user ? {
+      ...user,
+      birthday: user.birthday ? dayjs(user.birthday) : null,
+    } : { is_active: true });
     setModalOpen(true);
   };
 
   const handleSave = async () => {
     const values = await form.validateFields();
     try {
+      const payload = {
+        ...values,
+        birthday: values.birthday ? values.birthday.format('YYYY-MM-DD') : null,
+      };
       if (editingUser) {
-        await usersAPI.update(editingUser.id, values);
+        await usersAPI.update(editingUser.id, payload);
         message.success('Пользователь обновлён');
       } else {
-        await usersAPI.create(values);
+        await usersAPI.create(payload);
         message.success('Пользователь создан');
       }
       setModalOpen(false);
@@ -130,6 +138,9 @@ export default function UsersPage() {
           </Form.Item>
           <Form.Item name="is_active" label="Активен" valuePropName="checked">
             <Switch />
+          </Form.Item>
+          <Form.Item name="birthday" label="День рождения">
+            <DatePicker format="DD.MM.YYYY" style={{ width: '100%' }} placeholder="Выберите дату" />
           </Form.Item>
         </Form>
       </Modal>

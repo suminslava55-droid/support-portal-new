@@ -5,9 +5,13 @@ from django.db import models
 class Role(models.Model):
     ADMIN = 'admin'
     SENIOR = 'senior'
+    SYSADMIN = 'sysadmin'
+    COMMUNICATIONS = 'communications'
     ROLE_CHOICES = [
         (ADMIN, 'Администратор'),
         (SENIOR, 'Старший специалист'),
+        (SYSADMIN, 'Системный администратор'),
+        (COMMUNICATIONS, 'Связист'),
     ]
     name = models.CharField(max_length=50, choices=ROLE_CHOICES, unique=True)
     description = models.TextField(blank=True)
@@ -50,6 +54,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField('Имя', max_length=100)
     last_name = models.CharField('Фамилия', max_length=100)
     middle_name = models.CharField('Отчество', max_length=100, blank=True)
+    birthday = models.DateField('День рождения', null=True, blank=True)
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
