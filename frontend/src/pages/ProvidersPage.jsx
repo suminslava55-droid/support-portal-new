@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Typography, message, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, Input, Typography, message, Popconfirm, Space } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import api from '../api';
 
 const { Title } = Typography;
@@ -10,6 +10,7 @@ export default function ProvidersPage() {
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
   const fetchProviders = async () => {
@@ -90,12 +91,31 @@ export default function ProvidersPage() {
           <Title level={4} style={{ margin: 0 }}>Провайдеры</Title>
           <Typography.Text type="secondary">Справочник провайдеров — привязка к клиенту при создании карточки</Typography.Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          Добавить провайдера
-        </Button>
+        <Space>
+          <Input
+            placeholder="Поиск по названию или телефону..."
+            prefix={<SearchOutlined style={{ color: '#bbb' }} />}
+            allowClear
+            style={{ width: 280 }}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
+            Добавить провайдера
+          </Button>
+        </Space>
       </div>
 
-      <Table columns={columns} dataSource={providers} rowKey="id" loading={loading} bordered size="middle" />
+      <Table
+        columns={columns}
+        dataSource={providers.filter(p => {
+          if (!search.trim()) return true;
+          const q = search.toLowerCase();
+          return (p.name || '').toLowerCase().includes(q) ||
+                 (p.support_phones || '').toLowerCase().includes(q);
+        })}
+        rowKey="id" loading={loading} bordered size="middle"
+      />
 
       <Modal
         title={editing ? 'Редактировать провайдера' : 'Новый провайдер'}

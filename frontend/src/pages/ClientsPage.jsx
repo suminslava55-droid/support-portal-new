@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space, Typography, message,
-  Tooltip, Modal, Checkbox, Divider, Radio
+  Tooltip, Modal, Checkbox, Divider, Radio, Dropdown,
 } from 'antd';
 import {
   PlusOutlined, FileExcelOutlined, SearchOutlined,
-  DownloadOutlined, MailOutlined, SendOutlined
+  DownloadOutlined, MailOutlined, SendOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { clientsAPI, settingsAPI } from '../api';
@@ -14,6 +14,27 @@ import useAuthStore from '../store/authStore';
 const { Title, Text } = Typography;
 
 // Определение групп и полей
+const CONNECTION_TYPE_MAP = {
+  'fiber':    { label: 'Оптоволокно', icon: '💡' },
+  'cable':    { label: 'Кабель',      icon: '🔌' },
+  'wireless': { label: 'Беспроводное',icon: '📡' },
+  'modem':    { label: 'Модем',       icon: '📶' },
+  'mrnet':    { label: 'MR-Net',      icon: '🌐' },
+  // русские значения (если бэкенд отдаёт display)
+  'Оптоволокно':   { label: 'Оптоволокно',  icon: '💡' },
+  'Кабель':        { label: 'Кабель',        icon: '🔌' },
+  'Беспроводное':  { label: 'Беспроводное',  icon: '📡' },
+  'Модем':         { label: 'Модем',         icon: '📶' },
+  'MR-Net':        { label: 'MR-Net',        icon: '🌐' },
+};
+
+const formatConnType = (val) => {
+  if (!val) return '—';
+  const t = CONNECTION_TYPE_MAP[val];
+  if (t) return `${t.icon} ${t.label}`;
+  return val;
+};
+
 const FIELD_GROUPS = [
   {
     key: 'basic',
@@ -50,6 +71,34 @@ const ALL_FIELD_KEYS = [
   ...FIELD_GROUPS.flatMap(g => g.fields.map(f => f.key)),
   ...PROVIDER_GROUPS.map(g => g.key),
 ];
+
+// Колонки таблицы клиентов (настраиваемые)
+const TABLE_COLUMNS_KEY = 'clients_table_columns';
+const TABLE_COLUMN_DEFS = [
+  { key: 'address',          label: 'Адрес',           alwaysVisible: true },
+  { key: 'company',          label: 'Компания' },
+  { key: 'inn',              label: 'ИНН' },
+  { key: 'phone',            label: 'Телефон' },
+  { key: 'email',            label: 'Email' },
+  { key: 'pharmacy_code',    label: 'Код аптеки' },
+  { key: 'iccid',            label: 'ICCID' },
+  { key: 'status',           label: 'Статус' },
+  { key: 'subnet',           label: 'Подсеть' },
+  { key: 'external_ip',      label: 'Внешний IP' },
+  { key: 'mikrotik_ip',      label: 'Микротик IP' },
+  { key: 'server_ip',        label: 'Сервер IP' },
+  // Провайдер 1 подполя
+  { key: 'p1_name',          label: 'Провайдер 1: Название',       group: 'provider1' },
+  { key: 'p1_type',          label: 'Провайдер 1: Тип',            group: 'provider1' },
+  { key: 'p1_account',       label: 'Провайдер 1: Лицевой счёт',  group: 'provider1' },
+  { key: 'p1_contract',      label: 'Провайдер 1: № договора',     group: 'provider1' },
+  // Провайдер 2 подполя
+  { key: 'p2_name',          label: 'Провайдер 2: Название',       group: 'provider2' },
+  { key: 'p2_type',          label: 'Провайдер 2: Тип',            group: 'provider2' },
+  { key: 'p2_account',       label: 'Провайдер 2: Лицевой счёт',  group: 'provider2' },
+  { key: 'p2_contract',      label: 'Провайдер 2: № договора',     group: 'provider2' },
+];
+const DEFAULT_TABLE_COLUMNS = ['address', 'company', 'phone', 'status', 'p1_name', 'p1_type', 'p2_name', 'p2_type'];
 
 // Компонент группы с общим чекбоксом и дочерними
 function FieldGroup({ group, selected, onChange }) {
@@ -124,6 +173,23 @@ export default function ClientsPage() {
   const [smtpOk, setSmtpOk] = useState(null);
   const [exporting, setExporting] = useState(false);
   const [selectedFields, setSelectedFields] = useState(ALL_FIELD_KEYS);
+
+  // Настройка колонок таблицы
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(TABLE_COLUMNS_KEY)) || DEFAULT_TABLE_COLUMNS; }
+    catch { return DEFAULT_TABLE_COLUMNS; }
+  });
+  const [colSettingsOpen, setColSettingsOpen] = useState(false);
+
+  const toggleColumn = (key) => {
+    const col = TABLE_COLUMN_DEFS.find(c => c.key === key);
+    if (col?.alwaysVisible) return;
+    setVisibleColumns(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      localStorage.setItem(TABLE_COLUMNS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
 
   // Load providers for filter
   useEffect(() => {
@@ -224,11 +290,46 @@ export default function ClientsPage() {
     }
   };
 
-  const columns = [
+  const show = (key) => visibleColumns.includes(key);
+
+  // Строим колонку провайдера динамически из выбранных подполей
+  const buildProviderCol = (num) => {
+    const prefix = `p${num}_`;
+    const fieldMap = {
+      [`p${num}_name`]:     { label: 'Название',      getter: r => num === 1 ? r.provider_name    : r.provider2_name },
+      [`p${num}_type`]:     { label: 'Тип',           getter: r => formatConnType(num === 1 ? r.provider_type    : r.provider2_type) },
+      [`p${num}_account`]:  { label: 'Лицевой счёт', getter: r => num === 1 ? r.provider_account  : r.provider2_account },
+      [`p${num}_contract`]: { label: '№ договора',    getter: r => num === 1 ? r.provider_contract : r.provider2_contract },
+    };
+    const activeFields = Object.entries(fieldMap).filter(([k]) => visibleColumns.includes(k));
+    if (activeFields.length === 0) return null;
+    return {
+      title: (
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>Провайдер {num}</div>
+          <div style={{ display: 'flex', fontSize: 11, color: '#999', gap: 4 }}>
+            {activeFields.map(([k, f]) => (
+              <span key={k} style={{ flex: 1, minWidth: 60 }}>{f.label}</span>
+            ))}
+          </div>
+        </div>
+      ),
+      key: `provider${num}`,
+      render: (_, r) => (
+        <div style={{ display: 'flex', gap: 8 }}>
+          {activeFields.map(([k, f]) => (
+            <span key={k} style={{ flex: 1, fontSize: 12, minWidth: 60 }}>{f.getter(r) || '—'}</span>
+          ))}
+        </div>
+      ),
+      width: 80 + activeFields.length * 90,
+    };
+  };
+
+  const allColumns = [
     {
-      title: 'Адрес', dataIndex: 'address',
-      sorter: true,
-      sortOrder: sortField === 'address' ? sortOrder : null,
+      title: 'Адрес', dataIndex: 'address', key: 'address',
+      sorter: true, sortOrder: sortField === 'address' ? sortOrder : null,
       render: (address, r) => (
         <Button type="link" onClick={() => navigate(`/clients/${r.id}`)}
           style={{ padding: 0, fontWeight: 500, textAlign: 'left', whiteSpace: 'normal', height: 'auto' }}>
@@ -236,20 +337,26 @@ export default function ClientsPage() {
         </Button>
       ),
     },
-    { title: 'Компания', dataIndex: 'company', sorter: true, sortOrder: sortField === 'company' ? sortOrder : null, render: v => v || '—' },
-    { title: 'ИНН', dataIndex: 'inn', sorter: true, sortOrder: sortField === 'inn' ? sortOrder : null, render: v => v || '—' },
-    { title: 'Провайдер', dataIndex: 'provider_name', sorter: true, sortOrder: sortField === 'provider_name' ? sortOrder : null, render: v => v || '—' },
-    { title: 'Телефон', dataIndex: 'phone', sorter: true, sortOrder: sortField === 'phone' ? sortOrder : null, render: v => v || '—' },
-    { title: 'Email', dataIndex: 'email', sorter: true, sortOrder: sortField === 'email' ? sortOrder : null, render: v => v || '—' },
-    {
-      title: 'Статус', dataIndex: 'status', sorter: true, sortOrder: sortField === 'status' ? sortOrder : null,
-      render: v => (
-        <Tag color={v === 'active' ? 'green' : 'default'}>
-          {v === 'active' ? 'Активен' : 'Неактивен'}
-        </Tag>
-      ),
+    show('company')       && { title: 'Компания',    dataIndex: 'company',       key: 'company',       sorter: true, sortOrder: sortField === 'company' ? sortOrder : null,   render: v => v || '—' },
+    show('inn')           && { title: 'ИНН',         dataIndex: 'inn',           key: 'inn',           sorter: true, sortOrder: sortField === 'inn' ? sortOrder : null,       render: v => v || '—' },
+    show('phone')         && { title: 'Телефон',     dataIndex: 'phone',         key: 'phone',         sorter: true, sortOrder: sortField === 'phone' ? sortOrder : null,     render: v => v || '—' },
+    show('email')         && { title: 'Email',       dataIndex: 'email',         key: 'email',         sorter: true, sortOrder: sortField === 'email' ? sortOrder : null,     render: v => v || '—' },
+    show('pharmacy_code') && { title: 'Код аптеки',  dataIndex: 'pharmacy_code', key: 'pharmacy_code', render: v => v || '—' },
+    show('iccid')         && { title: 'ICCID',       dataIndex: 'iccid',         key: 'iccid',         render: v => v || '—' },
+    show('subnet')        && { title: 'Подсеть',     dataIndex: 'subnet',        key: 'subnet',        render: v => v || '—' },
+    show('external_ip')   && { title: 'Внешний IP',  dataIndex: 'external_ip',   key: 'external_ip',   render: v => v || '—' },
+    show('mikrotik_ip')   && { title: 'Микротик IP', dataIndex: 'mikrotik_ip',   key: 'mikrotik_ip',   render: v => v || '—' },
+    show('server_ip')     && { title: 'Сервер IP',   dataIndex: 'server_ip',     key: 'server_ip',     render: v => v || '—' },
+    buildProviderCol(1),
+    buildProviderCol(2),
+    show('status') && {
+      title: 'Статус', dataIndex: 'status', key: 'status',
+      sorter: true, sortOrder: sortField === 'status' ? sortOrder : null,
+      render: v => <Tag color={v === 'active' ? 'green' : 'default'}>{v === 'active' ? 'Активен' : 'Неактивен'}</Tag>,
     },
-  ];
+  ].filter(Boolean);
+
+  const columns = allColumns;
 
   // Подсчёт выбранных провайдеров для отображения
   const selectedProviders = PROVIDER_GROUPS.filter(g => selectedFields.includes(g.key));
@@ -300,6 +407,56 @@ export default function ClientsPage() {
             style={{ color: '#217346', borderColor: '#217346' }}
           />
         </Tooltip>
+        <Dropdown
+          open={colSettingsOpen}
+          onOpenChange={setColSettingsOpen}
+          trigger={['click']}
+          dropdownRender={() => (
+            <div style={{
+              background: '#fff', borderRadius: 8, padding: '12px 16px',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 240,
+              border: '1px solid #f0f0f0', maxHeight: 420, overflowY: 'auto',
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 13 }}>
+                ⚙️ Колонки таблицы
+              </div>
+              {[
+                { group: 'Основные', keys: ['company','inn','phone','email','pharmacy_code','iccid','status'] },
+                { group: 'Сеть', keys: ['subnet','external_ip','mikrotik_ip','server_ip'] },
+                { group: 'Провайдер 1', keys: ['p1_name','p1_type','p1_account','p1_contract'] },
+                { group: 'Провайдер 2', keys: ['p2_name','p2_type','p2_account','p2_contract'] },
+              ].map(({ group, keys }) => (
+                <div key={group} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: '#999', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{group}</div>
+                  {keys.map(key => {
+                    const def = TABLE_COLUMN_DEFS.find(c => c.key === key);
+                    return (
+                      <div key={key} style={{ marginBottom: 5 }}>
+                        <Checkbox
+                          checked={visibleColumns.includes(key)}
+                          onChange={() => toggleColumn(key)}
+                        >
+                          <span style={{ fontSize: 13 }}>{def?.label}</span>
+                        </Checkbox>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+              <Divider style={{ margin: '8px 0' }} />
+              <Button size="small" block onClick={() => {
+                setVisibleColumns(DEFAULT_TABLE_COLUMNS);
+                localStorage.setItem(TABLE_COLUMNS_KEY, JSON.stringify(DEFAULT_TABLE_COLUMNS));
+              }}>
+                Сбросить к стандарту
+              </Button>
+            </div>
+          )}
+        >
+          <Tooltip title="Настройка колонок">
+            <Button icon={<SettingOutlined />} />
+          </Tooltip>
+        </Dropdown>
       </Space>
 
       <Table

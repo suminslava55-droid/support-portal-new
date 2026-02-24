@@ -47,11 +47,22 @@ class ClientListSerializer(serializers.ModelSerializer):
     display_name = serializers.CharField(read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     provider_name = serializers.CharField(source='provider.name', read_only=True)
+    provider_type = serializers.CharField(source='get_connection_type_display', read_only=True)
+    provider_account = serializers.CharField(source='personal_account', read_only=True)
+    provider_contract = serializers.CharField(source='contract_number', read_only=True)
+    provider2_name = serializers.CharField(source='provider2.name', read_only=True)
+    provider2_type = serializers.CharField(source='get_connection_type2_display', read_only=True)
+    provider2_account = serializers.CharField(source='personal_account2', read_only=True)
+    provider2_contract = serializers.CharField(source='contract_number2', read_only=True)
 
     class Meta:
         model = Client
         fields = ['id', 'display_name', 'address', 'inn', 'phone', 'email',
-                  'company', 'status', 'status_display', 'provider', 'provider_name', 'created_at']
+                  'company', 'status', 'status_display',
+                  'provider', 'provider_name', 'provider_type', 'provider_account', 'provider_contract',
+                  'provider2', 'provider2_name', 'provider2_type', 'provider2_account', 'provider2_contract',
+                  'pharmacy_code', 'iccid', 'subnet', 'external_ip',
+                  'created_at']
 
 
 class ClientDetailSerializer(serializers.ModelSerializer):
