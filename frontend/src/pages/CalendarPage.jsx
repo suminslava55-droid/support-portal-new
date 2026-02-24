@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Typography, Button, Modal, Popover, Spin,
   Table, Tag, Space, Tooltip, Input, Select, Popconfirm, message,
+  Dropdown, Checkbox, Divider,
 } from 'antd';
-import { LeftOutlined, RightOutlined, BarChartOutlined, DeleteOutlined } from '@ant-design/icons';
+import { LeftOutlined, RightOutlined, BarChartOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import api from '../api';
@@ -12,7 +13,7 @@ import useAuthStore from '../store/authStore';
 dayjs.locale('ru');
 
 const { Text } = Typography;
-
+const HIDDEN_USERS_KEY = 'calendar_hidden_users';
 const DUTY_TYPES = [
   { value: 'phone',     label: 'Телефон',         color: '#00FF00', textColor: '#000' },
   { value: 'day',       label: 'Работа днём',      color: '#0000FF', textColor: '#fff' },
@@ -51,6 +52,11 @@ export default function CalendarPage() {
   const [reportModal, setReportModal] = useState(false);
   const [report, setReport] = useState(null);
   const [reportLabels, setReportLabels] = useState({});
+  const [hiddenUsers, setHiddenUsers] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(HIDDEN_USERS_KEY) || '[]'); }
+    catch { return []; }
+  });
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const permissions = useAuthStore((s) => s.permissions);
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role_data?.name === 'admin' || user?.is_superuser;
@@ -193,6 +199,8 @@ export default function CalendarPage() {
     key: 'name',
     fixed: 'left',
     width: 160,
+    sorter: (a, b) => a.name.localeCompare(b.name, 'ru'),
+    defaultSortOrder: 'ascend',
     render: (name) => <Text strong style={{ fontSize: 13 }}>{name}</Text>,
   };
 
@@ -279,7 +287,24 @@ export default function CalendarPage() {
     };
   });
 
-  const tableData = users.map(u => ({ key: u.id, id: u.id, name: u.full_name || u.email, birthday: u.birthday }));
+  const toggleHideUser = (userId) => {
+    setHiddenUsers(prev => {
+      const next = prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId];
+      localStorage.setItem(HIDDEN_USERS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const showAllUsers = () => {
+    setHiddenUsers([]);
+    localStorage.setItem(HIDDEN_USERS_KEY, '[]');
+  };
+
+  const tableData = users
+    .filter(u => !hiddenUsers.includes(u.id))
+    .map(u => ({ key: u.id, id: u.id, name: u.full_name || u.email, birthday: u.birthday }));
 
   const reportColumns = [
     { title: 'Сотрудник', dataIndex: 'user_name', key: 'user_name', fixed: 'left', width: 160 },
@@ -350,6 +375,51 @@ export default function CalendarPage() {
             </Popconfirm>
           )}
           <Button icon={<BarChartOutlined />} onClick={openReport}>Отчёт за месяц</Button>
+          <Dropdown
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            trigger={['click']}
+            dropdownRender={() => (
+              <div style={{
+                background: '#fff', borderRadius: 8, padding: '12px 16px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 220,
+                border: '1px solid #f0f0f0',
+              }}>
+                <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 13 }}>
+                  ⚙️ Настройки отображения
+                </div>
+                <div style={{ marginBottom: 8, fontSize: 12, color: '#999' }}>
+                  Сотрудники в календаре:
+                </div>
+                {users.map(u => (
+                  <div key={u.id} style={{ marginBottom: 6 }}>
+                    <Checkbox
+                      checked={!hiddenUsers.includes(u.id)}
+                      onChange={() => toggleHideUser(u.id)}
+                    >
+                      <span style={{
+                        fontSize: 13,
+                        textDecoration: hiddenUsers.includes(u.id) ? 'line-through' : 'none',
+                        color: hiddenUsers.includes(u.id) ? '#bbb' : '#333',
+                      }}>
+                        {u.full_name || u.email}
+                      </span>
+                    </Checkbox>
+                  </div>
+                ))}
+                {hiddenUsers.length > 0 && (
+                  <>
+                    <Divider style={{ margin: '8px 0' }} />
+                    <Button size="small" block onClick={showAllUsers}>
+                      Показать всех
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          >
+            <Button icon={<SettingOutlined />} />
+          </Dropdown>
         </Space>
       </div>
 

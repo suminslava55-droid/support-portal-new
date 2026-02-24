@@ -25,9 +25,9 @@ export default function AppLayout({ children }) {
 
   const menuItems = [
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
+    { key: '/providers', icon: <WifiOutlined />, label: 'Провайдеры' },
     ...(!isCommunications ? [{ key: '/calendar', icon: <CalendarOutlined />, label: 'Календарь' }] : []),
     ...(isAdmin ? [{ key: '/users', icon: <UserOutlined />, label: 'Пользователи' }] : []),
-    { key: '/providers', icon: <WifiOutlined />, label: 'Провайдеры' },
     ...(isAdmin ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Настройки' }] : []),
   ];
 

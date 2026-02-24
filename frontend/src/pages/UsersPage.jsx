@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Select, Switch, Typography, message, Tag, Popconfirm, DatePicker } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, Input, Select, Switch, Typography, message, Tag, Popconfirm, DatePicker, Space } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { usersAPI, rolesAPI } from '../api';
 import dayjs from 'dayjs';
 
@@ -12,6 +12,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
   const fetchData = async () => {
@@ -102,12 +103,37 @@ export default function UsersPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>Пользователи</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
+        <Space>
+          <Input
+            placeholder="Поиск по имени, email, роли..."
+            prefix={<SearchOutlined style={{ color: '#bbb' }} />}
+            allowClear
+            style={{ width: 280 }}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
           Добавить пользователя
         </Button>
+        </Space>
       </div>
 
-      <Table columns={columns} dataSource={users} rowKey="id" loading={loading} bordered size="middle" />
+      <Table
+        columns={columns}
+        dataSource={users.filter(u => {
+          if (!search.trim()) return true;
+          const q = search.toLowerCase();
+          return (
+            (u.full_name || '').toLowerCase().includes(q) ||
+            (u.email || '').toLowerCase().includes(q) ||
+            (u.role_data?.name_display || '').toLowerCase().includes(q)
+          );
+        })}
+        rowKey="id"
+        loading={loading}
+        bordered
+        size="middle"
+      />
 
       <Modal
         title={editingUser ? 'Редактировать пользователя' : 'Новый пользователь'}
