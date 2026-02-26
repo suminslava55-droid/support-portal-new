@@ -16,5 +16,6 @@ urlpatterns = [
     path('system-settings/test-email/', TestEmailView.as_view(), name='test-email'),
     path('fetch_external_ip/', FetchExternalIPView.as_view(), name='fetch-external-ip'),
     path('<int:pk>/ofd_kkt/', OfdKktView.as_view(), name='ofd-kkt'),
+    path('<int:pk>/ofd_kkt/<int:kkt_id>/', OfdKktView.as_view(), name='ofd-kkt-detail'),
     path('', include(router.urls)),
 ]

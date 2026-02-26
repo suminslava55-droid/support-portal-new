@@ -13,7 +13,7 @@ from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, P
 from .serializers import (
     ClientListSerializer, ClientDetailSerializer, ClientWriteSerializer,
     ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer,
-    DutyScheduleSerializer, CustomHolidaySerializer, OfdCompanySerializer, OfdCompanyWriteSerializer,
+    DutyScheduleSerializer, CustomHolidaySerializer, OfdCompanySerializer,
 )
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 
@@ -118,6 +118,19 @@ class ClientViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def get_queryset(self):
+        # Удаляем черновики старше 2 часов (пользователь ушёл не сохранив)
+        from django.utils import timezone
+        from datetime import timedelta
+        stale_drafts = Client.objects.filter(
+            is_draft=True,
+            created_at__lt=timezone.now() - timedelta(hours=2)
+        )
+        for draft in stale_drafts:
+            for f in draft.files.all():
+                f.file.delete()
+                f.delete()
+            draft.delete()
+
         qs = Client.objects.select_related('created_by', 'provider').filter(is_draft=False)
         providers_param = self.request.query_params.get('provider', '')
         if providers_param:
@@ -155,6 +168,13 @@ class ClientViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         old = self.get_object()
         if old.is_draft:
+            # Конвертируем черновик в клиента только если явно передан finalize=true
+            # или если запрос идёт не через saveDraftField (draft_save=true означает промежуточное сохранение)
+            is_draft_save = self.request.data.get('_draft_save') == True or                             str(self.request.data.get('_draft_save', '')).lower() == 'true'
+            if is_draft_save:
+                # Промежуточное сохранение — оставляем черновиком
+                serializer.save(is_draft=True)
+                return
             client = serializer.save(is_draft=False)
             ClientActivity.objects.create(
                 client=client, user=self.request.user,
@@ -804,6 +824,16 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
 
 # ===================== Компании ОФД =====================
 
+class OfdCompanyViewSet(viewsets.ModelViewSet):
+    queryset = OfdCompany.objects.all()
+    serializer_class = OfdCompanySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated()]
+        return [IsAuthenticated()]
+
 
 # ===================== ОФД / ККТ =====================
 
@@ -945,8 +975,29 @@ class OfdKktView(APIView):
             'message': f'Получено ККТ: {len(fetched)}, время: {elapsed} сек' + (f', ошибок: {len(errors)}' if errors else ''),
         })
 
+    def delete(self, request, pk=None, kkt_id=None):
+        """DELETE /api/clients/{id}/ofd_kkt/{kkt_id}/ — удалить одну ККТ"""
+        try:
+            client = Client.objects.get(pk=pk)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=404)
+
+        if not kkt_id:
+            return Response({'error': 'Не указан ID ККТ'}, status=400)
+
+        try:
+            kkt = client.kkt_data.get(pk=kkt_id)
+            kkt.delete()
+            return Response({'success': True, 'message': 'ККТ удалена'})
+        except KktData.DoesNotExist:
+            return Response({'error': 'ККТ не найдена'}, status=404)
+
     def patch(self, request, pk=None):
-        """Быстрое обновление по сохранённым РНМ — без перебора всего массива по ИНН"""
+        """
+        Обновление по РНМ.
+        Если в теле запроса передан rnm_override — используем его (режим создания клиента).
+        Иначе берём РНМ из уже сохранённых в БД записей KktData.
+        """
         try:
             client = Client.objects.get(pk=pk)
         except Client.DoesNotExist:
@@ -963,6 +1014,94 @@ class OfdKktView(APIView):
         if not token:
             return Response({'error': f'У компании «{client.ofd_company.name}» не задан токен ОФД'}, status=400)
 
+        # Если передан конкретный РНМ — работаем только с ним (для режима создания)
+        rnm_override = (request.data.get('rnm_override') or '').strip()
+        if rnm_override:
+            import re
+            if not re.match(r'^\d{16}$', rnm_override):
+                return Response({'error': f'Некорректный РНМ: «{rnm_override}». Должно быть 16 цифр.'}, status=400)
+            import time
+            t_start = time.time()
+            script = '/usr/local/bin/ofd_fetch.sh'
+            try:
+                result = subprocess.run(
+                    [script, inn, token, rnm_override],
+                    capture_output=True, text=True, timeout=60
+                )
+                if not result.stdout.strip():
+                    return Response({'error': f'Пустой ответ от скрипта для РНМ {rnm_override}. stderr: {result.stderr[:200]}'}, status=502)
+                detail_data = json.loads(result.stdout)
+            except Exception as e:
+                return Response({'error': f'Ошибка запроса для РНМ {rnm_override}: {str(e)}'}, status=502)
+
+            if detail_data.get('Status') != 'Success':
+                return Response({'error': f'ОФД вернул ошибку для РНМ {rnm_override}'}, status=502)
+
+            items = detail_data.get('Data', [])
+            if not items:
+                return Response({'error': f'ОФД не вернул данных для РНМ {rnm_override}'}, status=404)
+
+            # Проверяем что адрес ККТ совпадает с адресом клиента
+            client_address = (client.address or '').strip()
+            if client_address:
+                import re as _re
+                stop_words = {'ул', 'пр', 'пом', 'д', 'кв', 'г', 'р-н', 'ул.', 'пр.', 'д.', 'пом.',
+                              'г.', 'пр-кт', 'пр-кт.', 'проспект', 'улица', 'переулок', 'помещ',
+                              'помещение', 'область', 'край', 'республика', 'город'}
+                words = [w.strip('.,()-').lower() for w in _re.split(r'[\s,]+', client_address)]
+                words = [w for w in words if w and len(w) > 1 and w not in stop_words]
+                house_numbers = _re.findall(r'\b(\d+)\b', client_address)
+                house_num = house_numbers[-1] if house_numbers else None
+
+                fiscal_addr = (items[0].get('FiscalAddress') or '').lower()
+                addr_numbers = _re.findall(r'\b(\d+)\b', items[0].get('FiscalAddress', ''))
+
+                word_match = all(w in fiscal_addr for w in words)
+                house_match = (not house_num) or (house_num in addr_numbers)
+
+                if not (word_match and house_match):
+                    return Response({
+                        'success': False,
+                        'fetched': [],
+                        'errors': [
+                            f'РНМ {rnm_override}: адрес ККТ в ОФД («{items[0].get("FiscalAddress", "")}») '
+                            f'не совпадает с адресом клиента («{client_address}»)'
+                        ],
+                        'elapsed': round(time.time() - t_start, 1),
+                        'message': f'РНМ {rnm_override} не добавлен: адрес не совпадает',
+                    }, status=200)  # 200 чтобы фронт показал предупреждение, не ошибку
+
+            for item in items:
+                kkt_obj, _ = KktData.objects.get_or_create(
+                    client=client,
+                    kkt_reg_id=item.get('KktRegId', rnm_override),
+                )
+                kkt_obj.serial_number = item.get('SerialNumber', '')
+                kkt_obj.fn_number = item.get('FnNumber', '')
+                kkt_obj.kkt_model = item.get('KktModel', '')
+                kkt_obj.create_date = parse_datetime(item.get('CreateDate'))
+                kkt_obj.check_date = parse_datetime(item.get('CheckDate'))
+                kkt_obj.activation_date = parse_datetime(item.get('ActivationDate'))
+                kkt_obj.first_document_date = parse_datetime(item.get('FirstDocumentDate'))
+                kkt_obj.contract_start_date = parse_datetime(item.get('ContractStartDate'))
+                kkt_obj.contract_end_date = parse_datetime(item.get('ContractEndDate'))
+                kkt_obj.fn_end_date = parse_datetime(item.get('FnEndDate'))
+                kkt_obj.last_doc_on_kkt = parse_datetime(item.get('LastDocOnKktDateTime'))
+                kkt_obj.last_doc_on_ofd = parse_datetime(item.get('LastDocOnOfdDateTimeUtc'))
+                kkt_obj.fiscal_address = item.get('FiscalAddress', '')
+                kkt_obj.raw_data = item
+                kkt_obj.save()
+
+            elapsed = round(time.time() - t_start, 1)
+            return Response({
+                'success': True,
+                'fetched': [rnm_override],
+                'errors': [],
+                'elapsed': elapsed,
+                'message': f'Получены данные по РНМ {rnm_override}, время: {elapsed} сек',
+            })
+
+        # Стандартный режим — обновляем по РНМ из БД
         kkts = client.kkt_data.all()
         if not kkts:
             return Response({'error': 'Нет сохранённых ККТ. Сначала нажмите «Получить данные с ОФД»'}, status=404)

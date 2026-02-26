@@ -185,6 +185,16 @@ export default function ClientDetailPage() {
     }
   };
 
+  const deleteKkt = async (kktId) => {
+    try {
+      await api.delete(`/clients/${id}/ofd_kkt/${kktId}/`);
+      message.success('ККТ удалена');
+      await loadKktData();
+    } catch (e) {
+      message.error('Не удалось удалить ККТ');
+    }
+  };
+
   const checkPing = useCallback(async () => {
     setPinging(true);
     setPingResults({ external_ip: 'checking', mikrotik_ip: 'checking', server_ip: 'checking' });
@@ -554,25 +564,15 @@ export default function ClientDetailPage() {
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                       <Text strong style={{ fontSize: 16 }}>🧾 Кассовая техника</Text>
-                      <Space>
-                        {kktData.length > 0 && (
-                          <Button
-                            icon={<ReloadOutlined />}
-                            onClick={refreshKktByRnm}
-                            loading={kktRefreshing}
-                          >
-                            Обновить по РНМ
-                          </Button>
-                        )}
-                        <Button
-                          type="primary"
-                          icon={<CloudDownloadOutlined />}
-                          onClick={fetchKktFromOfd}
-                          loading={kktFetching}
-                        >
-                          Получить данные с ОФД
-                        </Button>
-                      </Space>
+                      <Button
+                        type="primary"
+                        icon={<ReloadOutlined />}
+                        onClick={refreshKktByRnm}
+                        loading={kktRefreshing}
+                        disabled={kktData.length === 0}
+                      >
+                        Обновить по РНМ
+                      </Button>
                     </div>
 
                     {kktData.length === 0 ? (
@@ -580,7 +580,7 @@ export default function ClientDetailPage() {
                         description={
                           <span>
                             Нет данных ККТ.<br />
-                            Нажмите «Получить данные с ОФД» для загрузки.
+                            Для загрузки откройте карточку клиента и нажмите «Получить данные с ОФД».
                           </span>
                         }
                         style={{ padding: '40px 0' }}
@@ -597,11 +597,23 @@ export default function ClientDetailPage() {
                             </Space>
                           }
                           extra={
-                            kkt.fetched_at && (
-                              <Text type="secondary" style={{ fontSize: 12 }}>
-                                Обновлено: {dayjs(kkt.fetched_at).format('DD.MM.YYYY HH:mm')}
-                              </Text>
-                            )
+                            <Space>
+                              {kkt.fetched_at && (
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  Обновлено: {dayjs(kkt.fetched_at).format('DD.MM.YYYY HH:mm')}
+                                </Text>
+                              )}
+                              <Popconfirm
+                                title="Удалить ККТ?"
+                                description="Данные этой ККТ будут удалены из системы."
+                                onConfirm={() => deleteKkt(kkt.id)}
+                                okText="Удалить"
+                                cancelText="Отмена"
+                                okButtonProps={{ danger: true }}
+                              >
+                                <Button icon={<DeleteOutlined />} size="small" danger type="text" />
+                              </Popconfirm>
+                            </Space>
                           }
                         >
                           <Descriptions

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox, Upload, List, Tooltip, Space, Modal, Tabs } from 'antd';
+import { Form, Input, Select, Button, Card, Row, Col, Typography, message, Spin, Checkbox, Upload, List, Tooltip, Space, Modal, Tabs, Tag, Descriptions, Empty, Popconfirm } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
-import { ArrowLeftOutlined, SaveOutlined, SyncOutlined, UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SaveOutlined, SyncOutlined, UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined, ReloadOutlined, CloudDownloadOutlined, DeleteOutlined, PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import dayjs from 'dayjs';
 import { clientsAPI } from '../api';
 import api from '../api';
 import useAuthStore from '../store/authStore';
@@ -147,6 +148,87 @@ function TransferStep2({ visible, selectedClientDetail, selectedToSlot, onSelect
   );
 }
 
+
+// Компонент карточки ККТ (переиспользуется)
+function KktCard({ kkt, onDelete }) {
+  return (
+    <Card
+      style={{ marginBottom: 16 }}
+      title={
+        <Space>
+          <span>🖨️ {kkt.kkt_model || 'ККТ'}</span>
+          <Tag color="blue">РНМ: {kkt.kkt_reg_id}</Tag>
+        </Space>
+      }
+      extra={
+        <Space>
+          {kkt.fetched_at && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Обновлено: {dayjs(kkt.fetched_at).format('DD.MM.YYYY HH:mm')}
+            </Typography.Text>
+          )}
+          <Popconfirm
+            title="Удалить ККТ?"
+            description="Данные этой ККТ будут удалены из системы."
+            onConfirm={onDelete}
+            okText="Удалить"
+            cancelText="Отмена"
+            okButtonProps={{ danger: true }}
+          >
+            <Button icon={<DeleteOutlined />} size="small" danger type="text" />
+          </Popconfirm>
+        </Space>
+      }
+    >
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2, md: 2, lg: 3 }}>
+        <Descriptions.Item label="Модель ККТ">
+          <Typography.Text strong>{kkt.kkt_model || '—'}</Typography.Text>
+        </Descriptions.Item>
+        <Descriptions.Item label="РНМ">{kkt.kkt_reg_id || '—'}</Descriptions.Item>
+        <Descriptions.Item label="Серийный номер">{kkt.serial_number || '—'}</Descriptions.Item>
+        <Descriptions.Item label="Номер ФН">{kkt.fn_number || '—'}</Descriptions.Item>
+        <Descriptions.Item label="Конец срока ФН">
+          {kkt.fn_end_date ? (
+            <Tag color={dayjs(kkt.fn_end_date).isBefore(dayjs().add(90, 'day')) ? 'red' : 'green'}>
+              {dayjs(kkt.fn_end_date).format('DD.MM.YYYY')}
+            </Tag>
+          ) : '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Дата активации">
+          {kkt.activation_date ? dayjs(kkt.activation_date).format('DD.MM.YYYY') : '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Начало договора ОФД">
+          {kkt.contract_start_date ? dayjs(kkt.contract_start_date).format('DD.MM.YYYY') : '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Конец договора ОФД">
+          {kkt.contract_end_date ? (
+            <Tag color={dayjs(kkt.contract_end_date).isBefore(dayjs().add(30, 'day')) ? 'red' : 'green'}>
+              {dayjs(kkt.contract_end_date).format('DD.MM.YYYY')}
+            </Tag>
+          ) : '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Дата проверки">
+          {kkt.check_date ? dayjs(kkt.check_date).format('DD.MM.YYYY HH:mm') : '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Последний чек на ККТ">
+          {kkt.last_doc_on_kkt ? dayjs(kkt.last_doc_on_kkt).format('DD.MM.YYYY HH:mm') : '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Последний чек в ОФД">
+          {kkt.last_doc_on_ofd ? dayjs(kkt.last_doc_on_ofd).format('DD.MM.YYYY HH:mm') : '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Первый документ">
+          {kkt.first_document_date ? dayjs(kkt.first_document_date).format('DD.MM.YYYY') : '—'}
+        </Descriptions.Item>
+        {kkt.fiscal_address && (
+          <Descriptions.Item label="Адрес установки" span={3}>
+            {kkt.fiscal_address}
+          </Descriptions.Item>
+        )}
+      </Descriptions>
+    </Card>
+  );
+}
+
 export default function ClientFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -176,13 +258,18 @@ export default function ClientFormPage() {
   const [transferring, setTransferring] = useState(false);
   const [isDraft, setIsDraft] = useState(false);
   const [activeTab, setActiveTab] = useState('info');
+  // ККТ
+  const [kktData, setKktData] = useState([]);
+  const [kktFetching, setKktFetching] = useState(false);
+  const [kktRefreshing, setKktRefreshing] = useState(false);
+  const [rnmFields, setRnmFields] = useState(['']);
   const draftIdRef = useRef(null);
   const permissions = useAuthStore((s) => s.permissions);
 
-  // Cleanup черновика при уходе
+  // Cleanup черновика при закрытии/обновлении страницы
   useEffect(() => {
     const handleUnload = () => {
-      const draftId = draftIdRef.current;
+      const draftId = draftIdRef.current || localStorage.getItem('pending_draft_id');
       if (draftId) {
         navigator.sendBeacon(`/api/clients/${draftId}/discard_draft/`,
           new Blob([JSON.stringify({})], { type: 'application/json' }));
@@ -192,7 +279,13 @@ export default function ClientFormPage() {
     window.addEventListener('beforeunload', handleUnload);
     return () => {
       window.removeEventListener('beforeunload', handleUnload);
-      const draftId = draftIdRef.current;
+    };
+  }, []);
+
+  // Cleanup черновика при размонтировании компонента (навигация внутри React)
+  useEffect(() => {
+    return () => {
+      const draftId = draftIdRef.current || localStorage.getItem('pending_draft_id');
       if (draftId) {
         clientsAPI.discardDraft(draftId).catch(() => {});
         localStorage.removeItem('pending_draft_id');
@@ -200,6 +293,7 @@ export default function ClientFormPage() {
       }
     };
   }, []);
+
 
   useEffect(() => {
     const init = async () => {
@@ -252,7 +346,125 @@ export default function ClientFormPage() {
       }
     };
     init();
+    // Загружаем ККТ если редактируем существующего клиента
+    if (isEdit && !isDraftMode && id) {
+      api.get(`/clients/${id}/ofd_kkt/`).then(res => setKktData(res.data)).catch(() => {});
+    }
   }, []);
+
+  const loadKktData = async () => {
+    if (!id) return;
+    try {
+      const res = await api.get(`/clients/${id}/ofd_kkt/`);
+      setKktData(res.data);
+    } catch { setKktData([]); }
+  };
+
+  // Автосохранение поля в черновик (не конвертирует в клиента)
+  const saveDraftField = async (field, value) => {
+    if (!isDraft || !id) return;
+    try {
+      await api.patch(`/clients/${id}/`, { [field]: value, _draft_save: true });
+    } catch {}
+  };
+
+  const fetchKktFromOfd = async () => {
+    if (!id) return;
+    // Проверяем что компания и адрес заполнены
+    const vals = form.getFieldsValue();
+    if (!vals.ofd_company) {
+      message.warning('Выберите компанию перед получением данных ККТ');
+      return;
+    }
+    if (!vals.address || !vals.address.trim()) {
+      message.warning('Заполните адрес перед получением данных ККТ');
+      return;
+    }
+    // Если черновик — сначала сохраняем компанию и адрес
+    if (isDraft) {
+      await saveDraftField('ofd_company', vals.ofd_company);
+      await saveDraftField('address', vals.address.trim());
+    }
+    setKktFetching(true);
+    try {
+      const res = await api.post(`/clients/${id}/ofd_kkt/`);
+      message.success(res.data.message || 'Данные ККТ получены с ОФД');
+      if (res.data.errors?.length) res.data.errors.forEach(e => message.warning(e, 5));
+      await loadKktData();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка при получении данных с ОФД', 6);
+    } finally { setKktFetching(false); }
+  };
+
+  const refreshKktByRnm = async () => {
+    if (!id) return;
+    setKktRefreshing(true);
+    try {
+      const res = await api.patch(`/clients/${id}/ofd_kkt/`);
+      message.success(res.data.message || 'ККТ обновлены');
+      if (res.data.errors?.length) res.data.errors.forEach(e => message.warning(e, 5));
+      await loadKktData();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка при обновлении ККТ', 6);
+    } finally { setKktRefreshing(false); }
+  };
+
+  const fetchKktByRnmList = async () => {
+    if (!id) return;
+    const filled = rnmFields.filter(r => r.trim());
+    if (!filled.length) return;
+    const vals = form.getFieldsValue();
+    // Проверяем компанию
+    if (!vals.ofd_company) {
+      message.warning('Выберите компанию — она нужна для получения данных по РНМ');
+      return;
+    }
+    // Проверяем адрес
+    if (!vals.address || !vals.address.trim()) {
+      message.warning('Заполните адрес — он нужен для проверки принадлежности ККТ');
+      return;
+    }
+    // Если черновик — сохраняем компанию и адрес
+    if (isDraft) {
+      await saveDraftField('ofd_company', vals.ofd_company);
+      await saveDraftField('address', vals.address.trim());
+    }
+    setKktRefreshing(true);
+    const fetched = [];
+    const errors = [];
+    try {
+      for (const rnm of filled) {
+        try {
+          const res = await api.patch(`/clients/${id}/ofd_kkt/`, { rnm_override: rnm.trim() });
+          if (res.data.success) {
+            fetched.push(rnm.trim());
+          } else if (res.data.errors?.length) {
+            errors.push(...res.data.errors);
+          }
+        } catch (e) {
+          errors.push(e.response?.data?.error || `РНМ ${rnm}: неизвестная ошибка`);
+        }
+      }
+      await loadKktData();
+      if (fetched.length > 0) {
+        message.success(`Загружено ККТ: ${fetched.length}`);
+      }
+      if (errors.length > 0) {
+        errors.forEach(err => message.error(err, 8));
+      }
+      if (fetched.length === 0 && errors.length === 0) {
+        message.info('Нет данных для загрузки');
+      }
+    } finally { setKktRefreshing(false); }
+  };
+
+  const deleteKkt = async (kktId) => {
+    try {
+      await api.delete(`/clients/${id}/ofd_kkt/${kktId}/`);
+      message.success('ККТ удалена');
+      await loadKktData();
+    } catch { message.error('Не удалось удалить ККТ'); }
+  };
 
   const handleUpload = async ({ file }) => {
     const currentId = id;
@@ -461,7 +673,11 @@ export default function ClientFormPage() {
                     <Row gutter={16}>
                       <Col span={24}>
                         <Form.Item name="address" label="Адрес" rules={[{ required: true, message: '' }]}>
-                          <Input.TextArea rows={2} placeholder="г. Новосибирск, ул. Примерная, д. 1" />
+                          <Input.TextArea
+                            rows={2}
+                            placeholder="г. Новосибирск, ул. Примерная, д. 1"
+                            onBlur={e => saveDraftField('address', e.target.value)}
+                          />
                         </Form.Item>
                       </Col>
                       <Col span={12}>
@@ -471,6 +687,7 @@ export default function ClientFormPage() {
                             allowClear
                             showSearch
                             optionFilterProp="label"
+                            onChange={value => saveDraftField('ofd_company', value || null)}
                             options={ofdCompanies.map(c => ({
                               value: c.id,
                               label: `${c.name} (ИНН: ${c.inn})`,
@@ -837,21 +1054,124 @@ export default function ClientFormPage() {
                 key: 'kkt',
                 label: '🧾 ККТ',
                 children: (
-                  <div style={{
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    padding: '80px 0',
-                  }}>
-                    <div style={{fontSize: 72, marginBottom: 20}}>🧾</div>
-                    <div style={{
-                      fontSize: 28, fontWeight: 700, color: '#bbb',
-                      letterSpacing: 3, marginBottom: 8,
-                    }}>
-                      Coming Soon
-                    </div>
-                    <div style={{fontSize: 14, color: '#ccc'}}>
-                      Раздел ККТ находится в разработке
-                    </div>
+                  <div>
+                    {/* ===== РЕЖИМ СОЗДАНИЯ (черновик) ===== */}
+                    {isDraftMode && (
+                      <div>
+                        {/* Блок получения данных */}
+                        <Card
+                          style={{ marginBottom: 16, borderStyle: 'dashed' }}
+                          bodyStyle={{ padding: 20 }}
+                        >
+                          <div style={{ marginBottom: 16 }}>
+                            <Text strong>Получить данные ККТ по</Text>
+                          </div>
+                          <Space wrap>
+                            <Button
+                              type="primary"
+                              icon={<CloudDownloadOutlined />}
+                              onClick={fetchKktFromOfd}
+                              loading={kktFetching}
+                            >
+                              ИНН (поиск по адресу)
+                            </Button>
+                            <Button
+                              icon={<ReloadOutlined />}
+                              onClick={fetchKktByRnmList}
+                              loading={kktRefreshing}
+                              disabled={!rnmFields.some(r => r.trim())}
+                            >
+                              РНМ
+                            </Button>
+                          </Space>
+                        </Card>
+
+                        {/* Поля РНМ */}
+                        <Card
+                          title={<Text strong>Регистрационные номера ККТ (РНМ)</Text>}
+                          style={{ marginBottom: 16 }}
+                          extra={
+                            <Button
+                              type="dashed"
+                              icon={<PlusOutlined />}
+                              size="small"
+                              onClick={() => setRnmFields([...rnmFields, ''])}
+                            >
+                              Добавить РНМ
+                            </Button>
+                          }
+                        >
+                          <Space direction="vertical" style={{ width: '100%' }}>
+                            {rnmFields.map((val, idx) => (
+                              <Space key={idx} style={{ width: '100%' }}>
+                                <Input
+                                  placeholder="0001234567890123 (16 цифр)"
+                                  value={val}
+                                  maxLength={16}
+                                  style={{ width: 260 }}
+                                  onChange={e => {
+                                    const next = [...rnmFields];
+                                    next[idx] = e.target.value;
+                                    setRnmFields(next);
+                                  }}
+                                />
+                                {rnmFields.length > 1 && (
+                                  <Button
+                                    icon={<MinusCircleOutlined />}
+                                    size="small"
+                                    danger
+                                    type="text"
+                                    onClick={() => setRnmFields(rnmFields.filter((_, i) => i !== idx))}
+                                  />
+                                )}
+                              </Space>
+                            ))}
+                          </Space>
+                        </Card>
+
+                        {/* Полученные ККТ */}
+                        {kktData.length > 0 && kktData.map((kkt) => (
+                          <KktCard key={kkt.id} kkt={kkt} onDelete={() => deleteKkt(kkt.id)} />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ===== РЕЖИМ РЕДАКТИРОВАНИЯ ===== */}
+                    {isEdit && !isDraftMode && (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                          <Text strong style={{ fontSize: 16 }}>🧾 Кассовая техника</Text>
+                          <Space>
+                            <Button
+                              type="primary"
+                              icon={<CloudDownloadOutlined />}
+                              onClick={fetchKktFromOfd}
+                              loading={kktFetching}
+                            >
+                              Получить данные ККТ по ИНН
+                            </Button>
+                            <Button
+                              icon={<ReloadOutlined />}
+                              onClick={refreshKktByRnm}
+                              loading={kktRefreshing}
+                              disabled={kktData.length === 0}
+                            >
+                              Обновить по РНМ
+                            </Button>
+                          </Space>
+                        </div>
+                        {kktData.length === 0 ? (
+                          <Empty
+                            description={<span>Нет данных ККТ.<br />Нажмите «Получить данные ККТ по ИНН» для загрузки.</span>}
+                            style={{ padding: '40px 0' }}
+                          />
+                        ) : (
+                          kktData.map((kkt) => (
+                            <KktCard key={kkt.id} kkt={kkt} onDelete={() => deleteKkt(kkt.id)} />
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                 ),
               },
