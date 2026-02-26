@@ -148,8 +148,8 @@ class ClientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CanEditClient]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status', 'provider']
-    search_fields = ['company', 'address', 'phone', 'email', 'inn', 'pharmacy_code']
-    ordering_fields = ['company', 'address', 'inn', 'phone', 'email', 'status', 'created_at', 'provider__name']
+    search_fields = ['address', 'phone', 'email', 'pharmacy_code', 'ofd_company__name', 'ofd_company__inn']
+    ordering_fields = ['address', 'phone', 'email', 'status', 'created_at', 'provider__name', 'ofd_company__name', 'ofd_company__inn']
     ordering = ['-created_at']
 
     def get_queryset(self):
@@ -274,9 +274,11 @@ class ClientViewSet(viewsets.ModelViewSet):
         if search:
             from django.db.models import Q
             qs = qs.filter(
-                Q(company__icontains=search) | Q(address__icontains=search) |
+                Q(address__icontains=search) |
                 Q(phone__icontains=search) | Q(email__icontains=search) |
-                Q(inn__icontains=search) | Q(pharmacy_code__icontains=search)
+                Q(pharmacy_code__icontains=search) |
+                Q(ofd_company__name__icontains=search) |
+                Q(ofd_company__inn__icontains=search)
             )
         if status_filter:
             qs = qs.filter(status=status_filter)
@@ -728,7 +730,7 @@ class DashboardStatsView(APIView):
                 next_month = now
             cnt = clients.filter(created_at__gte=month_start, created_at__lt=next_month).count()
             month_names = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
-                           'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
+                            'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
             monthly.append({'month': month_names[month_start.month - 1], 'count': cnt})
 
         recent_activities = []
@@ -927,14 +929,10 @@ class OfdKktView(APIView):
                 'fn_number': k.fn_number,
                 'kkt_model': k.kkt_model,
                 'create_date': k.create_date.isoformat() if k.create_date else None,
-                'check_date': k.check_date.isoformat() if k.check_date else None,
-                'activation_date': k.activation_date.isoformat() if k.activation_date else None,
-                'first_document_date': k.first_document_date.isoformat() if k.first_document_date else None,
-                'contract_start_date': k.contract_start_date.isoformat() if k.contract_start_date else None,
+
                 'contract_end_date': k.contract_end_date.isoformat() if k.contract_end_date else None,
                 'fn_end_date': k.fn_end_date.isoformat() if k.fn_end_date else None,
-                'last_doc_on_kkt': k.last_doc_on_kkt.isoformat() if k.last_doc_on_kkt else None,
-                'last_doc_on_ofd': k.last_doc_on_ofd.isoformat() if k.last_doc_on_ofd else None,
+
                 'fiscal_address': k.fiscal_address,
                 'fetched_at': k.fetched_at.isoformat() if k.fetched_at else None,
             })
@@ -991,14 +989,8 @@ class OfdKktView(APIView):
             kkt_obj.fn_number = item.get('FnNumber', '')
             kkt_obj.kkt_model = item.get('KktModel', '')
             kkt_obj.create_date = parse_datetime(item.get('CreateDate'))
-            kkt_obj.check_date = parse_datetime(item.get('CheckDate'))
-            kkt_obj.activation_date = parse_datetime(item.get('ActivationDate'))
-            kkt_obj.first_document_date = parse_datetime(item.get('FirstDocumentDate'))
-            kkt_obj.contract_start_date = parse_datetime(item.get('ContractStartDate'))
             kkt_obj.contract_end_date = parse_datetime(item.get('ContractEndDate'))
             kkt_obj.fn_end_date = parse_datetime(item.get('FnEndDate'))
-            kkt_obj.last_doc_on_kkt = parse_datetime(item.get('LastDocOnKktDateTime'))
-            kkt_obj.last_doc_on_ofd = parse_datetime(item.get('LastDocOnOfdDateTimeUtc'))
             kkt_obj.fiscal_address = item.get('FiscalAddress', '')
             kkt_obj.raw_data = item
             kkt_obj.save()
@@ -1006,7 +998,7 @@ class OfdKktView(APIView):
             if created:
                 ClientActivity.objects.create(
                     client=client, user=request.user,
-                    action=f'Добавлена ККТ: РНМ {kkt_reg_id}, модель {kkt_obj.kkt_model or "—"}'
+                    action=f'Добавлена ККТ\nРНМ: {kkt_reg_id}\nСерийный номер: {kkt_obj.serial_number or "—"}\nМодель: {kkt_obj.kkt_model or "—"}'
                 )
             elif old_fn and old_fn != kkt_obj.fn_number:
                 ClientActivity.objects.create(
@@ -1036,10 +1028,11 @@ class OfdKktView(APIView):
             kkt = client.kkt_data.get(pk=kkt_id)
             rnm = kkt.kkt_reg_id
             model = kkt.kkt_model or '—'
+            serial = kkt.serial_number or '—'
             kkt.delete()
             ClientActivity.objects.create(
                 client=client, user=request.user,
-                action=f'Удалена ККТ: РНМ {rnm}, модель {model}'
+                action=f'Удалена ККТ\nРНМ: {rnm}\nСерийный номер: {serial}\nМодель: {model}'
             )
             return Response({'success': True, 'message': 'ККТ удалена'})
         except KktData.DoesNotExist:
@@ -1099,8 +1092,8 @@ class OfdKktView(APIView):
             if client_address:
                 import re as _re
                 stop_words = {'ул', 'пр', 'пом', 'д', 'кв', 'г', 'р-н', 'ул.', 'пр.', 'д.', 'пом.',
-                              'г.', 'пр-кт', 'пр-кт.', 'проспект', 'улица', 'переулок', 'помещ',
-                              'помещение', 'область', 'край', 'республика', 'город'}
+                                'г.', 'пр-кт', 'пр-кт.', 'проспект', 'улица', 'переулок', 'помещ',
+                                'помещение', 'область', 'край', 'республика', 'город'}
                 words = [w.strip('.,()-').lower() for w in _re.split(r'[\s,]+', client_address)]
                 words = [w for w in words if w and len(w) > 1 and w not in stop_words]
                 house_numbers = _re.findall(r'\b(\d+)\b', client_address)
@@ -1134,21 +1127,15 @@ class OfdKktView(APIView):
                 kkt_obj.fn_number = item.get('FnNumber', '')
                 kkt_obj.kkt_model = item.get('KktModel', '')
                 kkt_obj.create_date = parse_datetime(item.get('CreateDate'))
-                kkt_obj.check_date = parse_datetime(item.get('CheckDate'))
-                kkt_obj.activation_date = parse_datetime(item.get('ActivationDate'))
-                kkt_obj.first_document_date = parse_datetime(item.get('FirstDocumentDate'))
-                kkt_obj.contract_start_date = parse_datetime(item.get('ContractStartDate'))
                 kkt_obj.contract_end_date = parse_datetime(item.get('ContractEndDate'))
                 kkt_obj.fn_end_date = parse_datetime(item.get('FnEndDate'))
-                kkt_obj.last_doc_on_kkt = parse_datetime(item.get('LastDocOnKktDateTime'))
-                kkt_obj.last_doc_on_ofd = parse_datetime(item.get('LastDocOnOfdDateTimeUtc'))
                 kkt_obj.fiscal_address = item.get('FiscalAddress', '')
                 kkt_obj.raw_data = item
                 kkt_obj.save()
                 if created:
                     ClientActivity.objects.create(
                         client=client, user=request.user,
-                        action=f'Добавлена ККТ: РНМ {rnm_override}, модель {kkt_obj.kkt_model or "—"}'
+                        action=f'Добавлена ККТ\nРНМ: {rnm_override}\nСерийный номер: {kkt_obj.serial_number or "—"}\nМодель: {kkt_obj.kkt_model or "—"}'
                     )
                 elif old_fn and old_fn != kkt_obj.fn_number:
                     ClientActivity.objects.create(
@@ -1203,14 +1190,8 @@ class OfdKktView(APIView):
                 kkt_obj.fn_number = item.get('FnNumber', '')
                 kkt_obj.kkt_model = item.get('KktModel', '')
                 kkt_obj.create_date = parse_datetime(item.get('CreateDate'))
-                kkt_obj.check_date = parse_datetime(item.get('CheckDate'))
-                kkt_obj.activation_date = parse_datetime(item.get('ActivationDate'))
-                kkt_obj.first_document_date = parse_datetime(item.get('FirstDocumentDate'))
-                kkt_obj.contract_start_date = parse_datetime(item.get('ContractStartDate'))
                 kkt_obj.contract_end_date = parse_datetime(item.get('ContractEndDate'))
                 kkt_obj.fn_end_date = parse_datetime(item.get('FnEndDate'))
-                kkt_obj.last_doc_on_kkt = parse_datetime(item.get('LastDocOnKktDateTime'))
-                kkt_obj.last_doc_on_ofd = parse_datetime(item.get('LastDocOnOfdDateTimeUtc'))
                 kkt_obj.fiscal_address = item.get('FiscalAddress', '')
                 kkt_obj.raw_data = item
                 kkt_obj.save()

@@ -204,7 +204,7 @@ export default function ClientsPage() {
     setLoading(true);
     const activeSortField = sf !== undefined ? sf : sortField;
     const activeSortOrder = so !== undefined ? so : sortOrder;
-    const fieldMap = { provider_name: 'provider__name' };
+    const fieldMap = { provider_name: 'provider__name', company: 'ofd_company__name', inn: 'ofd_company__inn' };
     const backendField = activeSortField ? (fieldMap[activeSortField] || activeSortField) : '';
     const ordering = backendField ? (activeSortOrder === 'descend' ? `-${backendField}` : backendField) : undefined;
     try {
@@ -292,9 +292,9 @@ export default function ClientsPage() {
 
   const show = (key) => visibleColumns.includes(key);
 
+  // Строим объединённую колонку провайдеров (П1 и П2 в одной ячейке, двумя строками)
   // Строим колонку провайдера динамически из выбранных подполей
   const buildProviderCol = (num) => {
-    const prefix = `p${num}_`;
     const fieldMap = {
       [`p${num}_name`]:     { label: 'Название',      getter: r => num === 1 ? r.provider_name    : r.provider2_name },
       [`p${num}_type`]:     { label: 'Тип',           getter: r => formatConnType(num === 1 ? r.provider_type    : r.provider2_type) },

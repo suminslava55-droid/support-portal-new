@@ -90,15 +90,8 @@ function PingStatus({ status, ip }) {
 }
 
 function ActivityIcon({ action }) {
-  if (action.includes('создана')) return '🆕';
-  if (action.includes('заметка')) return '💬';
-  if (action.includes('Провайдер')) return '🌐';
-  if (action.includes('Статус')) return '🔄';
-  if (action.includes('Телефон') || action.includes('Email')) return '📞';
-  if (action.includes('IP') || action.includes('Подсеть') || action.includes('Микротик')) return '🖧';
-  if (action.includes('договора') || action.includes('счёт')) return '📄';
-  if (action.includes('ICCID')) return '📱';
-  if (action.includes('Код аптеки')) return '🏥';
+  if (action.includes('Удалена ККТ')) return '🗑️';
+  if (action.includes('Добавлена ККТ')) return '🖨️';
   return '✏️';
 }
 
@@ -640,30 +633,12 @@ export default function ClientDetailPage() {
                                 </Tag>
                               ) : '—'}
                             </Descriptions.Item>
-                            <Descriptions.Item label="Дата активации">
-                              {kkt.activation_date ? dayjs(kkt.activation_date).format('DD.MM.YYYY') : '—'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Начало договора ОФД">
-                              {kkt.contract_start_date ? dayjs(kkt.contract_start_date).format('DD.MM.YYYY') : '—'}
-                            </Descriptions.Item>
                             <Descriptions.Item label="Конец договора ОФД">
                               {kkt.contract_end_date ? (
                                 <Tag color={dayjs(kkt.contract_end_date).isBefore(dayjs().add(30, 'day')) ? 'red' : 'green'}>
                                   {dayjs(kkt.contract_end_date).format('DD.MM.YYYY')}
                                 </Tag>
                               ) : '—'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Дата проверки">
-                              {kkt.check_date ? dayjs(kkt.check_date).format('DD.MM.YYYY HH:mm') : '—'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Последний чек на ККТ">
-                              {kkt.last_doc_on_kkt ? dayjs(kkt.last_doc_on_kkt).format('DD.MM.YYYY HH:mm') : '—'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Последний чек в ОФД">
-                              {kkt.last_doc_on_ofd ? dayjs(kkt.last_doc_on_ofd).format('DD.MM.YYYY HH:mm') : '—'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Первый документ">
-                              {kkt.first_document_date ? dayjs(kkt.first_document_date).format('DD.MM.YYYY') : '—'}
                             </Descriptions.Item>
                             {kkt.fiscal_address && (
                               <Descriptions.Item label="Адрес установки" span={3}>
