@@ -1,4 +1,7 @@
 import subprocess
+import json
+import os
+from datetime import datetime
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -6,11 +9,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings, DutySchedule, CustomHoliday
+from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings, DutySchedule, CustomHoliday, KktData, OfdCompany, OfdCompany
 from .serializers import (
     ClientListSerializer, ClientDetailSerializer, ClientWriteSerializer,
     ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer,
-    DutyScheduleSerializer, CustomHolidaySerializer,
+    DutyScheduleSerializer, CustomHolidaySerializer, OfdCompanySerializer, OfdCompanyWriteSerializer,
 )
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 
@@ -116,7 +119,6 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Client.objects.select_related('created_by', 'provider').filter(is_draft=False)
-        # Мультивыбор провайдеров
         providers_param = self.request.query_params.get('provider', '')
         if providers_param:
             provider_ids = [p.strip() for p in providers_param.split(',') if p.strip().isdigit()]
@@ -194,7 +196,6 @@ class ClientViewSet(viewsets.ModelViewSet):
         from django.http import HttpResponse
         from .models import SystemSettings
 
-        # Параметры
         if request.method == 'POST':
             params = request.data
         else:
@@ -202,16 +203,14 @@ class ClientViewSet(viewsets.ModelViewSet):
 
         search = params.get('search', '').strip()
         status_filter = params.get('status', '').strip()
-        send_via = params.get('send_via', 'file')  # 'file' или 'email'
+        send_via = params.get('send_via', 'file')
         to_email = params.get('to_email', '').strip()
-        # fields — список выбранных групп: 'basic', 'network', 'provider1', 'provider2'
         fields_raw = params.get('fields', '')
         if isinstance(fields_raw, list):
             selected_fields = set(fields_raw)
         else:
             selected_fields = set(f.strip() for f in fields_raw.split(',') if f.strip()) if fields_raw else None
 
-        # Если ничего не выбрано — выбираем всё
         ALL_GROUPS = {'basic', 'network', 'provider1', 'provider2'}
         if not selected_fields:
             selected_fields = ALL_GROUPS
@@ -234,7 +233,6 @@ class ClientViewSet(viewsets.ModelViewSet):
         }
         STATUS_LABELS = {'active': 'Активен', 'inactive': 'Неактивен'}
 
-        # Все возможные поля (ключ -> заголовок, ширина, getter)
         ALL_FIELDS = {
             'address':       ('Адрес',       35, lambda c: c.address or ''),
             'company':       ('Компания',    25, lambda c: c.company or ''),
@@ -270,7 +268,6 @@ class ClientViewSet(viewsets.ModelViewSet):
             ('Оборудование провайдера 2', 12, lambda c: 'Присутствует' if c.provider_equipment2 else 'Отсутствует'),
         ]
 
-        # Порядок следования полей в файле
         FIELD_ORDER = [
             'address', 'company', 'inn', 'phone', 'email',
             'pharmacy_code', 'iccid', 'status',
@@ -286,7 +283,6 @@ class ClientViewSet(viewsets.ModelViewSet):
         if 'provider2' in selected_fields:
             headers += PROVIDER2_FIELDS
 
-        # Строим книгу
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = 'Клиенты'
@@ -322,13 +318,11 @@ class ClientViewSet(viewsets.ModelViewSet):
 
         filename = f'clients_{__import__("datetime").date.today()}.xlsx'
 
-        # Сохраняем в буфер
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
         excel_bytes = buf.read()
 
-        # Отправка на email
         if send_via == 'email':
             if not to_email:
                 return Response({'error': 'Не указан email для отправки'}, status=400)
@@ -348,7 +342,11 @@ class ClientViewSet(viewsets.ModelViewSet):
                 msg['From']    = from_addr
                 msg['To']      = to_email
                 msg.attach(MIMEText(
-                    f'<html><body style="font-family:Arial,sans-serif;padding:20px;">'                    f'<h2 style="color:#1677ff;">Выгрузка клиентов</h2>'                    f'<p>Во вложении файл Excel с выгрузкой клиентов на {__import__("datetime").date.today()}.</p>'                    f'<p style="color:#999;font-size:12px;">Support Portal</p>'                    f'</body></html>', 'html', 'utf-8'
+                    f'<html><body style="font-family:Arial,sans-serif;padding:20px;">'
+                    f'<h2 style="color:#1677ff;">Выгрузка клиентов</h2>'
+                    f'<p>Во вложении файл Excel с выгрузкой клиентов на {__import__("datetime").date.today()}.</p>'
+                    f'<p style="color:#999;font-size:12px;">Support Portal</p>'
+                    f'</body></html>', 'html', 'utf-8'
                 ))
                 part = MIMEBase('application', 'vnd.openxmlformats-officedocument.spreadsheetml.sheet')
                 part.set_payload(excel_bytes)
@@ -377,7 +375,6 @@ class ClientViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 return Response({'error': f'Ошибка отправки: {str(e)}'}, status=400)
 
-        # Скачать файл
         response = HttpResponse(
             excel_bytes,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -462,8 +459,8 @@ class ClientViewSet(viewsets.ModelViewSet):
     def transfer_modem(self, request, pk=None):
         from_client = self.get_object()
         to_client_id = request.data.get('to_client_id')
-        from_slot = str(request.data.get('from_slot', '1'))  # '1' или '2'
-        to_slot = str(request.data.get('to_slot', '1'))      # '1' или '2'
+        from_slot = str(request.data.get('from_slot', '1'))
+        to_slot = str(request.data.get('to_slot', '1'))
 
         if not to_client_id:
             return Response({'error': 'Не указан клиент для передачи'}, status=400)
@@ -476,7 +473,6 @@ class ClientViewSet(viewsets.ModelViewSet):
         if from_client.pk == to_client.pk:
             return Response({'error': 'Нельзя передать самому себе'}, status=400)
 
-        # Суффиксы полей в зависимости от слота
         from_sfx = '' if from_slot == '1' else '2'
         to_sfx   = '' if to_slot   == '1' else '2'
 
@@ -486,17 +482,14 @@ class ClientViewSet(viewsets.ModelViewSet):
             'provider_settings', 'provider_equipment',
         ]
 
-        # Читаем данные из исходного слота
         from_data = {}
         for f in PROVIDER_FIELDS:
             from_data[f] = getattr(from_client, f + from_sfx, None)
 
-        # Записываем в целевой слот получателя
         for f in PROVIDER_FIELDS:
             setattr(to_client, f + to_sfx, from_data[f])
         to_client.save()
 
-        # Готовим читаемые значения для логов
         prov_name = (from_data['provider'].name if from_data['provider'] else '—')
         from_name = from_client.company or from_client.address or f'Клиент #{from_client.pk}'
         to_name   = to_client.company   or to_client.address   or f'Клиент #{to_client.pk}'
@@ -518,7 +511,6 @@ class ClientViewSet(viewsets.ModelViewSet):
             f'Оборудование: {equip_label}'
         )
 
-        # Лог у получателя — что получили и от кого
         ClientActivity.objects.create(
             client=to_client, user=request.user,
             action=(
@@ -526,7 +518,6 @@ class ClientViewSet(viewsets.ModelViewSet):
             )
         )
 
-        # Очищаем исходный слот отправителя
         EMPTY_VALUES = {
             'provider': None, 'personal_account': '', 'contract_number': '', 'tariff': '',
             'connection_type': '', 'modem_number': '', 'modem_iccid': '',
@@ -536,7 +527,6 @@ class ClientViewSet(viewsets.ModelViewSet):
             setattr(from_client, f + from_sfx, empty)
         from_client.save()
 
-        # Лог у отправителя — что передали и кому
         ClientActivity.objects.create(
             client=from_client, user=request.user,
             action=(
@@ -611,6 +601,16 @@ class FetchExternalIPView(APIView):
             return Response({'error': f'Ошибка подключения к {mikrotik_ip}: {str(e)}'}, status=400)
 
 
+class OfdCompanyViewSet(viewsets.ModelViewSet):
+    queryset = OfdCompany.objects.all()
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return OfdCompanyWriteSerializer
+        return OfdCompanySerializer
+
+
 class ProviderViewSet(viewsets.ModelViewSet):
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
@@ -636,7 +636,6 @@ class DashboardStatsView(APIView):
         new_month = clients.filter(created_at__gte=month_ago).count()
         new_week = clients.filter(created_at__gte=week_ago).count()
 
-        # По провайдерам
         by_provider = list(
             clients.filter(provider__isnull=False)
             .values('provider__name')
@@ -648,7 +647,6 @@ class DashboardStatsView(APIView):
         if no_provider > 0:
             by_provider_data.append({'name': 'Без провайдера', 'value': no_provider})
 
-        # По типу подключения
         conn_labels = {
             'fiber': 'Оптоволокно', 'dsl': 'DSL', 'cable': 'Кабель',
             'wireless': 'Беспроводное', 'modem': 'Модем', 'mrnet': 'MR-Net',
@@ -665,7 +663,6 @@ class DashboardStatsView(APIView):
             for r in by_connection
         ]
 
-        # Новые клиенты по месяцам (последние 6 месяцев)
         monthly = []
         for i in range(5, -1, -1):
             d = now - timedelta(days=30 * i)
@@ -679,7 +676,6 @@ class DashboardStatsView(APIView):
                            'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
             monthly.append({'month': month_names[month_start.month - 1], 'count': cnt})
 
-        # Последние активности (глобальные)
         recent_activities = []
         for a in ClientActivity.objects.select_related('user', 'client').order_by('-created_at')[:10]:
             recent_activities.append({
@@ -718,7 +714,6 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def clear_month(self, request):
-        from apps.accounts.permissions import IsAdmin
         if not (request.user.is_superuser or (request.user.role and request.user.role.name == 'admin')):
             return Response({'error': 'Недостаточно прав'}, status=403)
         year = request.data.get('year')
@@ -727,12 +722,6 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
             return Response({'error': 'year и month обязательны'}, status=400)
         deleted, _ = DutySchedule.objects.filter(date__year=year, date__month=month).delete()
         return Response({'deleted': deleted})
-        year = request.query_params.get('year')
-        month = request.query_params.get('month')
-        qs = CustomHoliday.objects.all()
-        if year and month:
-            qs = qs.filter(date__year=year, date__month=month)
-        return Response(CustomHolidaySerializer(qs, many=True).data)
 
     @action(detail=False, methods=['get'])
     def holidays(self, request):
@@ -751,7 +740,6 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
         if not date:
             return Response({'error': 'date обязателен'}, status=400)
         if is_holiday is None:
-            # Удалить кастомный день
             CustomHoliday.objects.filter(date=date).delete()
             return Response({'status': 'deleted'})
         obj, _ = CustomHoliday.objects.update_or_create(
@@ -770,7 +758,6 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
             return Response({'error': 'user_id и date обязательны'}, status=400)
 
         if duty_type is None or duty_type == '':
-            # Удаляем запись если тип не выбран
             DutySchedule.objects.filter(user_id=user_id, date=date).delete()
             return Response({'status': 'deleted'})
 
@@ -813,3 +800,223 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
             report_data.append(row)
 
         return Response({'report': report_data, 'labels': labels})
+
+
+# ===================== Компании ОФД =====================
+
+
+# ===================== ОФД / ККТ =====================
+
+def parse_datetime(value):
+    """Парсит дату из строки ОФД (ISO 8601 без timezone)"""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+def ofd_request(inn, token, search=''):
+    """
+    Один вызов скрипта — получает все ККТ по ИНН, фильтрует по адресу,
+    возвращает детали по каждому РНМ. Если search — 16 цифр, делает прямой запрос по РНМ.
+    """
+    script = '/usr/local/bin/ofd_fetch.sh'
+    try:
+        args = [script, inn, token, search]
+        result = subprocess.run(args, capture_output=True, text=True, timeout=300)
+        if not result.stdout.strip():
+            stderr = result.stderr.strip()
+            raise Exception(f'Пустой ответ от скрипта. stderr: {stderr}')
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise Exception(f'Некорректный JSON: {result.stdout[:300]}')
+    except subprocess.TimeoutExpired:
+        raise Exception('Превышено время ожидания (300 сек)')
+    except FileNotFoundError:
+        raise Exception(f'Скрипт {script} не найден в контейнере')
+
+
+class OfdKktView(APIView):
+    """
+    GET   /api/clients/{id}/ofd_kkt/  — получить сохранённые ККТ из БД
+    POST  /api/clients/{id}/ofd_kkt/  — запросить данные с ОФД (полный поиск по ИНН+адресу)
+    PATCH /api/clients/{id}/ofd_kkt/  — быстрое обновление по сохранённым РНМ
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk=None):
+        try:
+            client = Client.objects.get(pk=pk)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=404)
+
+        kkts = client.kkt_data.all()
+        data = []
+        for k in kkts:
+            data.append({
+                'id': k.id,
+                'kkt_reg_id': k.kkt_reg_id,
+                'serial_number': k.serial_number,
+                'fn_number': k.fn_number,
+                'kkt_model': k.kkt_model,
+                'create_date': k.create_date.isoformat() if k.create_date else None,
+                'check_date': k.check_date.isoformat() if k.check_date else None,
+                'activation_date': k.activation_date.isoformat() if k.activation_date else None,
+                'first_document_date': k.first_document_date.isoformat() if k.first_document_date else None,
+                'contract_start_date': k.contract_start_date.isoformat() if k.contract_start_date else None,
+                'contract_end_date': k.contract_end_date.isoformat() if k.contract_end_date else None,
+                'fn_end_date': k.fn_end_date.isoformat() if k.fn_end_date else None,
+                'last_doc_on_kkt': k.last_doc_on_kkt.isoformat() if k.last_doc_on_kkt else None,
+                'last_doc_on_ofd': k.last_doc_on_ofd.isoformat() if k.last_doc_on_ofd else None,
+                'fiscal_address': k.fiscal_address,
+                'fetched_at': k.fetched_at.isoformat() if k.fetched_at else None,
+            })
+        return Response(data)
+
+    def post(self, request, pk=None):
+        """Полный поиск: по ИНН компании + фильтрация по адресу аптеки"""
+        try:
+            client = Client.objects.get(pk=pk)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=404)
+
+        if not client.ofd_company:
+            return Response({'error': 'У клиента не выбрана компания. Укажите компанию в карточке клиента.'}, status=400)
+
+        address = (client.address or '').strip()
+        if not address:
+            return Response({'error': 'У клиента не заполнен адрес'}, status=400)
+
+        inn = client.ofd_company.inn.strip()
+        token = client.ofd_company.ofd_token.strip()
+
+        if not inn:
+            return Response({'error': f'У компании «{client.ofd_company.name}» не заполнен ИНН'}, status=400)
+        if not token:
+            return Response({'error': f'У компании «{client.ofd_company.name}» не задан токен ОФД. Откройте раздел «Компании» и добавьте токен.'}, status=400)
+
+        # Один вызов скрипта — он сам фильтрует по адресу и получает детали
+        try:
+            import time
+            t_start = time.time()
+            result_data = ofd_request(inn, token, address)
+            elapsed = round(time.time() - t_start, 1)
+        except Exception as e:
+            return Response({'error': f'Ошибка запроса к ОФД: {str(e)}'}, status=502)
+
+        if result_data.get('Status') != 'Success':
+            return Response({'error': f'ОФД вернул ошибку: {result_data}'}, status=502)
+
+        all_items = result_data.get('Data', [])
+        if not all_items:
+            return Response({'error': 'ОФД не вернул ни одной ККТ для данного ИНН и адреса'}, status=404)
+
+        fetched = []
+        errors = []
+        for item in all_items:
+            kkt_obj, _ = KktData.objects.get_or_create(
+                client=client,
+                kkt_reg_id=item.get('KktRegId', ''),
+            )
+            kkt_obj.serial_number = item.get('SerialNumber', '')
+            kkt_obj.fn_number = item.get('FnNumber', '')
+            kkt_obj.kkt_model = item.get('KktModel', '')
+            kkt_obj.create_date = parse_datetime(item.get('CreateDate'))
+            kkt_obj.check_date = parse_datetime(item.get('CheckDate'))
+            kkt_obj.activation_date = parse_datetime(item.get('ActivationDate'))
+            kkt_obj.first_document_date = parse_datetime(item.get('FirstDocumentDate'))
+            kkt_obj.contract_start_date = parse_datetime(item.get('ContractStartDate'))
+            kkt_obj.contract_end_date = parse_datetime(item.get('ContractEndDate'))
+            kkt_obj.fn_end_date = parse_datetime(item.get('FnEndDate'))
+            kkt_obj.last_doc_on_kkt = parse_datetime(item.get('LastDocOnKktDateTime'))
+            kkt_obj.last_doc_on_ofd = parse_datetime(item.get('LastDocOnOfdDateTimeUtc'))
+            kkt_obj.fiscal_address = item.get('FiscalAddress', '')
+            kkt_obj.raw_data = item
+            kkt_obj.save()
+            fetched.append(kkt_obj.kkt_reg_id)
+
+        return Response({
+            'success': True,
+            'fetched': fetched,
+            'errors': errors,
+            'elapsed': elapsed,
+            'message': f'Получено ККТ: {len(fetched)}, время: {elapsed} сек' + (f', ошибок: {len(errors)}' if errors else ''),
+        })
+
+    def patch(self, request, pk=None):
+        """Быстрое обновление по сохранённым РНМ — без перебора всего массива по ИНН"""
+        try:
+            client = Client.objects.get(pk=pk)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=404)
+
+        if not client.ofd_company:
+            return Response({'error': 'У клиента не выбрана компания'}, status=400)
+
+        inn = client.ofd_company.inn.strip()
+        token = client.ofd_company.ofd_token.strip()
+
+        if not inn:
+            return Response({'error': f'У компании «{client.ofd_company.name}» не заполнен ИНН'}, status=400)
+        if not token:
+            return Response({'error': f'У компании «{client.ofd_company.name}» не задан токен ОФД'}, status=400)
+
+        kkts = client.kkt_data.all()
+        if not kkts:
+            return Response({'error': 'Нет сохранённых ККТ. Сначала нажмите «Получить данные с ОФД»'}, status=404)
+
+        import time
+        t_start = time.time()
+        script = '/usr/local/bin/ofd_fetch.sh'
+        fetched = []
+        errors = []
+
+        for kkt_obj in kkts:
+            rnm = kkt_obj.kkt_reg_id
+            if not rnm:
+                continue
+            try:
+                result = subprocess.run(
+                    [script, inn, token, rnm],
+                    capture_output=True, text=True, timeout=60
+                )
+                if not result.stdout.strip():
+                    errors.append(f'РНМ {rnm}: пустой ответ')
+                    continue
+                detail_data = json.loads(result.stdout)
+            except Exception as e:
+                errors.append(f'РНМ {rnm}: {str(e)}')
+                continue
+
+            if detail_data.get('Status') != 'Success':
+                errors.append(f'РНМ {rnm}: ОФД вернул ошибку')
+                continue
+
+            for item in detail_data.get('Data', []):
+                kkt_obj.serial_number = item.get('SerialNumber', '')
+                kkt_obj.fn_number = item.get('FnNumber', '')
+                kkt_obj.kkt_model = item.get('KktModel', '')
+                kkt_obj.create_date = parse_datetime(item.get('CreateDate'))
+                kkt_obj.check_date = parse_datetime(item.get('CheckDate'))
+                kkt_obj.activation_date = parse_datetime(item.get('ActivationDate'))
+                kkt_obj.first_document_date = parse_datetime(item.get('FirstDocumentDate'))
+                kkt_obj.contract_start_date = parse_datetime(item.get('ContractStartDate'))
+                kkt_obj.contract_end_date = parse_datetime(item.get('ContractEndDate'))
+                kkt_obj.fn_end_date = parse_datetime(item.get('FnEndDate'))
+                kkt_obj.last_doc_on_kkt = parse_datetime(item.get('LastDocOnKktDateTime'))
+                kkt_obj.last_doc_on_ofd = parse_datetime(item.get('LastDocOnOfdDateTimeUtc'))
+                kkt_obj.fiscal_address = item.get('FiscalAddress', '')
+                kkt_obj.raw_data = item
+                kkt_obj.save()
+                fetched.append(rnm)
+
+        elapsed = round(time.time() - t_start, 1)
+        return Response({
+            'success': True,
+            'fetched': fetched,
+            'errors': errors,
+            'elapsed': elapsed,
+            'message': f'Обновлено ККТ: {len(fetched)}, время: {elapsed} сек' + (f', ошибок: {len(errors)}' if errors else ''),
+        })

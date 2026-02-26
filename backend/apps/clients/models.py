@@ -40,6 +40,57 @@ class Provider(models.Model):
         return self.name
 
 
+def encrypt_value(value):
+    if not value:
+        return ''
+    from cryptography.fernet import Fernet
+    from django.conf import settings as django_settings
+    key = getattr(django_settings, 'ENCRYPTION_KEY', '').strip()
+    if not key:
+        raise ValueError('ENCRYPTION_KEY не задан в .env файле сервера')
+    f = Fernet(key.encode())
+    return f.encrypt(value.encode()).decode()
+
+
+def decrypt_value(value):
+    if not value:
+        return ''
+    try:
+        from cryptography.fernet import Fernet
+        from django.conf import settings as django_settings
+        key = getattr(django_settings, 'ENCRYPTION_KEY', '').strip()
+        if not key:
+            return ''
+        f = Fernet(key.encode())
+        return f.decrypt(value.encode()).decode()
+    except Exception:
+        return ''
+
+
+class OfdCompany(models.Model):
+    """Компания с ИНН и токеном ОФД"""
+    name = models.CharField('Название компании', max_length=200)
+    inn = models.CharField('ИНН', max_length=12)
+    ofd_token_encrypted = models.TextField('Токен ОФД (зашифрован)', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Компания ОФД'
+        verbose_name_plural = 'Компании ОФД'
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.name} (ИНН: {self.inn})'
+
+    @property
+    def ofd_token(self):
+        return decrypt_value(self.ofd_token_encrypted)
+
+    def set_ofd_token(self, value):
+        self.ofd_token_encrypted = encrypt_value(value)
+
+
 class Client(models.Model):
     STATUS_ACTIVE = 'active'
     STATUS_INACTIVE = 'inactive'
@@ -51,12 +102,14 @@ class Client(models.Model):
     last_name = models.CharField('Фамилия', max_length=100, blank=True, default='')
     first_name = models.CharField('Имя', max_length=100, blank=True, default='')
     middle_name = models.CharField('Отчество', max_length=100, blank=True, default='')
-    inn = models.CharField('ИНН', max_length=12, blank=True)
+    ofd_company = models.ForeignKey(
+        OfdCompany, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='clients', verbose_name='Компания'
+    )
     phone = models.CharField('Телефон', max_length=30, blank=True)
     iccid = models.CharField('ICCID', max_length=30, blank=True)
     email = models.EmailField('Email', blank=True)
     pharmacy_code = models.CharField('Код аптеки', max_length=50, blank=True)
-    company = models.CharField('Компания / организация', max_length=200, blank=True)
     address = models.TextField('Адрес')
     status = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
     provider = models.ForeignKey(
@@ -116,11 +169,19 @@ class Client(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return self.company or self.address or f'Клиент #{self.id}'
+        return self.ofd_company.name if self.ofd_company else (self.address or f'Клиент #{self.id}')
 
     @property
     def display_name(self):
-        return self.company or self.address or f'Клиент #{self.id}'
+        return self.ofd_company.name if self.ofd_company else (self.address or f'Клиент #{self.id}')
+
+    @property
+    def inn(self):
+        return self.ofd_company.inn if self.ofd_company else ''
+
+    @property
+    def company(self):
+        return self.ofd_company.name if self.ofd_company else ''
 
     @property
     def mikrotik_ip(self):
@@ -206,33 +267,6 @@ class ClientFile(models.Model):
         return self.name
 
 
-def encrypt_value(value):
-    if not value:
-        return ''
-    from cryptography.fernet import Fernet
-    from django.conf import settings as django_settings
-    key = getattr(django_settings, 'ENCRYPTION_KEY', '').strip()
-    if not key:
-        raise ValueError('ENCRYPTION_KEY не задан в .env файле сервера')
-    f = Fernet(key.encode())
-    return f.encrypt(value.encode()).decode()
-
-
-def decrypt_value(value):
-    if not value:
-        return ''
-    try:
-        from cryptography.fernet import Fernet
-        from django.conf import settings as django_settings
-        key = getattr(django_settings, 'ENCRYPTION_KEY', '').strip()
-        if not key:
-            return ''
-        f = Fernet(key.encode())
-        return f.decrypt(value.encode()).decode()
-    except Exception:
-        return ''
-
-
 class SystemSettings(models.Model):
     ssh_user = models.CharField('SSH пользователь', max_length=100, blank=True)
     ssh_password_encrypted = models.TextField('SSH пароль (зашифрован)', blank=True)
@@ -305,7 +339,7 @@ class DutySchedule(models.Model):
 class CustomHoliday(models.Model):
     """Кастомные выходные/рабочие дни (переносы, праздники)"""
     date = models.DateField('Дата', unique=True)
-    is_holiday = models.BooleanField('Выходной', default=True)  # True=выходной, False=рабочий
+    is_holiday = models.BooleanField('Выходной', default=True)
     note = models.CharField('Примечание', max_length=200, blank=True)
     created_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True,
                                     verbose_name='Создал')
@@ -318,3 +352,32 @@ class CustomHoliday(models.Model):
 
     def __str__(self):
         return f'{self.date} — {"Выходной" if self.is_holiday else "Рабочий"}'
+
+
+class KktData(models.Model):
+    """Данные ККТ, полученные с ОФД"""
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='kkt_data', verbose_name='Клиент')
+    kkt_reg_id = models.CharField('РНМ (рег. номер ККТ)', max_length=50, blank=True)
+    serial_number = models.CharField('Серийный номер ККТ', max_length=50, blank=True)
+    fn_number = models.CharField('Номер ФН', max_length=50, blank=True)
+    kkt_model = models.CharField('Модель ККТ', max_length=100, blank=True)
+    create_date = models.DateTimeField('Дата создания', null=True, blank=True)
+    check_date = models.DateTimeField('Дата проверки', null=True, blank=True)
+    activation_date = models.DateTimeField('Дата активации', null=True, blank=True)
+    first_document_date = models.DateTimeField('Дата первого документа', null=True, blank=True)
+    contract_start_date = models.DateTimeField('Начало договора ОФД', null=True, blank=True)
+    contract_end_date = models.DateTimeField('Конец договора ОФД', null=True, blank=True)
+    fn_end_date = models.DateTimeField('Конец ФН', null=True, blank=True)
+    last_doc_on_kkt = models.DateTimeField('Последний документ на ККТ', null=True, blank=True)
+    last_doc_on_ofd = models.DateTimeField('Последний документ в ОФД', null=True, blank=True)
+    fiscal_address = models.TextField('Адрес установки', blank=True)
+    raw_data = models.JSONField('Исходные данные ОФД', default=dict, blank=True)
+    fetched_at = models.DateTimeField('Дата обновления', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Данные ККТ'
+        verbose_name_plural = 'Данные ККТ'
+        ordering = ['kkt_reg_id']
+
+    def __str__(self):
+        return f'ККТ {self.kkt_reg_id} — {self.client}'

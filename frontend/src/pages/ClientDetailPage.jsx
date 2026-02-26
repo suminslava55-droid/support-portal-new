@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Typography, Tag, Button, Timeline, Input, Space,
-  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Upload, List, Image, Badge, Tabs
+  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Upload, List, Image, Badge, Tabs, Divider
 } from 'antd';
 import {
   EditOutlined, ArrowLeftOutlined, DeleteOutlined,
   SendOutlined, ClockCircleOutlined, WifiOutlined, CopyOutlined, GlobalOutlined,
   CheckCircleFilled, CloseCircleFilled, SyncOutlined, MinusCircleOutlined,
-  UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined
+  UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined,
+  CloudDownloadOutlined, ReloadOutlined
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -117,6 +118,10 @@ export default function ClientDetailPage() {
   const [activeTab, setActiveTab] = useState('info');
   const permissions = useAuthStore((s) => s.permissions);
 
+  // ККТ
+  const [kktData, setKktData] = useState([]);
+  const [kktFetching, setKktFetching] = useState(false);
+
   const fetchClient = useCallback(async () => {
     try {
       const [clientRes, notesRes, filesRes] = await Promise.all([
@@ -133,6 +138,52 @@ export default function ClientDetailPage() {
       setLoading(false);
     }
   }, [id]);
+
+  const loadKktData = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await api.get(`/clients/${id}/ofd_kkt/`);
+      setKktData(res.data);
+    } catch {
+      setKktData([]);
+    }
+  }, [id]);
+
+  const [kktRefreshing, setKktRefreshing] = useState(false);
+
+  const fetchKktFromOfd = async () => {
+    setKktFetching(true);
+    try {
+      const res = await api.post(`/clients/${id}/ofd_kkt/`);
+      message.success(res.data.message || 'Данные ККТ получены с ОФД');
+      if (res.data.errors && res.data.errors.length > 0) {
+        res.data.errors.forEach(e => message.warning(e, 5));
+      }
+      await loadKktData();
+    } catch (e) {
+      const errMsg = e.response?.data?.error || 'Ошибка при получении данных с ОФД';
+      message.error(errMsg, 6);
+    } finally {
+      setKktFetching(false);
+    }
+  };
+
+  const refreshKktByRnm = async () => {
+    setKktRefreshing(true);
+    try {
+      const res = await api.patch(`/clients/${id}/ofd_kkt/`);
+      message.success(res.data.message || 'ККТ обновлены');
+      if (res.data.errors && res.data.errors.length > 0) {
+        res.data.errors.forEach(e => message.warning(e, 5));
+      }
+      await loadKktData();
+    } catch (e) {
+      const errMsg = e.response?.data?.error || 'Ошибка при обновлении ККТ';
+      message.error(errMsg, 6);
+    } finally {
+      setKktRefreshing(false);
+    }
+  };
 
   const checkPing = useCallback(async () => {
     setPinging(true);
@@ -153,6 +204,7 @@ export default function ClientDetailPage() {
 
   useEffect(() => {
     fetchClient();
+    loadKktData();
   }, [fetchClient]);
 
   // Запускаем пинг автоматически после загрузки карточки
@@ -495,25 +547,121 @@ export default function ClientDetailPage() {
                   </>
                 ),
               },
-                            {
+              {
                 key: 'kkt',
                 label: '🧾 ККТ',
                 children: (
-                  <div style={{
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    padding: '80px 0',
-                  }}>
-                    <div style={{fontSize: 72, marginBottom: 20}}>🧾</div>
-                    <div style={{
-                      fontSize: 28, fontWeight: 700, color: '#bbb',
-                      letterSpacing: 3, marginBottom: 8,
-                    }}>
-                      Coming Soon
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <Text strong style={{ fontSize: 16 }}>🧾 Кассовая техника</Text>
+                      <Space>
+                        {kktData.length > 0 && (
+                          <Button
+                            icon={<ReloadOutlined />}
+                            onClick={refreshKktByRnm}
+                            loading={kktRefreshing}
+                          >
+                            Обновить по РНМ
+                          </Button>
+                        )}
+                        <Button
+                          type="primary"
+                          icon={<CloudDownloadOutlined />}
+                          onClick={fetchKktFromOfd}
+                          loading={kktFetching}
+                        >
+                          Получить данные с ОФД
+                        </Button>
+                      </Space>
                     </div>
-                    <div style={{fontSize: 14, color: '#ccc'}}>
-                      Раздел ККТ находится в разработке
-                    </div>
+
+                    {kktData.length === 0 ? (
+                      <Empty
+                        description={
+                          <span>
+                            Нет данных ККТ.<br />
+                            Нажмите «Получить данные с ОФД» для загрузки.
+                          </span>
+                        }
+                        style={{ padding: '40px 0' }}
+                      />
+                    ) : (
+                      kktData.map((kkt) => (
+                        <Card
+                          key={kkt.id}
+                          style={{ marginBottom: 16 }}
+                          title={
+                            <Space>
+                              <span>🖨️ {kkt.kkt_model || 'ККТ'}</span>
+                              <Tag color="blue">РНМ: {kkt.kkt_reg_id}</Tag>
+                            </Space>
+                          }
+                          extra={
+                            kkt.fetched_at && (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                Обновлено: {dayjs(kkt.fetched_at).format('DD.MM.YYYY HH:mm')}
+                              </Text>
+                            )
+                          }
+                        >
+                          <Descriptions
+                            bordered
+                            size="small"
+                            column={{ xs: 1, sm: 2, md: 2, lg: 3 }}
+                          >
+                            <Descriptions.Item label="Модель ККТ">
+                              <Text strong>{kkt.kkt_model || '—'}</Text>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="РНМ">
+                              <CopyField value={kkt.kkt_reg_id}>{kkt.kkt_reg_id || '—'}</CopyField>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Серийный номер">
+                              <CopyField value={kkt.serial_number}>{kkt.serial_number || '—'}</CopyField>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Номер ФН">
+                              <CopyField value={kkt.fn_number}>{kkt.fn_number || '—'}</CopyField>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Конец срока ФН">
+                              {kkt.fn_end_date ? (
+                                <Tag color={dayjs(kkt.fn_end_date).isBefore(dayjs().add(90, 'day')) ? 'red' : 'green'}>
+                                  {dayjs(kkt.fn_end_date).format('DD.MM.YYYY')}
+                                </Tag>
+                              ) : '—'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Дата активации">
+                              {kkt.activation_date ? dayjs(kkt.activation_date).format('DD.MM.YYYY') : '—'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Начало договора ОФД">
+                              {kkt.contract_start_date ? dayjs(kkt.contract_start_date).format('DD.MM.YYYY') : '—'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Конец договора ОФД">
+                              {kkt.contract_end_date ? (
+                                <Tag color={dayjs(kkt.contract_end_date).isBefore(dayjs().add(30, 'day')) ? 'red' : 'green'}>
+                                  {dayjs(kkt.contract_end_date).format('DD.MM.YYYY')}
+                                </Tag>
+                              ) : '—'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Дата проверки">
+                              {kkt.check_date ? dayjs(kkt.check_date).format('DD.MM.YYYY HH:mm') : '—'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Последний чек на ККТ">
+                              {kkt.last_doc_on_kkt ? dayjs(kkt.last_doc_on_kkt).format('DD.MM.YYYY HH:mm') : '—'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Последний чек в ОФД">
+                              {kkt.last_doc_on_ofd ? dayjs(kkt.last_doc_on_ofd).format('DD.MM.YYYY HH:mm') : '—'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Первый документ">
+                              {kkt.first_document_date ? dayjs(kkt.first_document_date).format('DD.MM.YYYY') : '—'}
+                            </Descriptions.Item>
+                            {kkt.fiscal_address && (
+                              <Descriptions.Item label="Адрес установки" span={3}>
+                                {kkt.fiscal_address}
+                              </Descriptions.Item>
+                            )}
+                          </Descriptions>
+                        </Card>
+                      ))
+                    )}
                   </div>
                 ),
               },

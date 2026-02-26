@@ -3,7 +3,7 @@ import { Layout, Menu, Avatar, Dropdown, Typography, Modal, Form, Input, message
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
-  WifiOutlined, LockOutlined, BulbOutlined, BulbFilled, CalendarOutlined,
+  WifiOutlined, LockOutlined, BulbOutlined, BulbFilled, CalendarOutlined, BankOutlined,
 } from '@ant-design/icons';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
@@ -26,6 +26,7 @@ export default function AppLayout({ children }) {
   const menuItems = [
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
     { key: '/providers', icon: <WifiOutlined />, label: 'Провайдеры' },
+    { key: '/ofd-companies', icon: <BankOutlined />, label: 'Компании' },
     ...(!isCommunications ? [{ key: '/calendar', icon: <CalendarOutlined />, label: 'Календарь' }] : []),
     ...(isAdmin ? [{ key: '/users', icon: <UserOutlined />, label: 'Пользователи' }] : []),
     ...(isAdmin ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Настройки' }] : []),

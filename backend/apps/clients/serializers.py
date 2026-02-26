@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, ClientActivity, Provider, ClientFile, DutySchedule, CustomHoliday
+from .models import Client, ClientNote, CustomFieldDefinition, CustomFieldValue, ClientActivity, Provider, ClientFile, DutySchedule, CustomHoliday, OfdCompany
 from apps.accounts.serializers import UserSerializer
 
 
@@ -43,6 +43,46 @@ class ProviderSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
 
+class OfdCompanySerializer(serializers.ModelSerializer):
+    """Сериализатор для списка и отображения (токен не раскрываем)"""
+    has_token = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OfdCompany
+        fields = ['id', 'name', 'inn', 'has_token', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_has_token(self, obj):
+        return bool(obj.ofd_token_encrypted)
+
+
+class OfdCompanyWriteSerializer(serializers.ModelSerializer):
+    """Сериализатор для создания/редактирования с токеном"""
+    ofd_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+    class Meta:
+        model = OfdCompany
+        fields = ['id', 'name', 'inn', 'ofd_token']
+
+    def create(self, validated_data):
+        token = validated_data.pop('ofd_token', '')
+        company = OfdCompany(**validated_data)
+        if token:
+            company.set_ofd_token(token)
+        company.save()
+        return company
+
+    def update(self, instance, validated_data):
+        token = validated_data.pop('ofd_token', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        # Обновляем токен только если он явно передан и не пустой
+        if token:
+            instance.set_ofd_token(token)
+        instance.save()
+        return instance
+
+
 class ClientListSerializer(serializers.ModelSerializer):
     display_name = serializers.CharField(read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -54,11 +94,14 @@ class ClientListSerializer(serializers.ModelSerializer):
     provider2_type = serializers.CharField(source='get_connection_type2_display', read_only=True)
     provider2_account = serializers.CharField(source='personal_account2', read_only=True)
     provider2_contract = serializers.CharField(source='contract_number2', read_only=True)
+    inn = serializers.CharField(read_only=True)
+    company = serializers.CharField(read_only=True)
+    ofd_company_name = serializers.CharField(source='ofd_company.name', read_only=True)
 
     class Meta:
         model = Client
         fields = ['id', 'display_name', 'address', 'inn', 'phone', 'email',
-                  'company', 'status', 'status_display',
+                  'company', 'ofd_company', 'ofd_company_name', 'status', 'status_display',
                   'provider', 'provider_name', 'provider_type', 'provider_account', 'provider_contract',
                   'provider2', 'provider2_name', 'provider2_type', 'provider2_account', 'provider2_contract',
                   'pharmacy_code', 'iccid', 'subnet', 'external_ip',
@@ -69,6 +112,8 @@ class ClientDetailSerializer(serializers.ModelSerializer):
     display_name = serializers.CharField(read_only=True)
     mikrotik_ip = serializers.CharField(read_only=True)
     server_ip = serializers.CharField(read_only=True)
+    inn = serializers.CharField(read_only=True)
+    company = serializers.CharField(read_only=True)
     connection_type_display = serializers.CharField(source='get_connection_type_display', read_only=True)
     created_by_data = UserSerializer(source='created_by', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -76,6 +121,7 @@ class ClientDetailSerializer(serializers.ModelSerializer):
     activities = ClientActivitySerializer(many=True, read_only=True)
     provider_data = ProviderSerializer(source='provider', read_only=True)
     provider2_data = ProviderSerializer(source='provider2', read_only=True)
+    ofd_company_data = OfdCompanySerializer(source='ofd_company', read_only=True)
 
     class Meta:
         model = Client

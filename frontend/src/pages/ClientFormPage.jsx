@@ -157,6 +157,7 @@ export default function ClientFormPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState([]);
+  const [ofdCompanies, setOfdCompanies] = useState([]);
   const [mikrotikIP, setMikrotikIP] = useState('');
   const [serverIP, setServerIP] = useState('');
   const [files, setFiles] = useState([]);
@@ -204,8 +205,12 @@ export default function ClientFormPage() {
     const init = async () => {
       setLoading(true);
       try {
-        const providersRes = await api.get('/clients/providers/');
+        const [providersRes, companiesRes] = await Promise.all([
+          api.get('/clients/providers/'),
+          api.get('/clients/ofd-companies/'),
+        ]);
         setProviders(providersRes.data.results || providersRes.data);
+        setOfdCompanies(companiesRes.data.results || companiesRes.data);
 
         if (isEdit && !isDraftMode) {
           const { data } = await clientsAPI.get(id);
@@ -460,13 +465,17 @@ export default function ClientFormPage() {
                         </Form.Item>
                       </Col>
                       <Col span={12}>
-                        <Form.Item name="company" label="Компания / организация">
-                          <Input placeholder="ООО «Название»" />
-                        </Form.Item>
-                      </Col>
-                      <Col span={12}>
-                        <Form.Item name="inn" label="ИНН">
-                          <Input placeholder="123456789012" maxLength={12} />
+                        <Form.Item name="ofd_company" label="Компания">
+                          <Select
+                            placeholder="Выберите компанию"
+                            allowClear
+                            showSearch
+                            optionFilterProp="label"
+                            options={ofdCompanies.map(c => ({
+                              value: c.id,
+                              label: `${c.name} (ИНН: ${c.inn})`,
+                            }))}
+                          />
                         </Form.Item>
                       </Col>
                       <Col span={12}>

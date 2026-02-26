@@ -20,11 +20,12 @@ services:
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"
     volumes:
       - ./backend:/app
       - static_volume:/app/staticfiles
       - ./media:/app/media
+      - ./ofd_fetch.sh:/usr/local/bin/ofd_fetch.sh:ro
     env_file: .env
     depends_on:
       db:
@@ -46,4 +47,3 @@ services:
 volumes:
   postgres_data:
   static_volume:
-
