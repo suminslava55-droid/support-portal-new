@@ -22,12 +22,11 @@ FIELD_LABELS = {
     'last_name': 'Фамилия',
     'first_name': 'Имя',
     'middle_name': 'Отчество',
-    'inn': 'ИНН',
     'phone': 'Телефон',
     'iccid': 'ICCID',
     'email': 'Email',
     'pharmacy_code': 'Код аптеки',
-    'company': 'Компания',
+    'ofd_company_id': 'Компания ОФД',
     'address': 'Адрес',
     'status': 'Статус',
     'provider_id': 'Провайдер',
@@ -79,6 +78,42 @@ def build_change_log(old_client, new_data, provider_map):
                 continue
             old_name = provider_map.get(old_val, f'#{old_val}') if old_val else '—'
             new_name = provider_map.get(int(new_val), f'#{new_val}') if new_val else '—'
+            changes.append(f'{label}: «{old_name}» → «{new_name}»')
+            continue
+
+        if field == 'ofd_company_id':
+            new_val = str(new_data.get('ofd_company', '') or '')
+            if str(old_val) == new_val:
+                continue
+            from apps.clients.models import OfdCompany
+            try:
+                old_name = OfdCompany.objects.get(pk=old_val).name if old_val else '—'
+            except Exception:
+                old_name = f'#{old_val}' if old_val else '—'
+            try:
+                new_name = OfdCompany.objects.get(pk=new_val).name if new_val else '—'
+            except Exception:
+                new_name = f'#{new_val}' if new_val else '—'
+            changes.append(f'{label}: «{old_name}» → «{new_name}»')
+            continue
+
+        if field == 'ofd_company_id':
+            new_val = new_data.get('ofd_company', '') or ''
+            if str(old_val) == str(new_val):
+                continue
+            from apps.clients.models import OfdCompany
+            old_name = '—'
+            new_name = '—'
+            if old_val:
+                try:
+                    old_name = OfdCompany.objects.get(pk=old_val).name
+                except OfdCompany.DoesNotExist:
+                    old_name = f'#{old_val}'
+            if new_val:
+                try:
+                    new_name = OfdCompany.objects.get(pk=new_val).name
+                except OfdCompany.DoesNotExist:
+                    new_name = f'#{new_val}'
             changes.append(f'{label}: «{old_name}» → «{new_name}»')
             continue
 
@@ -946,10 +981,12 @@ class OfdKktView(APIView):
         fetched = []
         errors = []
         for item in all_items:
-            kkt_obj, _ = KktData.objects.get_or_create(
+            kkt_reg_id = item.get('KktRegId', '')
+            kkt_obj, created = KktData.objects.get_or_create(
                 client=client,
-                kkt_reg_id=item.get('KktRegId', ''),
+                kkt_reg_id=kkt_reg_id,
             )
+            old_fn = kkt_obj.fn_number  # запоминаем до изменения
             kkt_obj.serial_number = item.get('SerialNumber', '')
             kkt_obj.fn_number = item.get('FnNumber', '')
             kkt_obj.kkt_model = item.get('KktModel', '')
@@ -965,7 +1002,17 @@ class OfdKktView(APIView):
             kkt_obj.fiscal_address = item.get('FiscalAddress', '')
             kkt_obj.raw_data = item
             kkt_obj.save()
-            fetched.append(kkt_obj.kkt_reg_id)
+            fetched.append(kkt_reg_id)
+            if created:
+                ClientActivity.objects.create(
+                    client=client, user=request.user,
+                    action=f'Добавлена ККТ: РНМ {kkt_reg_id}, модель {kkt_obj.kkt_model or "—"}'
+                )
+            elif old_fn and old_fn != kkt_obj.fn_number:
+                ClientActivity.objects.create(
+                    client=client, user=request.user,
+                    action=f'ККТ РНМ {kkt_reg_id}: изменён номер ФН «{old_fn}» → «{kkt_obj.fn_number}»'
+                )
 
         return Response({
             'success': True,
@@ -987,7 +1034,13 @@ class OfdKktView(APIView):
 
         try:
             kkt = client.kkt_data.get(pk=kkt_id)
+            rnm = kkt.kkt_reg_id
+            model = kkt.kkt_model or '—'
             kkt.delete()
+            ClientActivity.objects.create(
+                client=client, user=request.user,
+                action=f'Удалена ККТ: РНМ {rnm}, модель {model}'
+            )
             return Response({'success': True, 'message': 'ККТ удалена'})
         except KktData.DoesNotExist:
             return Response({'error': 'ККТ не найдена'}, status=404)
@@ -1072,10 +1125,11 @@ class OfdKktView(APIView):
                     }, status=200)  # 200 чтобы фронт показал предупреждение, не ошибку
 
             for item in items:
-                kkt_obj, _ = KktData.objects.get_or_create(
+                kkt_obj, created = KktData.objects.get_or_create(
                     client=client,
                     kkt_reg_id=item.get('KktRegId', rnm_override),
                 )
+                old_fn = kkt_obj.fn_number
                 kkt_obj.serial_number = item.get('SerialNumber', '')
                 kkt_obj.fn_number = item.get('FnNumber', '')
                 kkt_obj.kkt_model = item.get('KktModel', '')
@@ -1091,6 +1145,16 @@ class OfdKktView(APIView):
                 kkt_obj.fiscal_address = item.get('FiscalAddress', '')
                 kkt_obj.raw_data = item
                 kkt_obj.save()
+                if created:
+                    ClientActivity.objects.create(
+                        client=client, user=request.user,
+                        action=f'Добавлена ККТ: РНМ {rnm_override}, модель {kkt_obj.kkt_model or "—"}'
+                    )
+                elif old_fn and old_fn != kkt_obj.fn_number:
+                    ClientActivity.objects.create(
+                        client=client, user=request.user,
+                        action=f'ККТ РНМ {rnm_override}: изменён номер ФН «{old_fn}» → «{kkt_obj.fn_number}»'
+                    )
 
             elapsed = round(time.time() - t_start, 1)
             return Response({
@@ -1134,6 +1198,7 @@ class OfdKktView(APIView):
                 continue
 
             for item in detail_data.get('Data', []):
+                old_fn = kkt_obj.fn_number
                 kkt_obj.serial_number = item.get('SerialNumber', '')
                 kkt_obj.fn_number = item.get('FnNumber', '')
                 kkt_obj.kkt_model = item.get('KktModel', '')
@@ -1150,6 +1215,11 @@ class OfdKktView(APIView):
                 kkt_obj.raw_data = item
                 kkt_obj.save()
                 fetched.append(rnm)
+                if old_fn and old_fn != kkt_obj.fn_number:
+                    ClientActivity.objects.create(
+                        client=client, user=request.user,
+                        action=f'ККТ РНМ {rnm}: изменён номер ФН «{old_fn}» → «{kkt_obj.fn_number}»'
+                    )
 
         elapsed = round(time.time() - t_start, 1)
         return Response({

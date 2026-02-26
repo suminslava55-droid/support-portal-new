@@ -1076,12 +1076,13 @@ export default function ClientFormPage() {
                               ИНН (поиск по адресу)
                             </Button>
                             <Button
-                              icon={<ReloadOutlined />}
+                              type="primary"
+                              icon={<CloudDownloadOutlined />}
                               onClick={fetchKktByRnmList}
                               loading={kktRefreshing}
                               disabled={!rnmFields.some(r => r.trim())}
                             >
-                              РНМ
+                              РНМ (поиск по номеру)
                             </Button>
                           </Space>
                         </Card>
