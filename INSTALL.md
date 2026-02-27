@@ -8,6 +8,40 @@
 
 Решение: добавить оба пакета в `requirements.txt` и при необходимости устанавливать вручную (см. раздел «Устранение неполадок»).
 
+- **Токен ОФД не сохраняется в разделе «Компании»** — причина: при удалении дублирующего класса `OfdCompanyViewSet` из `views.py` вместе с ним удалялся импорт `OfdCompanyWriteSerializer`, из-за чего при сохранении возникал `NameError` и сервер отвечал ошибкой 500.
+
+Решение: убедиться что в `backend/apps/clients/views.py` в блоке импорта сериализаторов присутствует `OfdCompanyWriteSerializer`:
+```python
+from .serializers import (
+    ..., OfdCompanySerializer, OfdCompanyWriteSerializer,
+)
+```
+И что класс `OfdCompanyViewSet` в файле **один** и содержит `get_serializer_class`:
+```python
+class OfdCompanyViewSet(viewsets.ModelViewSet):
+    queryset = OfdCompany.objects.all()
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return OfdCompanyWriteSerializer
+        return OfdCompanySerializer
+```
+Проверка и исправление:
+```bash
+# Проверяем — должно быть 1
+grep -c "class OfdCompanyViewSet" /opt/support-portal/backend/apps/clients/views.py
+
+# Проверяем импорт
+grep "OfdCompanyWriteSerializer" /opt/support-portal/backend/apps/clients/views.py
+
+# Если импорта нет — добавляем
+sed -i 's/OfdCompanySerializer,$/OfdCompanySerializer, OfdCompanyWriteSerializer,/' \
+  /opt/support-portal/backend/apps/clients/views.py
+
+docker compose restart backend
+```
+
 ---
 
 ## Описание системы
@@ -496,6 +530,127 @@ docker compose exec backend python -c "import cryptography, paramiko, openpyxl; 
 
 ## Устранение неполадок
 
+### 🔍 Универсальная диагностика
+
+При любой непонятной ошибке (500, 400, токены не сохраняются, API не отвечает) — запустите диагностический скрипт. Он автоматически включит `DEBUG=True`, воспроизведёт запрос, покажет traceback и вернёт `DEBUG=False`.
+
+```bash
+cd /opt/support-portal
+bash diagnose.sh 2>&1 | tee /tmp/diag_result.txt
+cat /tmp/diag_result.txt
+```
+
+Содержимое `diagnose.sh`:
+
+```bash
+#!/bin/bash
+cd /opt/support-portal
+DIVIDER="=================================================="
+
+echo "$DIVIDER"
+echo "1. ОКРУЖЕНИЕ"
+echo "$DIVIDER"
+grep -E "DEBUG|ALLOWED_HOSTS|ENCRYPTION_KEY" .env | sed 's/=.*/=***/'
+docker compose exec backend python manage.py shell -c "
+from django.conf import settings
+print('DEBUG:', settings.DEBUG)
+print('ALLOWED_HOSTS:', settings.ALLOWED_HOSTS)
+print('ENCRYPTION_KEY задан:', bool(getattr(settings, 'ENCRYPTION_KEY', '')))
+print('ENCRYPTION_KEY длина:', len(getattr(settings, 'ENCRYPTION_KEY', '')))
+"
+
+echo ""; echo "$DIVIDER"; echo "2. СТАТУС КОНТЕЙНЕРОВ"; echo "$DIVIDER"
+docker compose ps
+
+echo ""; echo "$DIVIDER"; echo "3. ИМПОРТЫ В VIEWS.PY"; echo "$DIVIDER"
+grep -n "from .serializers\|OfdCompanyWriteSerializer\|OfdCompanySerializer" backend/apps/clients/views.py
+echo "Количество OfdCompanyViewSet:"
+grep -c "class OfdCompanyViewSet" backend/apps/clients/views.py
+grep -n "class OfdCompanyViewSet\|get_serializer_class\|OfdCompanyWriteSerializer" backend/apps/clients/views.py
+
+echo ""; echo "$DIVIDER"; echo "4. ПАКЕТЫ"; echo "$DIVIDER"
+docker compose exec backend python -c "
+import cryptography, paramiko, openpyxl
+print('cryptography:', cryptography.__version__)
+print('paramiko:', paramiko.__version__)
+print('openpyxl:', openpyxl.__version__)
+"
+
+echo ""; echo "$DIVIDER"; echo "5. ТЕСТ ШИФРОВАНИЯ"; echo "$DIVIDER"
+docker compose exec backend python manage.py shell -c "
+from apps.clients.models import encrypt_value, decrypt_value
+try:
+    enc = encrypt_value('test_token_diag')
+    dec = decrypt_value(enc)
+    print('encrypt/decrypt:', 'OK' if dec == 'test_token_diag' else 'FAIL: ' + dec)
+except Exception as e:
+    import traceback; traceback.print_exc()
+"
+
+echo ""; echo "$DIVIDER"; echo "6. ВКЛЮЧАЕМ DEBUG=True"; echo "$DIVIDER"
+cp .env .env.diag_backup
+sed -i 's/DEBUG=False/DEBUG=True/' .env
+docker compose restart backend > /dev/null 2>&1
+sleep 7
+echo "DEBUG включён"
+
+echo ""; echo "$DIVIDER"; echo "7. PATCH ЗАПРОС С TRACEBACK"; echo "$DIVIDER"
+docker compose exec backend python manage.py shell -c "
+import traceback
+from rest_framework.test import APIClient
+from apps.clients.models import OfdCompany
+from django.contrib.auth import get_user_model
+User = get_user_model()
+user = User.objects.filter(is_superuser=True).first()
+company = OfdCompany.objects.first()
+print(f'Пользователь: {user}')
+print(f'Компания: {company.name} (id={company.id})')
+client = APIClient()
+client.force_authenticate(user=user)
+try:
+    r = client.patch(
+        f'/api/clients/ofd-companies/{company.id}/',
+        {'ofd_token': 'DIAG_TEST_TOKEN'},
+        format='json',
+        HTTP_HOST='192.168.142.145',
+    )
+    print('HTTP статус:', r.status_code)
+    if hasattr(r, 'data'): print('response.data:', r.data)
+    print('content:', r.content[:1000].decode('utf-8', errors='replace'))
+except Exception as e:
+    traceback.print_exc()
+company.refresh_from_db()
+print('has_token после:', bool(company.ofd_token_encrypted))
+print('token:', company.ofd_token)
+"
+
+echo ""; echo "$DIVIDER"; echo "8. ЛОГИ БЭКЕНДА"; echo "$DIVIDER"
+docker compose logs --tail=40 backend 2>&1 | grep -v "RuntimeWarning\|warnings.warn\|UnorderedObject\|Booting worker\|Listening at\|Starting gunicorn\|Control socket\|copied to\|No migrations\|Apply all\|accounts, admin"
+
+echo ""; echo "$DIVIDER"; echo "9. CURL ТЕСТ"; echo "$DIVIDER"
+TOKEN=$(docker compose exec backend python manage.py shell -c "
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
+User = get_user_model()
+user = User.objects.filter(is_superuser=True).first()
+print(str(RefreshToken.for_user(user).access_token))
+" 2>/dev/null | tail -1)
+echo "Токен: ${TOKEN:0:30}..."
+curl -s -X PATCH "http://localhost/api/clients/ofd-companies/1/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Host: 192.168.142.145" \
+  -d '{"ofd_token": "CURL_TEST"}' | head -c 500
+
+echo ""; echo ""; echo "$DIVIDER"; echo "10. ВОЗВРАЩАЕМ DEBUG=False"; echo "$DIVIDER"
+cp .env.diag_backup .env
+docker compose restart backend > /dev/null 2>&1
+echo "DEBUG=False восстановлен"
+echo "✅ Диагностика завершена"
+```
+
+---
+
 **Белый экран в браузере**
 ```bash
 docker compose logs nginx --tail=30
@@ -580,6 +735,24 @@ cd /opt/support-portal/frontend
 rm -rf node_modules
 npm install
 npm run build
+```
+
+**Токен ОФД не сохраняется / ошибка 500 при сохранении компании**
+
+Причина: в `views.py` отсутствует импорт `OfdCompanyWriteSerializer` или присутствует дублирующий класс `OfdCompanyViewSet`.
+
+```bash
+# Проверяем — должно быть 1
+grep -c "class OfdCompanyViewSet" /opt/support-portal/backend/apps/clients/views.py
+
+# Проверяем наличие импорта
+grep "OfdCompanyWriteSerializer" /opt/support-portal/backend/apps/clients/views.py
+
+# Если импорта нет — добавляем одной командой
+sed -i 's/OfdCompanySerializer,$/OfdCompanySerializer, OfdCompanyWriteSerializer,/' \
+  /opt/support-portal/backend/apps/clients/views.py
+
+docker compose restart backend
 ```
 
 ---

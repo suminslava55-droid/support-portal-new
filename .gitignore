@@ -10,3 +10,5 @@ __pycache__/
 frontend/build/
 .env.backup
 .env.diag_backup
+.env.backup
+.env.diag_backup
