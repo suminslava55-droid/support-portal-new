@@ -880,7 +880,7 @@ def ofd_request(inn, token, search=''):
     script = '/usr/local/bin/ofd_fetch.sh'
     try:
         args = [script, inn, token, search]
-        result = subprocess.run(args, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(args, capture_output=True, text=True, timeout=900)
         if not result.stdout.strip():
             stderr = result.stderr.strip()
             raise Exception(f'Пустой ответ от скрипта. stderr: {stderr}')
@@ -1060,7 +1060,7 @@ class OfdKktView(APIView):
             try:
                 result = subprocess.run(
                     [script, inn, token, rnm_override],
-                    capture_output=True, text=True, timeout=60
+                    capture_output=True, text=True, timeout=15
                 )
                 if not result.stdout.strip():
                     return Response({'error': f'Пустой ответ от скрипта для РНМ {rnm_override}. stderr: {result.stderr[:200]}'}, status=502)
@@ -1158,7 +1158,7 @@ class OfdKktView(APIView):
             try:
                 result = subprocess.run(
                     [script, inn, token, rnm],
-                    capture_output=True, text=True, timeout=60
+                    capture_output=True, text=True, timeout=15
                 )
                 if not result.stdout.strip():
                     errors.append(f'РНМ {rnm}: пустой ответ')
