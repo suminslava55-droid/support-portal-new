@@ -245,6 +245,9 @@ export default function ClientFormPage() {
   const [kktFetching, setKktFetching] = useState(false);
   const [kktRefreshing, setKktRefreshing] = useState(false);
   const [rnmFields, setRnmFields] = useState(['']);
+  const [addByRnmVisible, setAddByRnmVisible]   = useState(false);
+  const [addByRnmValue, setAddByRnmValue]       = useState('');
+  const [addByRnmLoading, setAddByRnmLoading]   = useState(false);
   const draftIdRef = useRef(null);
   const permissions = useAuthStore((s) => s.permissions);
 
@@ -389,6 +392,21 @@ export default function ClientFormPage() {
     } catch (e) {
       message.error(e.response?.data?.error || 'Ошибка при обновлении ККТ', 6);
     } finally { setKktRefreshing(false); }
+  };
+
+  const addKktByRnm = async () => {
+    const rnm = addByRnmValue.trim();
+    if (!rnm) { message.warning('Введите РНМ'); return; }
+    setAddByRnmLoading(true);
+    try {
+      const res = await api.patch(`/clients/${id}/ofd_kkt/`, { rnm_override: rnm });
+      message.success(res.data.message || 'ККТ добавлена');
+      setAddByRnmVisible(false);
+      setAddByRnmValue('');
+      await loadKktData();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка при поиске ККТ по РНМ', 6);
+    } finally { setAddByRnmLoading(false); }
   };
 
   const fetchKktByRnmList = async () => {
@@ -1122,25 +1140,54 @@ export default function ClientFormPage() {
                     {/* ===== РЕЖИМ РЕДАКТИРОВАНИЯ ===== */}
                     {isEdit && !isDraftMode && (
                       <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
                           <Text strong style={{ fontSize: 16 }}>🧾 Кассовая техника</Text>
-                          <Space>
-                            <Button
-                              type="primary"
-                              icon={<CloudDownloadOutlined />}
-                              onClick={fetchKktFromOfd}
-                              loading={kktFetching}
-                            >
-                              Получить данные ККТ по ИНН
-                            </Button>
-                            <Button
-                              icon={<ReloadOutlined />}
-                              onClick={refreshKktByRnm}
-                              loading={kktRefreshing}
-                              disabled={kktData.length === 0}
-                            >
-                              Обновить по РНМ
-                            </Button>
+                          <Space direction="vertical" align="end" size={8}>
+                            <Space>
+                              <Button
+                                type="primary"
+                                icon={<CloudDownloadOutlined />}
+                                onClick={fetchKktFromOfd}
+                                loading={kktFetching}
+                              >
+                                Получить данные ККТ по ИНН
+                              </Button>
+                              <Button
+                                type="primary"
+                                icon={<ReloadOutlined />}
+                                onClick={refreshKktByRnm}
+                                loading={kktRefreshing}
+                                disabled={kktData.length === 0}
+                              >
+                                Обновить по РНМ
+                              </Button>
+                              <Button
+                                type="primary"
+                                icon={<PlusOutlined />}
+                                onClick={() => { setAddByRnmVisible(v => !v); setAddByRnmValue(''); }}
+                              >
+                                Добавить по РНМ
+                              </Button>
+                            </Space>
+                            {addByRnmVisible && (
+                              <Space>
+                                <Input
+                                  placeholder="16 цифр РНМ"
+                                  value={addByRnmValue}
+                                  onChange={e => setAddByRnmValue(e.target.value)}
+                                  onPressEnter={addKktByRnm}
+                                  style={{ width: 200 }}
+                                  maxLength={16}
+                                  autoFocus
+                                />
+                                <Button type="primary" loading={addByRnmLoading} onClick={addKktByRnm}>
+                                  Найти
+                                </Button>
+                                <Button onClick={() => { setAddByRnmVisible(false); setAddByRnmValue(''); }}>
+                                  Отмена
+                                </Button>
+                              </Space>
+                            )}
                           </Space>
                         </div>
                         {kktData.length === 0 ? (

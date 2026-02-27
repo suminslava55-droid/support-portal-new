@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView
 from .settings_views import SystemSettingsView, TestEmailView
 
 router = DefaultRouter()
@@ -15,6 +15,8 @@ urlpatterns = [
     path('system-settings/', SystemSettingsView.as_view(), name='system-settings'),
     path('system-settings/test-email/', TestEmailView.as_view(), name='test-email'),
     path('fetch_external_ip/', FetchExternalIPView.as_view(), name='fetch-external-ip'),
+    path('kkt-list/', KktListView.as_view(), name='kkt-list'),
+    path('kkt-export/', KktExportView.as_view(), name='kkt-export'),
     path('<int:pk>/ofd_kkt/', OfdKktView.as_view(), name='ofd-kkt'),
     path('<int:pk>/ofd_kkt/<int:kkt_id>/', OfdKktView.as_view(), name='ofd-kkt-detail'),
     path('', include(router.urls)),

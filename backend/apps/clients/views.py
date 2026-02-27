@@ -824,6 +824,50 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
         )
         return Response(DutyScheduleSerializer(obj).data)
 
+    @action(detail=False, methods=['post'], url_path='bulk_set_duty')
+    def bulk_set_duty(self, request):
+        """Массовое назначение дежурства.
+        Режим 1 (один сотрудник): user_id + dates[]
+        Режим 2 (любые ячейки):   cells: [{user_id, date}, ...]
+        """
+        duty_type = request.data.get('duty_type')
+        cells_raw = request.data.get('cells')
+
+        if cells_raw is not None:
+            # Режим 2 — произвольные ячейки
+            if not isinstance(cells_raw, list) or len(cells_raw) == 0:
+                return Response({'error': 'cells должен быть непустым списком'}, status=400)
+            pairs = [(c.get('user_id'), c.get('date')) for c in cells_raw if c.get('user_id') and c.get('date')]
+            if not pairs:
+                return Response({'error': 'Нет валидных ячеек'}, status=400)
+
+            if duty_type is None or duty_type == '':
+                for user_id, date in pairs:
+                    DutySchedule.objects.filter(user_id=user_id, date=date).delete()
+            else:
+                for user_id, date in pairs:
+                    DutySchedule.objects.update_or_create(
+                        user_id=user_id, date=date,
+                        defaults={'duty_type': duty_type}
+                    )
+            return Response({'status': 'ok', 'count': len(pairs)})
+
+        # Режим 1 — один сотрудник, несколько дат
+        user_id = request.data.get('user_id')
+        dates   = request.data.get('dates', [])
+        if not user_id or not dates:
+            return Response({'error': 'user_id и dates обязательны'}, status=400)
+
+        if duty_type is None or duty_type == '':
+            DutySchedule.objects.filter(user_id=user_id, date__in=dates).delete()
+        else:
+            for date in dates:
+                DutySchedule.objects.update_or_create(
+                    user_id=user_id, date=date,
+                    defaults={'duty_type': duty_type}
+                )
+        return Response({'status': 'ok', 'count': len(dates)})
+
     @action(detail=False, methods=['get'])
     def report(self, request):
         year = request.query_params.get('year')
@@ -1198,3 +1242,184 @@ class OfdKktView(APIView):
             'elapsed': elapsed,
             'message': f'Обновлено ККТ: {len(fetched)}, время: {elapsed} сек' + (f', ошибок: {len(errors)}' if errors else ''),
         })
+
+
+def _kkt_queryset(params):
+    """Общая фильтрация/сортировка KktData по параметрам запроса."""
+    from django.db.models import Q
+    from .models import KktData
+
+    qs = KktData.objects.select_related('client', 'client__ofd_company').all()
+
+    search = params.get('search', '').strip() if hasattr(params, 'get') else ''
+    if search:
+        qs = qs.filter(
+            Q(fiscal_address__icontains=search) |
+            Q(kkt_reg_id__icontains=search) |
+            Q(serial_number__icontains=search) |
+            Q(fn_number__icontains=search) |
+            Q(client__ofd_company__name__icontains=search) |
+            Q(client__address__icontains=search)
+        )
+
+    month = params.get('month')
+    year  = params.get('year')
+    if month and year:
+        qs = qs.filter(fn_end_date__year=int(year), fn_end_date__month=int(month))
+
+    allowed_orderings = {
+        'client__address', '-client__address',
+        'client__ofd_company__name', '-client__ofd_company__name',
+        'fn_end_date', '-fn_end_date',
+        'contract_end_date', '-contract_end_date',
+        'kkt_reg_id', '-kkt_reg_id',
+        'serial_number', '-serial_number',
+        'fn_number', '-fn_number',
+    }
+    ordering = params.get('ordering', 'fn_end_date')
+    if ordering not in allowed_orderings:
+        ordering = 'fn_end_date'
+    qs = qs.order_by(ordering)
+    return qs
+
+
+def _kkt_row(k):
+    client = k.client
+    return {
+        'id': k.id,
+        'client_id': client.id,
+        'address': client.address or k.fiscal_address or '—',
+        'company': client.ofd_company.name if client.ofd_company else '—',
+        'rnm': k.kkt_reg_id or '—',
+        'serial_number': k.serial_number or '—',
+        'fn_number': k.fn_number or '—',
+        'fn_end_date': k.fn_end_date.isoformat() if k.fn_end_date else None,
+        'contract_end_date': k.contract_end_date.isoformat() if k.contract_end_date else None,
+    }
+
+
+class KktListView(APIView):
+    """Глобальный список всех ККТ для страницы «Замена ФН»"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = _kkt_queryset(request.query_params)
+        page_size = min(int(request.query_params.get('page_size', 50)), 500)
+        page      = max(int(request.query_params.get('page', 1)), 1)
+        total     = qs.count()
+        start     = (page - 1) * page_size
+        results   = [_kkt_row(k) for k in qs[start:start + page_size]]
+        return Response({'count': total, 'results': results})
+
+
+class KktExportView(APIView):
+    """Экспорт ККТ в Excel — скачать или отправить на почту."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        import openpyxl, io
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from django.http import HttpResponse
+        from .models import SystemSettings
+        import datetime
+
+        params    = request.data
+        send_via  = params.get('send_via', 'file')
+        to_email  = params.get('to_email', '').strip()
+        cols_raw  = params.get('cols', '')
+        vis_cols  = [c.strip() for c in cols_raw.split(',') if c.strip()] if cols_raw else None
+
+        qs = _kkt_queryset(params)
+
+        COL_DEFS = [
+            ('address',           'Адрес',               35, lambda k: k['address']),
+            ('company',           'Компания',             25, lambda k: k['company']),
+            ('rnm',               'РНМ',                  20, lambda k: k['rnm']),
+            ('serial_number',     'Серийный номер',       20, lambda k: k['serial_number']),
+            ('fn_number',         'Номер ФН',             20, lambda k: k['fn_number']),
+            ('fn_end_date',       'Конец срока ФН',       18, lambda k: k['fn_end_date'][:10] if k['fn_end_date'] else ''),
+            ('contract_end_date', 'Конец договора ОФД',  20, lambda k: k['contract_end_date'][:10] if k['contract_end_date'] else ''),
+        ]
+        headers = [(title, width, getter) for key, title, width, getter in COL_DEFS
+                   if vis_cols is None or key in vis_cols]
+
+        rows = [_kkt_row(k) for k in qs]
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Замена ФН'
+
+        hfont  = Font(name='Arial', bold=True, color='FFFFFF', size=11)
+        hfill  = PatternFill('solid', start_color='1677FF')
+        halign = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        calign = Alignment(vertical='center', wrap_text=True)
+        thin   = Side(style='thin', color='CCCCCC')
+        brd    = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        for col, (title, width, _) in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=title)
+            cell.font = hfont; cell.fill = hfill; cell.alignment = halign; cell.border = brd
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = width
+        ws.row_dimensions[1].height = 35
+
+        for ri, row in enumerate(rows, 2):
+            fill = PatternFill('solid', start_color='F8FBFF' if ri % 2 == 0 else 'FFFFFF')
+            for ci, (_, _, getter) in enumerate(headers, 1):
+                cell = ws.cell(row=ri, column=ci, value=getter(row))
+                cell.font = Font(name='Arial', size=10)
+                cell.alignment = calign; cell.border = brd; cell.fill = fill
+            ws.row_dimensions[ri].height = 18
+
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:{openpyxl.utils.get_column_letter(len(headers))}1'
+
+        filename = f'fn_replacement_{datetime.date.today()}.xlsx'
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        excel_bytes = buf.read()
+
+        if send_via == 'email':
+            if not to_email:
+                return Response({'error': 'Не указан email'}, status=400)
+            s = SystemSettings.get()
+            if not s.smtp_host or not s.smtp_user or not s.smtp_password_encrypted or not s.smtp_from_email:
+                return Response({'error': 'SMTP настройки не заполнены'}, status=400)
+            try:
+                import smtplib, ssl
+                from email.mime.multipart import MIMEMultipart
+                from email.mime.base import MIMEBase
+                from email.mime.text import MIMEText
+                from email import encoders
+                from_addr = f'{s.smtp_from_name} <{s.smtp_from_email}>' if s.smtp_from_name else s.smtp_from_email
+                msg = MIMEMultipart()
+                msg['Subject'] = f'Замена ФН — {datetime.date.today()}'
+                msg['From']    = from_addr
+                msg['To']      = to_email
+                msg.attach(MIMEText(
+                    f'<html><body style="font-family:Arial,sans-serif;padding:20px;">'
+                    f'<h2 style="color:#1677ff;">Замена ФН</h2>'
+                    f'<p>Во вложении файл Excel с данными по замене ФН на {datetime.date.today()}.</p>'
+                    f'<p style="color:#999;font-size:12px;">Support Portal</p>'
+                    f'</body></html>', 'html', 'utf-8'
+                ))
+                part = MIMEBase('application', 'vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                part.set_payload(excel_bytes)
+                encoders.encode_base64(part)
+                part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+                msg.attach(part)
+                if s.smtp_use_ssl:
+                    ctx = ssl.create_default_context()
+                    with smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, context=ctx, timeout=10) as srv:
+                        srv.login(s.smtp_user, s.smtp_password); srv.sendmail(s.smtp_from_email, to_email, msg.as_string())
+                elif s.smtp_use_tls:
+                    with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10) as srv:
+                        srv.ehlo(); srv.starttls(); srv.login(s.smtp_user, s.smtp_password); srv.sendmail(s.smtp_from_email, to_email, msg.as_string())
+                else:
+                    with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10) as srv:
+                        srv.login(s.smtp_user, s.smtp_password); srv.sendmail(s.smtp_from_email, to_email, msg.as_string())
+                return Response({'message': f'Файл отправлен на {to_email}'})
+            except Exception as e:
+                return Response({'error': f'Ошибка отправки: {e}'}, status=500)
+
+        response = HttpResponse(excel_bytes, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response

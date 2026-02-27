@@ -52,6 +52,10 @@ export default function CalendarPage() {
   const [reportModal, setReportModal] = useState(false);
   const [report, setReport] = useState(null);
   const [reportLabels, setReportLabels] = useState({});
+
+  // Мультивыделение ячеек (Ctrl+клик, любые строки)
+  const [selection, setSelection] = useState(null); // Set<"userId_dateStr"> | null
+  const [selectionModal, setSelectionModal] = useState(false);
   const [hiddenUsers, setHiddenUsers] = useState(() => {
     try { return JSON.parse(localStorage.getItem(HIDDEN_USERS_KEY) || '[]'); }
     catch { return []; }
@@ -66,6 +70,13 @@ export default function CalendarPage() {
   const month = currentDate.month();
   const daysInMonth = currentDate.daysInMonth();
   const days = Array.from({ length: daysInMonth }, (_, i) => currentDate.date(i + 1));
+
+  // Escape — снять выделение
+  useEffect(() => {
+    const onKeyDown = (e) => { if (e.key === 'Escape') setSelection(null); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Определяем является ли день выходным (с учётом кастомных)
   const isDayHoliday = (dateStr) => {
@@ -116,6 +127,53 @@ export default function CalendarPage() {
       });
     } catch {}
     finally { setSaving(null); }
+  };
+
+  // Ctrl+клик — добавить/убрать ячейку из выделения
+  const handleCellClick = (userId, dateStr, e) => {
+    if (!canEdit) return;
+    if (!e.ctrlKey && !e.metaKey) {
+      // Обычный клик — сбрасываем выделение, открываем поповер
+      if (selection) { setSelection(null); return; }
+      return; // поповер откроется через Popover onOpenChange
+    }
+    // Ctrl зажат — добавляем/убираем ячейку
+    e.preventDefault();
+    e.stopPropagation();
+    setPopoverOpen(null);
+    const key = `${userId}_${dateStr}`;
+    setSelection(prev => {
+      const next = new Set(prev || []);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next.size > 0 ? next : null;
+    });
+  };
+
+  // Применить тип ко всем выделенным ячейкам
+  const handleApplyToSelection = async (dutyType) => {
+    if (!selection || selection.size === 0) return;
+    const cells = Array.from(selection).map(key => {
+      const [userId, ...dateParts] = key.split('_');
+      return { user_id: parseInt(userId), date: dateParts.join('_') };
+    });
+    setSelectionModal(false);
+    setSelection(null);
+    try {
+      await api.post('/clients/events/bulk_set_duty/', { cells, duty_type: dutyType });
+      setSchedule(prev => {
+        const next = { ...prev };
+        cells.forEach(({ user_id, date }) => {
+          const key = `${user_id}_${date}`;
+          if (!dutyType) delete next[key];
+          else next[key] = dutyType;
+        });
+        return next;
+      });
+      message.success(`Применено к ${cells.length} ${cells.length === 1 ? 'ячейке' : cells.length < 5 ? 'ячейкам' : 'ячейкам'}`);
+    } catch {
+      message.error('Ошибка при сохранении');
+    }
   };
 
   const handleToggleHoliday = async (date, isHoliday, note = '') => {
@@ -241,6 +299,7 @@ export default function CalendarPage() {
         const duty = dutyType ? DUTY_MAP[dutyType] : null;
         const isSaving = saving === key;
         const isBirthday = record.birthday === monthDay;
+        const isSelected = selection?.has(key);
 
         const cell = (
           <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -253,17 +312,20 @@ export default function CalendarPage() {
             )}
             <div style={{
               width: 36, height: 28, borderRadius: 4, margin: '0 auto',
-              background: duty ? duty.color : (weekend ? '#fff8ee' : 'transparent'),
+              background: isSelected ? '#bae0ff' : (duty ? duty.color : (weekend ? '#fff8ee' : 'transparent')),
               cursor: canEdit ? 'pointer' : 'default',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: isBirthday && !duty ? '2px solid #ff85c2' : (duty ? 'none' : '1px dashed #e0e0e0'),
-              boxShadow: isBirthday ? '0 0 6px rgba(255,133,194,0.6)' : 'none',
+              border: isSelected ? '2px solid #1677ff' : (isBirthday && !duty ? '2px solid #ff85c2' : (duty ? 'none' : '1px dashed #e0e0e0')),
+              boxShadow: isSelected ? '0 0 0 1px #1677ff' : (isBirthday ? '0 0 6px rgba(255,133,194,0.6)' : 'none'),
+              userSelect: 'none',
             }}>
               {isSaving
                 ? <Spin size="small" />
-                : duty
-                  ? <span style={{ fontSize: 9, fontWeight: 600, color: duty.textColor }}>{duty.label.slice(0, 3)}</span>
-                  : isBirthday ? <span style={{ fontSize: 11 }}>🎂</span> : null
+                : isSelected
+                  ? <span style={{ fontSize: 10, color: '#1677ff' }}>✓</span>
+                  : duty
+                    ? <span style={{ fontSize: 9, fontWeight: 600, color: duty.textColor }}>{duty.label.slice(0, 3)}</span>
+                    : isBirthday ? <span style={{ fontSize: 11 }}>🎂</span> : null
               }
             </div>
           </div>
@@ -271,17 +333,22 @@ export default function CalendarPage() {
 
         if (!canEdit) return cell;
         return (
-          <Popover
-            content={<DutyPopoverContent userId={record.id} date={dateStr} />}
-            trigger="click"
-            open={popoverOpen === key}
-            onOpenChange={(open) => setPopoverOpen(open ? key : null)}
-            placement="bottom"
+          <div
+            onClick={(e) => handleCellClick(record.id, dateStr, e)}
+            style={{ display: 'inline-block' }}
           >
-            <Tooltip title={duty ? duty.label : 'Нажмите для выбора'} mouseEnterDelay={0.6}>
-              {cell}
-            </Tooltip>
-          </Popover>
+            <Popover
+              content={<DutyPopoverContent userId={record.id} date={dateStr} />}
+              trigger="click"
+              open={popoverOpen === key && !selection}
+              onOpenChange={(open) => { if (!selection) setPopoverOpen(open ? key : null); }}
+              placement="bottom"
+            >
+              <Tooltip title={isSelected ? null : (duty ? duty.label : 'Клик — выбор, Ctrl+клик — мультивыделение')} mouseEnterDelay={0.6}>
+                {cell}
+              </Tooltip>
+            </Popover>
+          </div>
         );
       },
     };
@@ -442,6 +509,33 @@ export default function CalendarPage() {
       </Card>
 
       <Card styles={{ body: { padding: 0 } }}>
+        {selection && selection.size > 0 && (
+          <div style={{
+            padding: '8px 16px', background: '#e6f4ff',
+            borderBottom: '1px solid #91caff',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <span style={{ fontSize: 13, color: '#1677ff', fontWeight: 600 }}>
+              ✓ Выбрано ячеек: {selection.size}
+            </span>
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => setSelectionModal(true)}
+            >
+              Применить тип…
+            </Button>
+            <Button
+              size="small"
+              onClick={() => setSelection(null)}
+            >
+              Снять выделение
+            </Button>
+            <span style={{ fontSize: 12, color: '#888', marginLeft: 'auto' }}>
+              Ctrl+клик для добавления ячеек · Esc для отмены
+            </span>
+          </div>
+        )}
         <Table
           columns={[nameCol, ...dayCols]}
           dataSource={tableData}
@@ -517,6 +611,50 @@ export default function CalendarPage() {
           </div>
         </Modal>
       )}
+
+      {/* ===== МОДАЛ МУЛЬТИВЫДЕЛЕНИЯ ===== */}
+      <Modal
+        title={`Применить тип для ${selection?.size || 0} ячеек`}
+        open={selectionModal}
+        onCancel={() => { setSelectionModal(false); setSelection(null); }}
+        footer={
+          <Button onClick={() => { setSelectionModal(false); setSelection(null); }}>Отмена</Button>
+        }
+        width={300}
+      >
+        <div style={{ marginBottom: 12, color: '#666', fontSize: 13 }}>
+          Выбрано ячеек: <b>{selection?.size || 0}</b>
+        </div>
+        <Space direction="vertical" style={{ width: '100%' }} size={6}>
+          {DUTY_TYPES.map(d => (
+            <div
+              key={d.value}
+              onClick={() => handleApplyToSelection(d.value)}
+              style={{
+                padding: '8px 12px', borderRadius: 6, cursor: 'pointer',
+                background: d.color, color: d.textColor,
+                fontWeight: 600, fontSize: 13,
+                border: `2px solid ${d.color}`,
+                transition: 'opacity .15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+            >
+              {d.label}
+            </div>
+          ))}
+          <div
+            onClick={() => handleApplyToSelection('')}
+            style={{
+              padding: '7px 12px', borderRadius: 6, cursor: 'pointer',
+              background: '#fff1f0', color: '#ff4d4f',
+              border: '1px solid #ffa39e', fontSize: 13, textAlign: 'center',
+            }}
+          >
+            ✕ Очистить выбранные дни
+          </div>
+        </Space>
+      </Modal>
     </div>
   );
 }
