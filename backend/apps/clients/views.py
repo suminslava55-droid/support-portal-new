@@ -13,7 +13,7 @@ from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, P
 from .serializers import (
     ClientListSerializer, ClientDetailSerializer, ClientWriteSerializer,
     ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer,
-    DutyScheduleSerializer, CustomHolidaySerializer, OfdCompanySerializer,
+    DutyScheduleSerializer, CustomHolidaySerializer, OfdCompanySerializer, OfdCompanyWriteSerializer,
 )
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 
@@ -858,18 +858,6 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
 
         return Response({'report': report_data, 'labels': labels})
 
-
-# ===================== Компании ОФД =====================
-
-class OfdCompanyViewSet(viewsets.ModelViewSet):
-    queryset = OfdCompany.objects.all()
-    serializer_class = OfdCompanySerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_permissions(self):
-        if self.action in ('list', 'retrieve'):
-            return [IsAuthenticated()]
-        return [IsAuthenticated()]
 
 
 # ===================== ОФД / ККТ =====================

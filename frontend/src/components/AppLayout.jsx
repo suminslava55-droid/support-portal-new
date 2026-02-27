@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Layout, Menu, Avatar, Dropdown, Typography, Modal, Form, Input, message, Switch, Image } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
+  SyncOutlined, TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
   WifiOutlined, LockOutlined, BulbOutlined, BulbFilled, CalendarOutlined, BankOutlined,
 } from '@ant-design/icons';
 import useAuthStore from '../store/authStore';
@@ -25,6 +25,7 @@ export default function AppLayout({ children }) {
 
   const menuItems = [
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
+    { key: '/fn-replacement', icon: <SyncOutlined />, label: 'Замена ФН' },
     { key: '/providers', icon: <WifiOutlined />, label: 'Провайдеры' },
     { key: '/ofd-companies', icon: <BankOutlined />, label: 'Компании' },
     ...(!isCommunications ? [{ key: '/calendar', icon: <CalendarOutlined />, label: 'Календарь' }] : []),
