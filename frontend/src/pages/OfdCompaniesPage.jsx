@@ -8,10 +8,14 @@ import {
   BankOutlined, KeyOutlined, CheckCircleOutlined, CloseCircleOutlined
 } from '@ant-design/icons';
 import api from '../api/axios';
+import useAuthStore from '../store/authStore';
 
 const { Title } = Typography;
 
 export default function OfdCompaniesPage() {
+  const user = useAuthStore((s) => s.user);
+  const canEdit = user?.role_data?.name !== 'communications';
+
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -124,7 +128,7 @@ export default function OfdCompaniesPage() {
       title: 'Действия',
       key: 'actions',
       align: 'right',
-      render: (_, record) => (
+      render: (_, record) => canEdit ? (
         <Space>
           <Tooltip title="Редактировать">
             <Button
@@ -146,7 +150,7 @@ export default function OfdCompaniesPage() {
             </Tooltip>
           </Popconfirm>
         </Space>
-      ),
+      ) : null,
     },
   ];
 
@@ -157,9 +161,11 @@ export default function OfdCompaniesPage() {
           <BankOutlined style={{ marginRight: 8, color: '#1677ff' }} />
           Компании ОФД
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          Добавить компанию
-        </Button>
+        {canEdit && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Добавить компанию
+          </Button>
+        )}
       </div>
 
       <Table

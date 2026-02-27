@@ -39,6 +39,34 @@ senior_role, _ = Role.objects.get_or_create(
     }
 )
 
+sysadmin_role, _ = Role.objects.update_or_create(
+    name='sysadmin',
+    defaults={
+        'description': 'Системный администратор — полный доступ кроме пользователей и настроек',
+        'can_view_all_clients': True,
+        'can_create_client': True,
+        'can_edit_client': True,
+        'can_delete_client': False,
+        'can_manage_users': False,
+        'can_manage_roles': False,
+        'can_manage_custom_fields': False,
+    }
+)
+
+communications_role, _ = Role.objects.update_or_create(
+    name='communications',
+    defaults={
+        'description': 'Связист — полный доступ к клиентам, провайдерам и замене ФН; компании только просмотр; календарь/пользователи/настройки закрыты',
+        'can_view_all_clients': True,
+        'can_create_client': True,
+        'can_edit_client': True,
+        'can_delete_client': False,
+        'can_manage_users': False,
+        'can_manage_roles': False,
+        'can_manage_custom_fields': False,
+    }
+)
+
 # Создаём суперпользователя-администратора
 email = input('Email администратора: ')
 password = input('Пароль: ')
@@ -55,4 +83,4 @@ user.role = admin_role
 user.save()
 
 print(f'\n✅ Администратор создан: {user.full_name} ({user.email})')
-print(f'✅ Роли созданы: Администратор, Старший специалист')
+print(f'✅ Роли созданы/обновлены: Администратор, Старший специалист, Системный администратор, Связист')
