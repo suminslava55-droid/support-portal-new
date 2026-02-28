@@ -10,7 +10,7 @@ import {
   UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined,
   CloudDownloadOutlined, ReloadOutlined
 } from '@ant-design/icons';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { clientsAPI } from '../api';
 import api from '../api';
@@ -108,7 +108,8 @@ export default function ClientDetailPage() {
   const [pingResults, setPingResults] = useState({ external_ip: null, mikrotik_ip: null, server_ip: null });
   const [pinging, setPinging] = useState(false);
   const [showAllActivity, setShowAllActivity] = useState(false);
-  const [activeTab, setActiveTab] = useState('info');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'info');
   const permissions = useAuthStore((s) => s.permissions);
 
   // ККТ
@@ -487,7 +488,7 @@ export default function ClientDetailPage() {
                         </Descriptions>
                       ) : (
                         <Empty description="Провайдер не указан" image={Empty.PRESENTED_IMAGE_SIMPLE}>
-                          <Button type="link" onClick={() => navigate(`/clients/${id}/edit`)}>Указать провайдера</Button>
+                          <Button type="link" onClick={() => navigate(`/clients/${id}/edit`, { state: { tab: 'providers' } })}>Указать провайдера</Button>
                         </Empty>
                       )}
                     </Card>

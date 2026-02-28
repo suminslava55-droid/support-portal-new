@@ -239,7 +239,7 @@ export default function ClientFormPage() {
   const [selectedToSlot, setSelectedToSlot] = useState(null);
   const [transferring, setTransferring] = useState(false);
   const [isDraft, setIsDraft] = useState(false);
-  const [activeTab, setActiveTab] = useState('info');
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'info');
   // ККТ
   const [kktData, setKktData] = useState([]);
   const [kktFetching, setKktFetching] = useState(false);
