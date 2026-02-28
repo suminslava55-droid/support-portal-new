@@ -44,12 +44,20 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
         user = self.user
+        role_data = None
+        if user.role:
+            role_data = {
+                'name': user.role.name,
+                'display': user.role.get_name_display(),
+            }
         data['user'] = {
             'id': user.id,
             'email': user.email,
             'full_name': user.full_name,
+            'is_superuser': user.is_superuser,
             'role': user.role.name if user.role else None,
             'role_display': user.role.get_name_display() if user.role else None,
+            'role_data': role_data,
             'permissions': {
                 'can_view_all_clients': user.has_perm_flag('can_view_all_clients'),
                 'can_create_client': user.has_perm_flag('can_create_client'),
