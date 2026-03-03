@@ -4,10 +4,11 @@ import {
   Table, Tag, Space, Tooltip, Input, Select, Popconfirm, message,
   Dropdown, Checkbox, Divider,
 } from 'antd';
-import { LeftOutlined, RightOutlined, BarChartOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons';
+import { LeftOutlined, RightOutlined, BarChartOutlined, DeleteOutlined, SettingOutlined, FileExcelOutlined, DownloadOutlined, SendOutlined, CalendarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import api from '../api';
+import { settingsAPI } from '../api';
 import useAuthStore from '../store/authStore';
 
 dayjs.locale('ru');
@@ -26,6 +27,21 @@ const DUTY_MAP = Object.fromEntries(DUTY_TYPES.map(d => [d.value, d]));
 const WEEKDAY_SHORT = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
                      'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+const thStyle = {
+  padding: '6px 8px',
+  border: '1px solid #e8e8e8',
+  background: '#fafafa',
+  fontWeight: 600,
+  fontSize: 12,
+  whiteSpace: 'nowrap',
+};
+const tdStyle = {
+  padding: '4px 6px',
+  border: '1px solid #f0f0f0',
+  fontSize: 12,
+  verticalAlign: 'middle',
+};
 
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(dayjs());
@@ -52,6 +68,18 @@ export default function CalendarPage() {
   const [reportModal, setReportModal] = useState(false);
   const [report, setReport] = useState(null);
   const [reportLabels, setReportLabels] = useState({});
+
+  // Отчёт отпусков
+  const [vacationModal, setVacationModal]     = useState(false);
+  const [vacationData, setVacationData]       = useState(null);
+  const [vacationError, setVacationError]     = useState(null);
+  const [vacationLoading, setVacationLoading] = useState(false);
+  const [vacationYear, setVacationYear]       = useState(dayjs().year());
+  const [vacExportModal, setVacExportModal]   = useState(false);
+  const [vacExportVia, setVacExportVia]       = useState('file');
+  const [vacExportEmail, setVacExportEmail]   = useState('');
+  const [vacSmtpOk, setVacSmtpOk]             = useState(null);
+  const [vacExporting, setVacExporting]       = useState(false);
 
   // Мультивыделение ячеек (Ctrl+клик, любые строки)
   const [selection, setSelection] = useState(null); // Set<"userId_dateStr"> | null
@@ -199,6 +227,47 @@ export default function CalendarPage() {
     } catch {}
   };
 
+  const openVacationReport = async (yr) => {
+    const y = yr ?? vacationYear;
+    setVacationLoading(true);
+    setVacationModal(true);
+    try {
+      const { data } = await api.get('/clients/events/vacation_report/', { params: { year: y } });
+      setVacationData(data);
+    } catch { message.error('Ошибка загрузки отчёта отпусков'); }
+    finally { setVacationLoading(false); }
+  };
+
+  const openVacExportModal = async () => {
+    setVacExportVia('file'); setVacExportEmail(''); setVacExporting(false);
+    setVacExportModal(true);
+    try {
+      const { data } = await settingsAPI.get();
+      setVacSmtpOk(!!(data.smtp_host && data.smtp_user && data.has_smtp_password && data.smtp_from_email));
+    } catch { setVacSmtpOk(false); }
+  };
+
+  const handleVacExport = async () => {
+    if (vacExportVia === 'email' && !vacExportEmail.trim()) { message.warning('Введите email'); return; }
+    setVacExporting(true);
+    try {
+      const payload = { year: vacationYear, send_via: vacExportVia, to_email: vacExportVia === 'email' ? vacExportEmail.trim() : undefined };
+      if (vacExportVia === 'email') {
+        const { data } = await api.post('/clients/events/vacation_export/', payload);
+        message.success(data.message);
+        setVacExportModal(false);
+      } else {
+        const resp = await api.post('/clients/events/vacation_export/', payload, { responseType: 'blob' });
+        const url = URL.createObjectURL(new Blob([resp.data]));
+        const a = document.createElement('a'); a.href = url;
+        a.download = `vacation_${vacationYear}.xlsx`; a.click();
+        URL.revokeObjectURL(url);
+        setVacExportModal(false);
+      }
+    } catch (e) { message.error(e.response?.data?.error || 'Ошибка экспорта'); }
+    finally { setVacExporting(false); }
+  };
+
   const clearMonth = async () => {
     try {
       await api.post('/clients/events/clear_month/', { year, month: month + 1 });
@@ -266,7 +335,8 @@ export default function CalendarPage() {
     const dateStr = day.format('YYYY-MM-DD');
     const weekend = isDayHoliday(dateStr);
     const custom = holidays[dateStr];
-    const monthDay = day.format('MM-DD'); // для сравнения с днём рождения
+    const monthDay = day.format('MM-DD');
+    const isToday = dateStr === dayjs().format('YYYY-MM-DD'); // для сравнения с днём рождения
     return {
       title: (
           <div
@@ -278,10 +348,10 @@ export default function CalendarPage() {
             onClick={(e) => { e.stopPropagation(); if (isAdmin) openHolidayModal(dateStr); }}
             title={undefined}
           >
-            <div style={{ fontSize: 13, fontWeight: weekend ? 700 : 500, color: weekend ? '#FF9900' : '#333' }}>
+            <div style={{ fontSize: 13, fontWeight: isToday ? 700 : (weekend ? 700 : 500), color: isToday ? '#fff' : (weekend ? '#FF9900' : '#333'), background: isToday ? '#1677ff' : 'transparent', borderRadius: '50%', width: 22, height: 22, lineHeight: '22px', margin: '0 auto', textAlign: 'center' }}>
               {day.date()}
             </div>
-            <div style={{ fontSize: 10, color: weekend ? '#FF9900' : '#999' }}>
+            <div style={{ fontSize: 10, color: isToday ? '#1677ff' : (weekend ? '#FF9900' : '#999') }}>
               {WEEKDAY_SHORT[day.day()]}
             </div>
             {custom && (
@@ -292,7 +362,8 @@ export default function CalendarPage() {
       key: dateStr,
       width: 44,
       align: 'center',
-      onHeaderCell: () => ({ style: { background: weekend ? '#fff8ee' : '#fafafa', padding: '2px 1px' } }),
+      onHeaderCell: () => ({ style: { background: isToday ? '#e6f4ff' : (weekend ? '#fff8ee' : '#fafafa'), padding: '2px 1px', borderBottom: isToday ? '2px solid #1677ff' : undefined } }),
+      onCell: () => ({ style: { background: isToday ? '#f0f7ff' : undefined } }),
       render: (_, record) => {
         const key = `${record.id}_${dateStr}`;
         const dutyType = schedule[key];
@@ -442,6 +513,7 @@ export default function CalendarPage() {
             </Popconfirm>
           )}
           <Button icon={<BarChartOutlined />} onClick={openReport}>Отчёт за месяц</Button>
+          <Button icon={<CalendarOutlined />} onClick={() => openVacationReport()}>Отчёт отпуска</Button>
           <Dropdown
             open={settingsOpen}
             onOpenChange={setSettingsOpen}
@@ -653,6 +725,153 @@ export default function CalendarPage() {
           >
             ✕ Очистить выбранные дни
           </div>
+        </Space>
+      </Modal>
+
+      {/* ===== МОДАЛ ОТЧЁТ ОТПУСКОВ ===== */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span>🏖️ График отпусков</span>
+            <Select
+              value={vacationYear}
+              size="small"
+              style={{ width: 90 }}
+              options={Array.from({ length: 6 }, (_, i) => {
+                const y = dayjs().year() - 1 + i;
+                return { value: y, label: y };
+              })}
+              onChange={y => { setVacationYear(y); openVacationReport(y); }}
+            />
+          </div>
+        }
+        open={vacationModal}
+        onCancel={() => setVacationModal(false)}
+        width="95vw"
+        style={{ top: 20 }}
+        footer={
+          <Space>
+            <Button icon={<FileExcelOutlined />} onClick={openVacExportModal} style={{ color: '#217346', borderColor: '#217346' }} />
+            <Button onClick={() => setVacationModal(false)}>Закрыть</Button>
+          </Space>
+        }
+      >
+        {vacationLoading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}><Spin size="large" /></div>
+        ) : vacationData ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thStyle, width: 160, textAlign: 'left', position: 'sticky', left: 0, background: '#fafafa', zIndex: 2 }}>
+                    Сотрудник
+                  </th>
+                  {vacationData.month_names.map((m, i) => (
+                    <th key={i} style={{ ...thStyle, minWidth: 90, textAlign: 'center', background: '#fafafa' }}>{m}</th>
+                  ))}
+                  <th style={{ ...thStyle, width: 60, textAlign: 'center', background: '#fafafa' }}>Дней</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vacationData.users.map((u, ri) => (
+                  <tr key={u.user_id} style={{ background: ri % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <td style={{
+                      ...tdStyle, fontWeight: 600, position: 'sticky', left: 0, zIndex: 1,
+                      background: ri % 2 === 0 ? '#fff' : '#fafafa',
+                      color: u.has_overlap ? '#d46b08' : '#222',
+                    }}>
+                      {u.has_overlap && <Tooltip title="Есть пересечения с другими сотрудниками"><span style={{ marginRight: 4 }}>⚠️</span></Tooltip>}
+                      {u.user_name}
+                    </td>
+                    {Array.from({ length: 12 }, (_, mi) => {
+                      const segs = u.by_month[mi + 1] || [];
+                      return (
+                        <td key={mi} style={{ ...tdStyle, padding: '3px 4px', verticalAlign: 'top' }}>
+                          {segs.map((seg, si) => (
+                            <Tooltip
+                              key={si}
+                              title={`${dayjs(seg.start).format('D MMM')} – ${dayjs(seg.end).format('D MMM')} (${seg.days} дн.)${seg.has_overlap ? ' ⚠️ Пересечение' : ''}`}
+                            >
+                              <div style={{
+                                background: seg.has_overlap ? '#ff7a00' : '#FFFF00',
+                                border: `1px solid ${seg.has_overlap ? '#d46b08' : '#d4b800'}`,
+                                borderRadius: 3, padding: '1px 5px', marginBottom: 2,
+                                fontSize: 11, cursor: 'default', whiteSpace: 'nowrap',
+                                color: '#333', fontWeight: seg.has_overlap ? 600 : 400,
+                              }}>
+                                {dayjs(seg.start).format('D')}{seg.start !== seg.end ? `–${dayjs(seg.end).format('D')}` : ''} <span style={{ color: '#666' }}>({seg.days}д)</span>
+                              </div>
+                            </Tooltip>
+                          ))}
+                        </td>
+                      );
+                    })}
+                    <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: u.total_days > 0 ? '#1677ff' : '#ccc' }}>
+                      {u.total_days || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ marginTop: 10, fontSize: 12, color: '#888', display: 'flex', gap: 16 }}>
+              <span><span style={{ display: 'inline-block', width: 14, height: 14, background: '#FFFF00', border: '1px solid #d4b800', borderRadius: 2, verticalAlign: 'middle', marginRight: 4 }} />Отпуск</span>
+              <span><span style={{ display: 'inline-block', width: 14, height: 14, background: '#ff7a00', border: '1px solid #d46b08', borderRadius: 2, verticalAlign: 'middle', marginRight: 4 }} />Пересечение с другим сотрудником</span>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      {/* ===== МОДАЛ ЭКСПОРТ ОТПУСКОВ ===== */}
+      <Modal
+        title="Выгрузить график отпусков"
+        open={vacExportModal}
+        onCancel={() => setVacExportModal(false)}
+        footer={null}
+        width={380}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <div>
+            <div style={{ marginBottom: 6, fontWeight: 500 }}>Способ получения:</div>
+            <Space>
+              <Button
+                type={vacExportVia === 'file' ? 'primary' : 'default'}
+                icon={<DownloadOutlined />}
+                onClick={() => setVacExportVia('file')}
+              >
+                Скачать файл
+              </Button>
+              <Button
+                type={vacExportVia === 'email' ? 'primary' : 'default'}
+                icon={<SendOutlined />}
+                onClick={() => setVacExportVia('email')}
+                disabled={vacSmtpOk === false}
+              >
+                На почту
+              </Button>
+            </Space>
+            {vacSmtpOk === false && (
+              <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 6 }}>
+                ⚠️ SMTP не настроен. Настройте в разделе «Настройки».
+              </div>
+            )}
+          </div>
+          {vacExportVia === 'email' && (
+            <Input
+              placeholder="Email получателя"
+              value={vacExportEmail}
+              onChange={e => setVacExportEmail(e.target.value)}
+              prefix={<SendOutlined style={{ color: '#ccc' }} />}
+            />
+          )}
+          <Button
+            type="primary"
+            block
+            loading={vacExporting}
+            onClick={handleVacExport}
+            icon={vacExportVia === 'email' ? <SendOutlined /> : <DownloadOutlined />}
+          >
+            {vacExportVia === 'email' ? 'Отправить' : `Скачать vacation_${vacationYear}.xlsx`}
+          </Button>
         </Space>
       </Modal>
     </div>
