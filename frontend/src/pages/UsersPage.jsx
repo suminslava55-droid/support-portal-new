@@ -162,7 +162,23 @@ export default function UsersPage() {
           <Form.Item name="email" label="Email" rules={[{ required: true }, { type: 'email' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="password" label={editingUser ? 'Новый пароль (оставьте пустым, чтобы не менять)' : 'Пароль'} rules={editingUser ? [] : [{ required: true }]}>
+          <Form.Item
+            name="password"
+            label={editingUser ? 'Новый пароль (оставьте пустым, чтобы не менять)' : 'Пароль'}
+            extra="Минимум 8 символов, заглавная буква и цифра"
+            rules={[
+              ...(editingUser ? [] : [{ required: true, message: 'Введите пароль' }]),
+              {
+                validator(_, value) {
+                  if (!value) return Promise.resolve();
+                  if (value.length < 8) return Promise.reject('Минимум 8 символов');
+                  if (!/[A-Z]/.test(value)) return Promise.reject('Нужна хотя бы одна заглавная буква');
+                  if (!/[0-9]/.test(value)) return Promise.reject('Нужна хотя бы одна цифра');
+                  return Promise.resolve();
+                },
+              },
+            ]}
+          >
             <Input.Password />
           </Form.Item>
           <Form.Item name="role" label="Роль" rules={[{ required: true }]}>

@@ -27,8 +27,17 @@ class ChangePasswordView(APIView):
         if not user.check_password(old_password):
             return Response({'detail': 'Неверный текущий пароль.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if len(new_password) < 6:
-            return Response({'detail': 'Новый пароль должен быть не менее 6 символов.'}, status=status.HTTP_400_BAD_REQUEST)
+        if user.check_password(new_password):
+            return Response({'detail': 'Новый пароль не должен совпадать со старым.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(new_password) < 8:
+            return Response({'detail': 'Пароль должен содержать минимум 8 символов.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not any(c.isupper() for c in new_password):
+            return Response({'detail': 'Пароль должен содержать хотя бы одну заглавную букву.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not any(c.isdigit() for c in new_password):
+            return Response({'detail': 'Пароль должен содержать хотя бы одну цифру.'}, status=status.HTTP_400_BAD_REQUEST)
 
         user.set_password(new_password)
         user.must_change_password = False

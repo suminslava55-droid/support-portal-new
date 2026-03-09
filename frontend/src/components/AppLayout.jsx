@@ -11,6 +11,15 @@ import api from '../api';
 
 const { Header, Sider, Content } = Layout;
 
+
+const validatePassword = (_, value) => {
+  if (!value) return Promise.reject('Введите пароль');
+  if (value.length < 8) return Promise.reject('Минимум 8 символов');
+  if (!/[A-Z]/.test(value)) return Promise.reject('Нужна хотя бы одна заглавная буква');
+  if (!/[0-9]/.test(value)) return Promise.reject('Нужна хотя бы одна цифра');
+  return Promise.resolve();
+};
+
 export default function AppLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -206,8 +215,8 @@ export default function AppLayout({ children }) {
           <Form.Item name="old_password" label="Текущий пароль" rules={[{ required: true, message: 'Введите текущий пароль' }]}>
             <Input.Password placeholder="Введите текущий пароль" />
           </Form.Item>
-          <Form.Item name="new_password" label="Новый пароль" rules={[{ required: true, message: 'Введите новый пароль' }, { min: 6, message: 'Минимум 6 символов' }]}>
-            <Input.Password placeholder="Минимум 6 символов" />
+          <Form.Item name="new_password" label="Новый пароль" rules={[{ required: true, message: 'Введите новый пароль' }, { validator: validatePassword }]}>
+            <Input.Password placeholder="Мин. 8 символов, заглавная и цифра" />
           </Form.Item>
           <Form.Item name="confirm_password" label="Повторите новый пароль" rules={[{ required: true, message: 'Повторите новый пароль' }]}>
             <Input.Password placeholder="Повторите новый пароль" />
@@ -235,8 +244,8 @@ export default function AppLayout({ children }) {
           <Form.Item name="old_password" label="Текущий пароль" rules={[{ required: true, message: 'Введите текущий пароль' }]}>
             <Input.Password placeholder="Введите текущий пароль" autoFocus />
           </Form.Item>
-          <Form.Item name="new_password" label="Новый пароль" rules={[{ required: true, message: 'Введите новый пароль' }, { min: 6, message: 'Минимум 6 символов' }]}>
-            <Input.Password placeholder="Минимум 6 символов" />
+          <Form.Item name="new_password" label="Новый пароль" rules={[{ required: true, message: 'Введите новый пароль' }, { validator: validatePassword }]}>
+            <Input.Password placeholder="Мин. 8 символов, заглавная и цифра" />
           </Form.Item>
           <Form.Item name="confirm_password" label="Повторите новый пароль" rules={[{ required: true, message: 'Повторите пароль' }]}>
             <Input.Password placeholder="Повторите новый пароль" />
