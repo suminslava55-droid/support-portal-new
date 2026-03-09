@@ -5,7 +5,8 @@ import {
 } from 'antd';
 import {
   SaveOutlined, EyeInvisibleOutlined, EyeTwoTone,
-  SettingOutlined, DeleteOutlined, MailOutlined, SendOutlined
+  SettingOutlined, DeleteOutlined, MailOutlined, SendOutlined,
+  CheckCircleFilled, CloseCircleFilled, ReloadOutlined
 } from '@ant-design/icons';
 import { settingsAPI } from '../api';
 
@@ -24,6 +25,8 @@ export default function SettingsPage() {
   const [testEmailModal, setTestEmailModal] = useState(false);
   const [testEmail, setTestEmail] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
+  const [packages, setPackages] = useState(null);
+  const [packagesLoading, setPackagesLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -50,7 +53,20 @@ export default function SettingsPage() {
       }
     };
     load();
+    loadPackages();
   }, [sshForm, smtpForm]);
+
+  const loadPackages = async () => {
+    setPackagesLoading(true);
+    try {
+      const { data } = await settingsAPI.checkPackages();
+      setPackages(data);
+    } catch {
+      message.error('Не удалось проверить пакеты');
+    } finally {
+      setPackagesLoading(false);
+    }
+  };
 
   const handleClearSsh = async () => {
     try {
@@ -142,6 +158,48 @@ export default function SettingsPage() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 640 }}>
+
+        {/* ===== ПАКЕТЫ ===== */}
+        <Card
+          title={<Space><SettingOutlined style={{ color: '#1677ff' }} /><span>Зависимости Python</span></Space>}
+          extra={
+            <Button
+              size="small"
+              icon={<ReloadOutlined spin={packagesLoading} />}
+              onClick={loadPackages}
+              loading={packagesLoading}
+            >
+              Проверить
+            </Button>
+          }
+        >
+          {packagesLoading && !packages ? (
+            <Spin size="small" />
+          ) : packages ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                { key: 'cryptography', label: 'cryptography', desc: 'Шифрование паролей' },
+                { key: 'paramiko', label: 'paramiko', desc: 'SSH-подключение к Микротику' },
+                { key: 'openpyxl', label: 'openpyxl', desc: 'Экспорт в Excel (.xlsx)' },
+              ].map(({ key, label, desc }) => (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {packages[key]
+                    ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
+                    : <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />}
+                  <span style={{ fontWeight: 500, minWidth: 120 }}>{label}</span>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{desc}</Text>
+                  {!packages[key] && (
+                    <Text type="danger" style={{ fontSize: 12, marginLeft: 'auto' }}>
+                      pip install {key}
+                    </Text>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Text type="secondary">Нажмите «Проверить»</Text>
+          )}
+        </Card>
 
         {/* ===== SSH ===== */}
         <Form form={sshForm} layout="vertical" onFinish={onSaveSsh}>

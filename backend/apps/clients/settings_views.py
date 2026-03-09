@@ -5,6 +5,21 @@ from .models import SystemSettings
 from apps.accounts.permissions import IsAdmin
 
 
+class CheckPackagesView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        packages = ['cryptography', 'paramiko', 'openpyxl']
+        result = {}
+        for pkg in packages:
+            try:
+                __import__(pkg)
+                result[pkg] = True
+            except ImportError:
+                result[pkg] = False
+        return Response(result)
+
+
 class SystemSettingsView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 

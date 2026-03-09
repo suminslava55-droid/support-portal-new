@@ -93,4 +93,5 @@ export const settingsAPI = {
   save: (data) => api.post('/clients/system-settings/', data),
   clear: (section) => api.delete(`/clients/system-settings/?section=${section || 'ssh'}`),
   testEmail: (toEmail) => api.post('/clients/system-settings/test-email/', { to_email: toEmail }),
+  checkPackages: () => api.get('/clients/system-settings/check-packages/'),
 };
