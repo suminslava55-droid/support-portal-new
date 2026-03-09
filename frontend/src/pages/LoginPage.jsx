@@ -17,7 +17,11 @@ export default function LoginPage() {
     try {
       const { data } = await authAPI.login(email, password);
       login(data.user, { access: data.access, refresh: data.refresh });
-      navigate('/clients');
+      if (data.user.must_change_password) {
+        navigate('/clients', { state: { forceChangePassword: true } });
+      } else {
+        navigate('/clients');
+      }
     } catch {
       message.error('Неверный email или пароль');
     } finally {

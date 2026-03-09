@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layout, Menu, Avatar, Dropdown, Typography, Modal, Form, Input, message, Switch, Image } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -14,11 +14,21 @@ const { Header, Sider, Content } = Layout;
 export default function AppLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuthStore();
+  const { user, logout, setUser } = useAuthStore();
   const { isDark, toggleTheme } = useThemeStore();
   const [pwdModalOpen, setPwdModalOpen] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
   const [form] = Form.useForm();
+  const [forceForm] = Form.useForm();
+  const [forcePwdOpen, setForcePwdOpen] = useState(false);
+  const [forcePwdLoading, setForcePwdLoading] = useState(false);
+
+  // Открываем модал принудительной смены пароля если флаг пришёл после логина
+  useEffect(() => {
+    if (location.state?.forceChangePassword || user?.must_change_password) {
+      setForcePwdOpen(true);
+    }
+  }, [location.state, user?.must_change_password]);
 
   const isAdmin = user?.role_data?.name === 'admin' || user?.is_superuser;
   const isCommunications = user?.role_data?.name === 'communications';
@@ -53,6 +63,30 @@ export default function AppLayout({ children }) {
       message.error(detail);
     } finally {
       setPwdLoading(false);
+    }
+  };
+
+  const handleForceChangePassword = async () => {
+    const values = await forceForm.validateFields();
+    if (values.new_password !== values.confirm_password) {
+      message.error('Пароли не совпадают');
+      return;
+    }
+    setForcePwdLoading(true);
+    try {
+      await api.post('/auth/change-password/', {
+        old_password: values.old_password,
+        new_password: values.new_password,
+      });
+      message.success('Пароль успешно изменён');
+      setForcePwdOpen(false);
+      forceForm.resetFields();
+      // Обновляем user в сторе — сбрасываем флаг локально
+      if (user) setUser({ ...user, must_change_password: false });
+    } catch (err) {
+      message.error(err.response?.data?.detail || 'Ошибка смены пароля');
+    } finally {
+      setForcePwdLoading(false);
     }
   };
 
@@ -176,6 +210,35 @@ export default function AppLayout({ children }) {
             <Input.Password placeholder="Минимум 6 символов" />
           </Form.Item>
           <Form.Item name="confirm_password" label="Повторите новый пароль" rules={[{ required: true, message: 'Повторите новый пароль' }]}>
+            <Input.Password placeholder="Повторите новый пароль" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* ===== ПРИНУДИТЕЛЬНАЯ СМЕНА ПАРОЛЯ ===== */}
+      <Modal
+        title={<><LockOutlined style={{ color: '#fa8c16', marginRight: 8 }} />Требуется смена пароля</>}
+        open={forcePwdOpen}
+        onOk={handleForceChangePassword}
+        closable={false}
+        maskClosable={false}
+        keyboard={false}
+        okText="Сменить пароль"
+        cancelButtonProps={{ style: { display: 'none' } }}
+        confirmLoading={forcePwdLoading}
+        width={420}
+      >
+        <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fff7e6', borderRadius: 6, border: '1px solid #ffd591', color: '#874d00', fontSize: 13 }}>
+          ⚠️ Администратор потребовал сменить пароль. Пожалуйста, установите новый пароль для продолжения работы.
+        </div>
+        <Form form={forceForm} layout="vertical">
+          <Form.Item name="old_password" label="Текущий пароль" rules={[{ required: true, message: 'Введите текущий пароль' }]}>
+            <Input.Password placeholder="Введите текущий пароль" autoFocus />
+          </Form.Item>
+          <Form.Item name="new_password" label="Новый пароль" rules={[{ required: true, message: 'Введите новый пароль' }, { min: 6, message: 'Минимум 6 символов' }]}>
+            <Input.Password placeholder="Минимум 6 символов" />
+          </Form.Item>
+          <Form.Item name="confirm_password" label="Повторите новый пароль" rules={[{ required: true, message: 'Повторите пароль' }]}>
             <Input.Password placeholder="Повторите новый пароль" />
           </Form.Item>
         </Form>

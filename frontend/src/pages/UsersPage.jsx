@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Select, Switch, Typography, message, Tag, Popconfirm, DatePicker, Space } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, Input, Select, Switch, Typography, message, Tag, Popconfirm, DatePicker, Space, Checkbox, Tooltip } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, KeyOutlined } from '@ant-design/icons';
 import { usersAPI, rolesAPI } from '../api';
 import dayjs from 'dayjs';
 
@@ -35,7 +35,8 @@ export default function UsersPage() {
     form.setFieldsValue(user ? {
       ...user,
       birthday: user.birthday ? dayjs(user.birthday) : null,
-    } : { is_active: true });
+      must_change_password: user.must_change_password || false,
+    } : { is_active: true, must_change_password: false });
     setModalOpen(true);
   };
 
@@ -89,12 +90,17 @@ export default function UsersPage() {
     {
       title: 'Действия',
       render: (_, r) => (
-        <>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openModal(r)} style={{ marginRight: 8 }} />
+        <Space size={4}>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openModal(r)} />
           <Popconfirm title="Удалить пользователя?" onConfirm={() => handleDelete(r.id)} okText="Да" cancelText="Нет" okType="danger">
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
-        </>
+          {r.must_change_password && (
+            <Tooltip title="Должен сменить пароль при следующем входе">
+              <KeyOutlined style={{ color: '#fa8c16', fontSize: 15, margin: '0 4px' }} />
+            </Tooltip>
+          )}
+        </Space>
       ),
     },
   ];
@@ -167,6 +173,11 @@ export default function UsersPage() {
           </Form.Item>
           <Form.Item name="birthday" label="День рождения">
             <DatePicker format="DD.MM.YYYY" style={{ width: '100%' }} placeholder="Выберите дату" />
+          </Form.Item>
+          <Form.Item name="must_change_password" valuePropName="checked" style={{ marginBottom: 0 }}>
+            <Checkbox>
+              <span style={{ fontWeight: 500 }}>Сменить пароль при следующем входе</span>
+            </Checkbox>
           </Form.Item>
         </Form>
       </Modal>

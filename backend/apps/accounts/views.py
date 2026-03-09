@@ -31,6 +31,7 @@ class ChangePasswordView(APIView):
             return Response({'detail': 'Новый пароль должен быть не менее 6 символов.'}, status=status.HTTP_400_BAD_REQUEST)
 
         user.set_password(new_password)
+        user.must_change_password = False
         user.save()
         return Response({'detail': 'Пароль успешно изменён.'})
 

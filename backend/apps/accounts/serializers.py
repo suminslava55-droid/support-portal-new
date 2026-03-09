@@ -19,7 +19,8 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'email', 'first_name', 'last_name', 'middle_name',
-                  'full_name', 'role', 'role_data', 'is_active', 'date_joined', 'password', 'birthday']
+                  'full_name', 'role', 'role_data', 'is_active', 'date_joined', 'password', 'birthday',
+                  'must_change_password']
         read_only_fields = ['date_joined']
 
     def create(self, validated_data):
@@ -58,6 +59,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'role': user.role.name if user.role else None,
             'role_display': user.role.get_name_display() if user.role else None,
             'role_data': role_data,
+            'must_change_password': user.must_change_password,
             'permissions': {
                 'can_view_all_clients': user.has_perm_flag('can_view_all_clients'),
                 'can_create_client': user.has_perm_flag('can_create_client'),
