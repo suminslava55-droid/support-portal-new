@@ -195,7 +195,7 @@ export default function AppLayout({ children }) {
         </Header>
 
         <Content style={{ padding: 24, minHeight: 'calc(100vh - 64px)' }}>
-          <div style={{ padding: 24, borderRadius: 8, minHeight: '100%' }}>
+          <div style={{ padding: 24, borderRadius: 8, minHeight: '100%', background: 'transparent' }}>
             {children}
           </div>
         </Content>

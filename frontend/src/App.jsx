@@ -46,6 +46,18 @@ export default function App() {
   const isDark = useThemeStore((s) => s.isDark);
   const [initializing, setInitializing] = useState(true);
 
+  // Применяем фон к body/html при смене темы —
+  // antd 5 меняет токены компонентов, но НЕ красит body автоматически
+  useEffect(() => {
+    const bg = isDark ? '#141414' : '#ffffff';
+    const color = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.88)';
+    document.body.style.background = bg;
+    document.body.style.backgroundColor = bg;
+    document.body.style.color = color;
+    document.documentElement.style.background = bg;
+    document.documentElement.style.backgroundColor = bg;
+  }, [isDark]);
+
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (token) {
