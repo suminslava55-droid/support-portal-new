@@ -100,6 +100,14 @@ const TABLE_COLUMN_DEFS = [
 ];
 const DEFAULT_TABLE_COLUMNS = ['address', 'company', 'phone', 'status', 'p1_name', 'p1_type', 'p2_name', 'p2_type'];
 
+const PAGE_SIZES = [
+  { value: 20,  label: '20 записей' },
+  { value: 50,  label: '50 записей' },
+  { value: 100, label: '100 записей' },
+  { value: 200, label: '200 записей' },
+  { value: 500, label: '500 записей' },
+];
+
 // Компонент группы с общим чекбоксом и дочерними
 function FieldGroup({ group, selected, onChange }) {
   const allKeys = group.fields.map(f => f.key);
@@ -158,6 +166,7 @@ export default function ClientsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [pageSize, setPageSize] = useState(20);
   const [providerFilter, setProviderFilter] = useState([]);
   const [sortField, setSortField] = useState('');
   const [sortOrder, setSortOrder] = useState('');
@@ -210,6 +219,7 @@ export default function ClientsPage() {
     try {
       const { data } = await clientsAPI.list({
         page,
+        page_size: pageSize,
         search: search || undefined,
         status: status || undefined,
         provider: providerFilter.length ? providerFilter.join(',') : undefined,
@@ -222,9 +232,14 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, status, providerFilter, sortField, sortOrder]);
+  }, [search, status, providerFilter, sortField, sortOrder, pageSize]);
 
   useEffect(() => { fetchClients(1); }, [fetchClients]);
+
+  const handlePageSizeChange = (size) => {
+    setPageSize(size);
+    setPagination(p => ({ ...p, current: 1, pageSize: size }));
+  };
 
   const handleTableChange = (pag, _filters, sorter) => {
     const newField = sorter.field || '';
@@ -399,6 +414,12 @@ export default function ClientsPage() {
           value={providerFilter}
           onChange={v => setProviderFilter(v || [])}
           options={allProviders.map(p => ({ value: p.id, label: p.name }))}
+        />
+        <Select
+          value={pageSize}
+          onChange={handlePageSizeChange}
+          options={PAGE_SIZES}
+          style={{ width: 148 }}
         />
         <Tooltip title="Экспорт в Excel">
           <Button
