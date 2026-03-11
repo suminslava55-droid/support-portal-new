@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings, DutySchedule, CustomHoliday, KktData, OfdCompany, OfdCompany
+from .models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings, DutySchedule, CustomHoliday, KktData, OfdCompany
 from .serializers import (
     ClientListSerializer, ClientDetailSerializer, ClientWriteSerializer,
     ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer,
@@ -94,26 +94,6 @@ def build_change_log(old_client, new_data, provider_map):
                 new_name = OfdCompany.objects.get(pk=new_val).name if new_val else '—'
             except Exception:
                 new_name = f'#{new_val}' if new_val else '—'
-            changes.append(f'{label}: «{old_name}» → «{new_name}»')
-            continue
-
-        if field == 'ofd_company_id':
-            new_val = new_data.get('ofd_company', '') or ''
-            if str(old_val) == str(new_val):
-                continue
-            from apps.clients.models import OfdCompany
-            old_name = '—'
-            new_name = '—'
-            if old_val:
-                try:
-                    old_name = OfdCompany.objects.get(pk=old_val).name
-                except OfdCompany.DoesNotExist:
-                    old_name = f'#{old_val}'
-            if new_val:
-                try:
-                    new_name = OfdCompany.objects.get(pk=new_val).name
-                except OfdCompany.DoesNotExist:
-                    new_name = f'#{new_val}'
             changes.append(f'{label}: «{old_name}» → «{new_name}»')
             continue
 
@@ -611,7 +591,7 @@ class ClientViewSet(viewsets.ModelViewSet):
 
 
 class FetchExternalIPView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanEditClient]
 
     def post(self, request):
         import paramiko
@@ -660,7 +640,11 @@ class FetchExternalIPView(APIView):
 
 class OfdCompanyViewSet(viewsets.ModelViewSet):
     queryset = OfdCompany.objects.all()
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsAuthenticated(), CanEditClient()]
+        return [IsAuthenticated()]
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -1324,12 +1308,12 @@ class OfdKktView(APIView):
             if created:
                 ClientActivity.objects.create(
                     client=client, user=request.user,
-                    action=f'Добавлена ККТ\nРНМ: {kkt_reg_id}\nСерийный номер: {kkt_obj.serial_number or "—"}\nМодель: {kkt_obj.kkt_model or "—"}'
+                    action=f'Добавлена ККТ\nРНМ: {kkt_reg_id}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: {kkt_obj.fn_number or "—"}'
                 )
             elif old_fn and old_fn != kkt_obj.fn_number:
                 ClientActivity.objects.create(
                     client=client, user=request.user,
-                    action=f'ККТ РНМ {kkt_reg_id}: изменён номер ФН «{old_fn}» → «{kkt_obj.fn_number}»'
+                    action=f'Изменён номер ФН\nРНМ: {kkt_reg_id}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: «{old_fn}» → «{kkt_obj.fn_number}»'
                 )
 
         return Response({
@@ -1353,12 +1337,12 @@ class OfdKktView(APIView):
         try:
             kkt = client.kkt_data.get(pk=kkt_id)
             rnm = kkt.kkt_reg_id
-            model = kkt.kkt_model or '—'
             serial = kkt.serial_number or '—'
+            fn_number = kkt.fn_number or '—'
             kkt.delete()
             ClientActivity.objects.create(
                 client=client, user=request.user,
-                action=f'Удалена ККТ\nРНМ: {rnm}\nСерийный номер: {serial}\nМодель: {model}'
+                action=f'Удалена ККТ\nРНМ: {rnm}\nСерийный номер: {serial}\nНомер ФН: {fn_number}'
             )
             return Response({'success': True, 'message': 'ККТ удалена'})
         except KktData.DoesNotExist:
@@ -1461,12 +1445,12 @@ class OfdKktView(APIView):
                 if created:
                     ClientActivity.objects.create(
                         client=client, user=request.user,
-                        action=f'Добавлена ККТ\nРНМ: {rnm_override}\nСерийный номер: {kkt_obj.serial_number or "—"}\nМодель: {kkt_obj.kkt_model or "—"}'
+                        action=f'Добавлена ККТ\nРНМ: {rnm_override}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: {kkt_obj.fn_number or "—"}'
                     )
                 elif old_fn and old_fn != kkt_obj.fn_number:
                     ClientActivity.objects.create(
                         client=client, user=request.user,
-                        action=f'ККТ РНМ {rnm_override}: изменён номер ФН «{old_fn}» → «{kkt_obj.fn_number}»'
+                        action=f'Изменён номер ФН\nРНМ: {rnm_override}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: «{old_fn}» → «{kkt_obj.fn_number}»'
                     )
 
             elapsed = round(time.time() - t_start, 1)
@@ -1525,7 +1509,7 @@ class OfdKktView(APIView):
                 if old_fn and old_fn != kkt_obj.fn_number:
                     ClientActivity.objects.create(
                         client=client, user=request.user,
-                        action=f'ККТ РНМ {rnm}: изменён номер ФН «{old_fn}» → «{kkt_obj.fn_number}»'
+                        action=f'Изменён номер ФН\nРНМ: {rnm}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: «{old_fn}» → «{kkt_obj.fn_number}»'
                     )
 
         elapsed = round(time.time() - t_start, 1)
