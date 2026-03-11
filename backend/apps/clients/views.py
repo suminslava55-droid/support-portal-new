@@ -128,11 +128,6 @@ class CustomFieldDefinitionViewSet(viewsets.ModelViewSet):
 class ClientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CanEditClient]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-
-    def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'create_draft', 'discard_draft'):
-            return [IsAuthenticated()]
-        return [IsAuthenticated(), CanEditClient()]
     filterset_fields = ['status', 'provider']
     search_fields = ['address', 'phone', 'email', 'pharmacy_code', 'warehouse_code', 'ofd_company__name', 'ofd_company__inn']
     ordering_fields = ['address', 'phone', 'email', 'status', 'created_at', 'provider__name', 'ofd_company__name', 'ofd_company__inn']
@@ -1367,6 +1362,36 @@ class OfdKktView(APIView):
         except Client.DoesNotExist:
             return Response({'error': 'Клиент не найден'}, status=404)
 
+        # Режим сохранения РНМ без запроса к ОФД (при создании карточки)
+        rnm_only_list = request.data.get('rnm_only_list')
+        if rnm_only_list:
+            import re
+            saved = []
+            errors = []
+            for rnm in rnm_only_list:
+                rnm = str(rnm).strip()
+                if not rnm:
+                    continue
+                if not re.match(r'^\d{16}$', rnm):
+                    errors.append(f'Некорректный РНМ: «{rnm}». Должно быть 16 цифр.')
+                    continue
+                kkt_obj, created = KktData.objects.get_or_create(
+                    client=client,
+                    kkt_reg_id=rnm,
+                )
+                if created:
+                    ClientActivity.objects.create(
+                        client=client, user=request.user,
+                        action=f'Добавлена ККТ\nРНМ: {rnm}\nСерийный номер: —\nНомер ФН: —'
+                    )
+                saved.append(rnm)
+            return Response({
+                'success': True,
+                'saved': saved,
+                'errors': errors,
+                'message': f'Сохранено РНМ: {len(saved)}',
+            })
+
         if not client.ofd_company:
             return Response({'error': 'У клиента не выбрана компания'}, status=400)
 
@@ -1504,6 +1529,8 @@ class OfdKktView(APIView):
 
             for item in detail_data.get('Data', []):
                 old_fn = kkt_obj.fn_number
+                old_serial = kkt_obj.serial_number
+                was_empty = not old_serial and not old_fn  # запись была только с РНМ
                 kkt_obj.serial_number = item.get('SerialNumber', '')
                 kkt_obj.fn_number = item.get('FnNumber', '')
                 kkt_obj.kkt_model = item.get('KktModel', '')
@@ -1514,7 +1541,13 @@ class OfdKktView(APIView):
                 kkt_obj.raw_data = item
                 kkt_obj.save()
                 fetched.append(rnm)
-                if old_fn and old_fn != kkt_obj.fn_number:
+                if was_empty and (kkt_obj.serial_number or kkt_obj.fn_number):
+                    # Запись была пустой (только РНМ), теперь заполнена данными с ОФД
+                    ClientActivity.objects.create(
+                        client=client, user=request.user,
+                        action=f'Обновлена ККТ по РНМ\nРНМ: {rnm}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: {kkt_obj.fn_number or "—"}\nМодель: {kkt_obj.kkt_model or "—"}'
+                    )
+                elif old_fn and old_fn != kkt_obj.fn_number:
                     ClientActivity.objects.create(
                         client=client, user=request.user,
                         action=f'Изменён номер ФН\nРНМ: {rnm}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: «{old_fn}» → «{kkt_obj.fn_number}»'

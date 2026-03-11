@@ -632,6 +632,15 @@ export default function ClientFormPage() {
         navigate(`/clients/${id}`);
       } else {
         await clientsAPI.update(id, { ...values, is_draft: false });
+        // Сохраняем заполненные РНМ которые ещё не были загружены через ОФД
+        const filledRnm = rnmFields.filter(r => r.trim());
+        const existingRnm = new Set(kktData.map(k => k.kkt_reg_id));
+        const newRnm = filledRnm.filter(r => !existingRnm.has(r.trim()));
+        if (newRnm.length > 0) {
+          try {
+            await api.patch(`/clients/${id}/ofd_kkt/`, { rnm_only_list: newRnm });
+          } catch {}
+        }
         draftIdRef.current = null;
         setIsDraft(false);
         localStorage.removeItem('pending_draft_id');
