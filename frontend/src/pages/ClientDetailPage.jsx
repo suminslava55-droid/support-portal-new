@@ -209,7 +209,7 @@ export default function ClientDetailPage() {
   useEffect(() => {
     fetchClient();
     loadKktData();
-  }, [fetchClient]);
+  }, [fetchClient, loadKktData]);
 
   // Запускаем пинг автоматически после загрузки карточки
   useEffect(() => {
@@ -330,7 +330,8 @@ export default function ClientDetailPage() {
                         <Descriptions.Item label="Телефон"><CopyField value={client.phone} /></Descriptions.Item>
                         <Descriptions.Item label="ICCID"><CopyField value={client.iccid} /></Descriptions.Item>
                         <Descriptions.Item label="Email"><CopyField value={client.email} /></Descriptions.Item>
-                        <Descriptions.Item label="Код аптеки"><CopyField value={client.pharmacy_code} /></Descriptions.Item>
+                        <Descriptions.Item label="Код аптеки (UT)"><CopyField value={client.pharmacy_code} /></Descriptions.Item>
+                        <Descriptions.Item label="Код склада"><CopyField value={client.warehouse_code} /></Descriptions.Item>
                       </Descriptions>
                     </Card>
 
@@ -558,15 +559,24 @@ export default function ClientDetailPage() {
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                       <Text strong style={{ fontSize: 16 }}>🧾 Кассовая техника</Text>
-                      <Button
-                        type="primary"
-                        icon={<ReloadOutlined />}
-                        onClick={refreshKktByRnm}
-                        loading={kktRefreshing}
-                        disabled={kktData.length === 0}
-                      >
-                        Обновить по РНМ
-                      </Button>
+                      <Space>
+                        <Button
+                          icon={<ReloadOutlined />}
+                          onClick={refreshKktByRnm}
+                          loading={kktRefreshing}
+                          disabled={kktData.length === 0}
+                        >
+                          Обновить по РНМ
+                        </Button>
+                        <Button
+                          type="primary"
+                          icon={<SyncOutlined />}
+                          onClick={fetchKktFromOfd}
+                          loading={kktFetching}
+                        >
+                          Получить данные с ОФД
+                        </Button>
+                      </Space>
                     </div>
 
                     {kktData.length === 0 ? (

@@ -45,7 +45,8 @@ const FIELD_GROUPS = [
       { key: 'inn',           label: 'ИНН' },
       { key: 'phone',         label: 'Телефон' },
       { key: 'email',         label: 'Email' },
-      { key: 'pharmacy_code', label: 'Код аптеки' },
+      { key: 'pharmacy_code', label: 'Код аптеки (UT)' },
+      { key: 'warehouse_code', label: 'Код склада' },
       { key: 'iccid',         label: 'ICCID' },
       { key: 'status',        label: 'Статус' },
     ],
@@ -80,7 +81,8 @@ const TABLE_COLUMN_DEFS = [
   { key: 'inn',              label: 'ИНН' },
   { key: 'phone',            label: 'Телефон' },
   { key: 'email',            label: 'Email' },
-  { key: 'pharmacy_code',    label: 'Код аптеки' },
+  { key: 'pharmacy_code',    label: 'Код аптеки (UT)' },
+  { key: 'warehouse_code',    label: 'Код склада' },
   { key: 'iccid',            label: 'ICCID' },
   { key: 'status',           label: 'Статус' },
   { key: 'subnet',           label: 'Подсеть' },
@@ -356,7 +358,8 @@ export default function ClientsPage() {
     show('inn')           && { title: 'ИНН',         dataIndex: 'inn',           key: 'inn',           sorter: true, sortOrder: sortField === 'inn' ? sortOrder : null,       render: v => v || '—' },
     show('phone')         && { title: 'Телефон',     dataIndex: 'phone',         key: 'phone',         sorter: true, sortOrder: sortField === 'phone' ? sortOrder : null,     render: v => v || '—' },
     show('email')         && { title: 'Email',       dataIndex: 'email',         key: 'email',         sorter: true, sortOrder: sortField === 'email' ? sortOrder : null,     render: v => v || '—' },
-    show('pharmacy_code') && { title: 'Код аптеки',  dataIndex: 'pharmacy_code', key: 'pharmacy_code', render: v => v || '—' },
+    show('pharmacy_code') && { title: 'Код аптеки (UT)', dataIndex: 'pharmacy_code', key: 'pharmacy_code', render: v => v || '—' },
+    show('warehouse_code') && { title: 'Код склада',    dataIndex: 'warehouse_code', key: 'warehouse_code', render: v => v || '—' },
     show('iccid')         && { title: 'ICCID',       dataIndex: 'iccid',         key: 'iccid',         render: v => v || '—' },
     show('subnet')        && { title: 'Подсеть',     dataIndex: 'subnet',        key: 'subnet',        render: v => v || '—' },
     show('external_ip')   && { title: 'Внешний IP',  dataIndex: 'external_ip',   key: 'external_ip',   render: v => v || '—' },
@@ -442,7 +445,7 @@ export default function ClientsPage() {
                 ⚙️ Колонки таблицы
               </div>
               {[
-                { group: 'Основные', keys: ['company','inn','phone','email','pharmacy_code','iccid','status'] },
+                { group: 'Основные', keys: ['company','inn','phone','email','pharmacy_code','warehouse_code','iccid','status'] },
                 { group: 'Сеть', keys: ['subnet','external_ip','mikrotik_ip','server_ip'] },
                 { group: 'Провайдер 1', keys: ['p1_name','p1_type','p1_account','p1_contract'] },
                 { group: 'Провайдер 2', keys: ['p2_name','p2_type','p2_account','p2_contract'] },

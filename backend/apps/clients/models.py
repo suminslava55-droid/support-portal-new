@@ -109,7 +109,8 @@ class Client(models.Model):
     phone = models.CharField('Телефон', max_length=30, blank=True)
     iccid = models.CharField('ICCID', max_length=30, blank=True)
     email = models.EmailField('Email', blank=True)
-    pharmacy_code = models.CharField('Код аптеки', max_length=50, blank=True)
+    pharmacy_code = models.CharField('Код аптеки (UT)', max_length=50, blank=True)
+    warehouse_code = models.CharField('Код склада', max_length=50, blank=True)
     address = models.TextField('Адрес')
     status = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
     provider = models.ForeignKey(

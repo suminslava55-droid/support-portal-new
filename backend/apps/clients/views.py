@@ -25,7 +25,8 @@ FIELD_LABELS = {
     'phone': 'Телефон',
     'iccid': 'ICCID',
     'email': 'Email',
-    'pharmacy_code': 'Код аптеки',
+    'pharmacy_code': 'Код аптеки (UT)',
+    'warehouse_code': 'Код склада',
     'ofd_company_id': 'Компания ОФД',
     'address': 'Адрес',
     'status': 'Статус',
@@ -127,8 +128,13 @@ class CustomFieldDefinitionViewSet(viewsets.ModelViewSet):
 class ClientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CanEditClient]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'create_draft', 'discard_draft'):
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), CanEditClient()]
     filterset_fields = ['status', 'provider']
-    search_fields = ['address', 'phone', 'email', 'pharmacy_code', 'ofd_company__name', 'ofd_company__inn']
+    search_fields = ['address', 'phone', 'email', 'pharmacy_code', 'warehouse_code', 'ofd_company__name', 'ofd_company__inn']
     ordering_fields = ['address', 'phone', 'email', 'status', 'created_at', 'provider__name', 'ofd_company__name', 'ofd_company__inn']
     ordering = ['-created_at']
 
@@ -257,6 +263,7 @@ class ClientViewSet(viewsets.ModelViewSet):
                 Q(address__icontains=search) |
                 Q(phone__icontains=search) | Q(email__icontains=search) |
                 Q(pharmacy_code__icontains=search) |
+            Q(warehouse_code__icontains=search) |
                 Q(ofd_company__name__icontains=search) |
                 Q(ofd_company__inn__icontains=search)
             )
@@ -276,7 +283,8 @@ class ClientViewSet(viewsets.ModelViewSet):
             'inn':           ('ИНН',         14, lambda c: c.inn or ''),
             'phone':         ('Телефон',     16, lambda c: c.phone or ''),
             'email':         ('Email',       25, lambda c: c.email or ''),
-            'pharmacy_code': ('Код аптеки',  12, lambda c: c.pharmacy_code or ''),
+            'pharmacy_code': ('Код аптеки (UT)', 12, lambda c: c.pharmacy_code or ''),
+            'warehouse_code': ('Код склада',    12, lambda c: c.warehouse_code or ''),
             'iccid':         ('ICCID',       22, lambda c: c.iccid or ''),
             'status':        ('Статус',      10, lambda c: STATUS_LABELS.get(c.status, c.status)),
             'subnet':        ('Подсеть',     16, lambda c: c.subnet or ''),
@@ -307,7 +315,7 @@ class ClientViewSet(viewsets.ModelViewSet):
 
         FIELD_ORDER = [
             'address', 'company', 'inn', 'phone', 'email',
-            'pharmacy_code', 'iccid', 'status',
+            'pharmacy_code', 'warehouse_code', 'iccid', 'status',
             'subnet', 'external_ip', 'mikrotik_ip', 'server_ip',
         ]
 

@@ -711,8 +711,13 @@ export default function ClientFormPage() {
                         </Form.Item>
                       </Col>
                       <Col span={12}>
-                        <Form.Item name="pharmacy_code" label="Код аптеки">
-                          <Input placeholder="APT-001" />
+                        <Form.Item name="pharmacy_code" label="Код аптеки (UT)">
+                          <Input placeholder="UT000001" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="warehouse_code" label="Код склада">
+                          <Input placeholder="81174669" />
                         </Form.Item>
                       </Col>
                       <Col span={12}>

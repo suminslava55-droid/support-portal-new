@@ -104,7 +104,7 @@ class ClientListSerializer(serializers.ModelSerializer):
                   'company', 'ofd_company', 'ofd_company_name', 'status', 'status_display',
                   'provider', 'provider_name', 'provider_type', 'provider_account', 'provider_contract',
                   'provider2', 'provider2_name', 'provider2_type', 'provider2_account', 'provider2_contract',
-                  'pharmacy_code', 'iccid', 'subnet', 'external_ip',
+                  'pharmacy_code', 'warehouse_code', 'iccid', 'subnet', 'external_ip',
                   'created_at']
 
 
