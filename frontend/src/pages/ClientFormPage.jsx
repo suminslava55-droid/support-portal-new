@@ -632,7 +632,6 @@ export default function ClientFormPage() {
         navigate(`/clients/${id}`);
       } else {
         await clientsAPI.update(id, { ...values, is_draft: false });
-        // Сохраняем заполненные РНМ которые ещё не были загружены через ОФД
         const filledRnm = rnmFields.filter(r => r.trim());
         const existingRnm = new Set(kktData.map(k => k.kkt_reg_id));
         const newRnm = filledRnm.filter(r => !existingRnm.has(r.trim()));
@@ -762,6 +761,7 @@ export default function ClientFormPage() {
                                   icon={<SyncOutlined spin={fetchingIP} />}
                                   loading={fetchingIP}
                                   onClick={handleGetExternalIP}
+                                  disabled={false}
                                   style={{ fontSize: 11, height: 22, padding: '0 8px' }}
                                 >
                                   Получить
@@ -1086,6 +1086,7 @@ export default function ClientFormPage() {
                               icon={<CloudDownloadOutlined />}
                               onClick={fetchKktFromOfd}
                               loading={kktFetching}
+                              disabled={false}
                             >
                               ИНН (поиск по адресу)
                             </Button>
@@ -1163,6 +1164,7 @@ export default function ClientFormPage() {
                                 icon={<CloudDownloadOutlined />}
                                 onClick={fetchKktFromOfd}
                                 loading={kktFetching}
+                                disabled={false}
                               >
                                 Получить данные ККТ по ИНН
                               </Button>
@@ -1179,6 +1181,7 @@ export default function ClientFormPage() {
                                 type="primary"
                                 icon={<PlusOutlined />}
                                 onClick={() => { setAddByRnmVisible(v => !v); setAddByRnmValue(''); }}
+                                disabled={false}
                               >
                                 Добавить по РНМ
                               </Button>

@@ -128,8 +128,8 @@ class CustomFieldDefinitionViewSet(viewsets.ModelViewSet):
 class ClientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CanEditClient]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['status', 'provider']
-    search_fields = ['address', 'phone', 'email', 'pharmacy_code', 'warehouse_code', 'ofd_company__name', 'ofd_company__inn']
+    filterset_fields = ['status']
+    search_fields = ['address', 'phone', 'email', 'pharmacy_code', 'warehouse_code', 'ofd_company__name', 'ofd_company__inn', 'personal_account', 'contract_number', 'personal_account2', 'contract_number2']
     ordering_fields = ['address', 'phone', 'email', 'status', 'created_at', 'provider__name', 'ofd_company__name', 'ofd_company__inn']
     ordering = ['-created_at']
 
@@ -150,9 +150,12 @@ class ClientViewSet(viewsets.ModelViewSet):
         qs = Client.objects.select_related('created_by', 'provider').filter(is_draft=False)
         providers_param = self.request.query_params.get('provider', '')
         if providers_param:
+            from django.db.models import Q
             provider_ids = [p.strip() for p in providers_param.split(',') if p.strip().isdigit()]
             if provider_ids:
-                qs = qs.filter(provider__id__in=provider_ids)
+                qs = qs.filter(
+                    Q(provider__id__in=provider_ids) | Q(provider2__id__in=provider_ids)
+                )
         return qs
 
     def get_object_including_draft(self):
@@ -166,6 +169,26 @@ class ClientViewSet(viewsets.ModelViewSet):
             self.check_object_permissions(self.request, obj)
             return obj
         return super().get_object()
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            CONNECTION_TYPE_CHOICES = [
+                ('fiber', 'Оптоволокно'), ('dsl', 'DSL'), ('cable', 'Кабель'),
+                ('wireless', 'Беспроводное'), ('modem', 'Модем'), ('mrnet', 'MR-Net'),
+            ]
+            matched_types = [code for code, label in CONNECTION_TYPE_CHOICES
+                             if search.lower() in label.lower()]
+            if matched_types:
+                from django.db.models import Q
+                qs = (qs | Client.objects.filter(
+                    is_draft=False,
+                ).filter(
+                    Q(connection_type__in=matched_types) |
+                    Q(connection_type2__in=matched_types)
+                )).distinct()
+        return qs
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -258,10 +281,31 @@ class ClientViewSet(viewsets.ModelViewSet):
                 Q(address__icontains=search) |
                 Q(phone__icontains=search) | Q(email__icontains=search) |
                 Q(pharmacy_code__icontains=search) |
-            Q(warehouse_code__icontains=search) |
+                Q(warehouse_code__icontains=search) |
                 Q(ofd_company__name__icontains=search) |
-                Q(ofd_company__inn__icontains=search)
+                Q(ofd_company__inn__icontains=search) |
+                Q(personal_account__icontains=search) |
+                Q(contract_number__icontains=search) |
+                Q(personal_account2__icontains=search) |
+                Q(contract_number2__icontains=search)
             )
+            # Поиск по типу подключения — по читаемому названию
+            CONNECTION_TYPE_CHOICES = [
+                ('fiber', 'Оптоволокно'), ('dsl', 'DSL'), ('cable', 'Кабель'),
+                ('wireless', 'Беспроводное'), ('modem', 'Модем'), ('mrnet', 'MR-Net'),
+            ]
+            matched_types = [code for code, label in CONNECTION_TYPE_CHOICES
+                             if search.lower() in label.lower()]
+            if matched_types:
+                qs = (qs | Client.objects.filter(
+                    is_draft=False,
+                    **{}
+                ).filter(
+                    Q(connection_type__in=matched_types) |
+                    Q(connection_type2__in=matched_types)
+                )).distinct()
+            else:
+                qs = qs.distinct()
         if status_filter:
             qs = qs.filter(status=status_filter)
         clients = qs.order_by('-created_at')
@@ -594,7 +638,7 @@ class ClientViewSet(viewsets.ModelViewSet):
 
 
 class FetchExternalIPView(APIView):
-    permission_classes = [IsAuthenticated, CanEditClient]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         import paramiko

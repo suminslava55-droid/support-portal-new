@@ -21,10 +21,12 @@ class CheckPackagesView(APIView):
 
 
 class SystemSettingsView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         s = SystemSettings.get()
+        # Все данные доступны авторизованным пользователям (нужны для SSH и SMTP функций)
+        # Редактировать настройки могут только администраторы (проверка в POST/DELETE)
         return Response({
             'ssh_user': s.ssh_user,
             'has_ssh_password': bool(s.ssh_password_encrypted),
@@ -39,6 +41,8 @@ class SystemSettingsView(APIView):
         })
 
     def delete(self, request):
+        if not IsAdmin().has_permission(request, self):
+            return Response({'error': 'Недостаточно прав'}, status=403)
         section = request.query_params.get('section', 'ssh')
         s = SystemSettings.get()
         if section == 'smtp':
@@ -59,6 +63,8 @@ class SystemSettingsView(APIView):
             return Response({'message': 'SSH данные очищены'})
 
     def post(self, request):
+        if not IsAdmin().has_permission(request, self):
+            return Response({'error': 'Недостаточно прав'}, status=403)
         s = SystemSettings.get()
         section = request.data.get('section', 'ssh')
 
