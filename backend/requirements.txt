@@ -9,6 +9,3 @@ django-filter==23.5
 cryptography
 paramiko
 openpyxl
-cryptography
-cryptography
-cryptography

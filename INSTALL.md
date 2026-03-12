@@ -1,137 +1,17 @@
-# Support Portal — Инструкция по установке
-
-## ⚠️ Известные проблемы
-
-После внесения изменений по разделу ККТ/ОФД временно переставали работать:
-- **Кнопка «Получить внешний IP»** — причина: пакет `paramiko` слетал при перезапуске контейнера
-- **Экспорт в Excel** — причина: пакет `openpyxl` слетал при перезапуске контейнера
-
-Решение: добавить оба пакета в `requirements.txt` и при необходимости устанавливать вручную (см. раздел «Устранение неполадок»).
-
-- **Обновление ККТ зависает или падает по таймауту** — причина: API `lk.ofd.ru` ограничивает частоту запросов до 1 в секунду. При большом количестве касс (до 700 штук) обновление занимает до 13 минут. По умолчанию gunicorn убивал воркер через 2 минуты (`--timeout 120`), и subprocess падал раньше. Решение: увеличить `--timeout` в `docker-compose.yml` до 1000 и `timeout` subprocess до 900 секунд (уже исправлено в репозитории). Скрипт `ofd_fetch.sh` соблюдает паузу 1.1 сек между запросами автоматически.
-
-- **Токен ОФД не сохраняется в разделе «Компании»** — причина: при удалении дублирующего класса `OfdCompanyViewSet` из `views.py` вместе с ним удалялся импорт `OfdCompanyWriteSerializer`, из-за чего при сохранении возникал `NameError` и сервер отвечал ошибкой 500.
-
-Решение: убедиться что в `backend/apps/clients/views.py` в блоке импорта сериализаторов присутствует `OfdCompanyWriteSerializer`:
-```python
-from .serializers import (
-    ..., OfdCompanySerializer, OfdCompanyWriteSerializer,
-)
-```
-И что класс `OfdCompanyViewSet` в файле **один** и содержит `get_serializer_class`:
-```python
-class OfdCompanyViewSet(viewsets.ModelViewSet):
-    queryset = OfdCompany.objects.all()
-    permission_classes = [IsAuthenticated]
-
-    def get_serializer_class(self):
-        if self.action in ('create', 'update', 'partial_update'):
-            return OfdCompanyWriteSerializer
-        return OfdCompanySerializer
-```
-Проверка и исправление:
-```bash
-# Проверяем — должно быть 1
-grep -c "class OfdCompanyViewSet" /opt/support-portal/backend/apps/clients/views.py
-
-# Проверяем импорт
-grep "OfdCompanyWriteSerializer" /opt/support-portal/backend/apps/clients/views.py
-
-# Если импорта нет — добавляем
-sed -i 's/OfdCompanySerializer,$/OfdCompanySerializer, OfdCompanyWriteSerializer,/' \
-  /opt/support-portal/backend/apps/clients/views.py
-
-docker compose restart backend
-```
-
----
+# Support Portal — Установка
 
 ## Описание системы
 
 **Support Portal** — веб-приложение для управления клиентами (аптеками), провайдерами, сетевой инфраструктурой и кассовой техникой (ККТ) с интеграцией ОФД.
 
-### Стек технологий
-
-| Компонент | Технология | Назначение |
-|-----------|-----------|------------|
-| Backend | Django 4.x + Django REST Framework | REST API, бизнес-логика, аутентификация |
-| Frontend | React 18 + Ant Design | Веб-интерфейс |
-| База данных | PostgreSQL 16 | Хранение данных |
-| Веб-сервер | Nginx (Alpine) | Проксирование, раздача статики и медиафайлов |
-| Контейнеризация | Docker + Docker Compose | Изоляция и управление сервисами |
-| Сборка фронтенда | Node.js 18 + npm | Компиляция React-приложения на сервере |
-
----
-
-### Основные модули и функции
-
-**📋 Клиенты**
-- Карточка клиента: адрес (обязательное поле), компания, ИНН, телефон, email, код аптеки, ICCID
-- Три вкладки в карточке: **📋 Информация**, **🌐 Провайдеры**, **🧾 ККТ**
-- Блок **Сеть**: подсеть аптеки, внешний IP, Микротик IP (авто: .1), Сервер IP (авто: .2), проверка доступности
-- **Провайдер 1 и Провайдер 2**: название, тип подключения (с иконками), тариф, лицевой счёт, № договора, настройки, оборудование
-- При типе Модем или MR-Net: дополнительные поля Номер (модем/SIM) и ICCID модема
-- Передача провайдера между клиентами с выбором слота и логированием
-- Получение внешнего IP с Микротика по SSH (paramiko)
-- Заметки и история изменений с иконками: ✏️ изменения, 🖨️ добавление ККТ, 🗑️ удаление ККТ
-- Логирование ККТ: добавление (РНМ, серийный номер, модель), удаление, изменение номера ФН
-- Вложенные файлы (до 5 МБ): скачивание, удаление
-- Система черновиков при создании клиента (черновики старше 2 часов удаляются автоматически)
-- Экспорт списка клиентов в Excel с выбором полей и отправкой на Email
-- Сортировка по всем колонкам таблицы
-- Фильтрация по нескольким провайдерам одновременно
-- ⚙️ Настройка колонок таблицы — каждый пользователь выбирает нужные поля (сохраняется в браузере)
-
-**🧾 ККТ (Кассовая техника)**
-- Раздел **«Компании»** — справочник компаний с ИНН и зашифрованным токеном ОФД (lk.ofd.ru)
-- В карточке клиента — привязка к компании (вместо текстовых полей ИНН и Компания)
-- Вкладка **«ККТ»** в карточке клиента:
-  - Просмотр: кнопка «Обновить по РНМ» (быстрое обновление уже загруженных ККТ), кнопка удаления каждой ККТ
-  - Редактирование: отображение ККТ (только чтение) + кнопки «Получить данные ККТ по ИНН» и «Обновить по РНМ»
-  - Создание: поля для ввода РНМ (с кнопками + и −), кнопки получения по ИНН и по РНМ
-- Отображаемые поля ККТ: РНМ, серийный номер, модель, номер ФН, дата создания, конец срока ФН, конец договора ОФД, адрес установки
-- Получение данных через скрипт `ofd_fetch.sh`, выполняемый на **хосте** (из контейнера нет доступа к интернету)
-- Фильтрация ККТ по адресу аптеки с точной проверкой номера дома
-- Проверка совпадения адреса при добавлении по РНМ — при несовпадении показывается ошибка, остальные РНМ продолжают обрабатываться
-- Автосохранение компании и адреса в черновик при создании клиента
-
-**🌐 Провайдеры**
-- Справочник провайдеров: название, телефоны техподдержки
-- Поиск по названию и телефону
-
-**👤 Пользователи и роли**
-- RBAC: роли с настраиваемыми правами
-- Роли: **Администратор**, **Системный администратор**, **Связист**
-- Поле **День рождения** у пользователя — отображается в календаре дежурств
-- Роль **Связист**: доступ только к разделам Клиенты и Провайдеры, календарь недоступен
-
-**📅 Календарь дежурств**
-- Таблица: строки — сотрудники (без Связистов), столбцы — дни месяца
-- Типы дежурств с цветовой маркировкой: Телефон (зелёный), Работа днём (синий), Телефон + день (зелёный), Отпуск (жёлтый), Занят (красный)
-- Выходные дни выделяются оранжевым цветом
-- Администратор может пометить любой день как выходной или рабочий
-- Дни рождения сотрудников подсвечиваются розовой рамкой с 🎂
-- **Мультивыделение**: Ctrl+клик по любым ячейкам (из разных строк и дней) накапливает выделение — отмечаются синим с галочкой; появляется панель «Применить тип…» для массового назначения одним запросом; Esc или повторный Ctrl+клик снимает выделение
-- Кнопка **Отчёт за месяц** — сводная таблица по количеству дней каждого типа
-- Кнопка **Очистить таблицу** (только администратор)
-
-**🔄 Замена ФН**
-- Раздел для контроля сроков замены фискальных накопителей
-- Вкладка **Общий** — полный список всех ККТ из базы с поиском, сортировкой по всем полям, выгрузкой в Excel (файл или на почту), настройкой видимых колонок и выбором количества записей на странице
-- Вкладка **По месяцам** — те же возможности, но с фильтром по месяцу и году окончания срока ФН; выбор месяца стрелками или датапикером; счётчик ККТ требующих замены
-- Колонки: Адрес, Компания, РНМ, Серийный номер, Номер ФН, Конец срока ФН, Конец договора ОФД
-- Подсветка дат: красная (просрочен), оранжевая (≤30 дней), жёлтая (≤90 дней)
-- Клик по строке (адресу) — переход в карточку клиента сразу на вкладку ККТ
-
-**⚙️ Настройки системы** (только для администраторов)
-- SSH-параметры для подключения к Микротикам (логин, пароль шифруется через Fernet)
-- SMTP-параметры для отправки Email (логин, пароль шифруется через Fernet)
-- Кнопка тестовой отправки письма
-- Кнопки очистки данных
-
-**Интерфейс**
-- Тёмная тема — переключатель в меню пользователя (сохраняется в браузере)
-- Адаптивное боковое меню с настройкой видимости пунктов в зависимости от роли
+| Компонент | Технология |
+|-----------|-----------|
+| Backend | Django 4.x + Django REST Framework |
+| Frontend | React 18 + Ant Design |
+| База данных | PostgreSQL 16 |
+| Веб-сервер | Nginx (Alpine) |
+| Контейнеризация | Docker + Docker Compose |
+| Сборка фронтенда | Node.js 18 + npm |
 
 ---
 
@@ -144,91 +24,41 @@ docker compose restart backend
 
 ---
 
-## 1. Подготовка сервера
-
-### 1.1 Обновление системы
+## Шаг 1 — Подготовка сервера
 
 ```bash
+# Обновление системы
 apt update && apt upgrade -y
-```
 
-### 1.2 Установка Docker
-
-```bash
+# Docker
 curl -fsSL https://get.docker.com | sh
-```
-
-### 1.3 Установка Docker Compose Plugin
-
-```bash
 apt install docker-compose-plugin -y
-```
 
-### 1.4 Установка Git
-
-```bash
+# Git
 apt install git -y
-```
 
-### 1.5 Установка Python 3 и pip
-
-Python нужен для генерации ключей шифрования и запуска скрипта ОФД на хосте.
-
-```bash
+# Python (для генерации ключей и запуска скрипта ОФД на хосте)
 apt install python3 python3-pip -y
-```
-
-### 1.6 Установка библиотеки cryptography
-
-Используется для генерации `ENCRYPTION_KEY` — Fernet-ключа, которым шифруются SSH-пароль, SMTP-пароль и токены ОФД в базе данных.
-
-```bash
 pip3 install cryptography --break-system-packages
-```
 
-### 1.7 Установка Node.js и npm
-
-Node.js используется для быстрой сборки фронтенда на сервере (20–40 сек вместо 5–10 мин пересборки Docker).
-
-```bash
+# Node.js (для быстрой сборки фронтенда)
 apt install nodejs npm -y
-```
 
-Проверяем версии:
-
-```bash
-node --version   # v18.x.x или выше
-npm --version    # 9.x.x или выше
-```
-
-После установки устанавливаем зависимости фронтенда (выполняется один раз):
-
-```bash
-cd /opt/support-portal/frontend
-npm install
-```
-
-### 1.8 Установка системных утилит
-
-```bash
+# Утилиты
 apt install curl nano iputils-ping openssl -y
 ```
 
-### 1.9 Проверка установки
-
+Проверяем:
 ```bash
-docker --version
-docker compose version
+docker --version && docker compose version
 git --version
 python3 --version
-node --version
-npm --version
-ping -c1 8.8.8.8
+node --version && npm --version
 ```
 
 ---
 
-## 2. Загружаем проект
+## Шаг 2 — Загрузка проекта
 
 ```bash
 git clone https://github.com/suminslava55-droid/support-portal-new.git /opt/support-portal
@@ -237,69 +67,47 @@ cd /opt/support-portal
 
 ---
 
-## 3. Настраиваем переменные окружения
+## Шаг 3 — Переменные окружения
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Содержимое `.env`:
+Генерируем значения:
 
-```env
-# База данных
-DB_NAME=support_portal
-DB_USER=postgres
-DB_PASSWORD=CHANGE_ME_STRONG_PASSWORD
-DB_HOST=db
-DB_PORT=5432
-
-# Django
-SECRET_KEY=CHANGE_ME_VERY_LONG_SECRET_KEY_HERE
-DEBUG=False
-ALLOWED_HOSTS=your-ip-or-domain,localhost
-CORS_ALLOWED_ORIGINS=http://your-ip-or-domain,http://localhost
-
-# Ключ шифрования (для SSH, SMTP паролей и токенов ОФД)
-ENCRYPTION_KEY=CHANGE_ME_FERNET_KEY
-```
-
-### Генерация значений
-
-**SECRET_KEY:**
 ```bash
+# SECRET_KEY
 openssl rand -hex 50
-```
 
-**ENCRYPTION_KEY** (Fernet-ключ):
-```bash
+# ENCRYPTION_KEY (Fernet)
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-> ⚠️ **Потеря ENCRYPTION_KEY = потеря всех зашифрованных паролей и токенов ОФД.** Делайте резервную копию `.env`.
-
-### Итоговый пример заполненного .env
+Заполненный `.env`:
 
 ```env
 DB_NAME=support_portal
 DB_USER=postgres
-DB_PASSWORD=qX7!mN3kP9@support
+DB_PASSWORD=СИЛЬНЫЙ_ПАРОЛЬ
 DB_HOST=db
 DB_PORT=5432
 
-SECRET_KEY=a3f8c2d1e4b7a9f0c3d6e2b5a8f1c4d7e0b3a6f9c2d5e8b1a4f7c0d3e6b9a2f5c8d1e4b7
+SECRET_KEY=сгенерированный_ключ
 DEBUG=False
-ALLOWED_HOSTS=94.130.1.1,localhost
-CORS_ALLOWED_ORIGINS=http://94.130.1.1,http://localhost
+ALLOWED_HOSTS=ВАШ_IP,localhost
+CORS_ALLOWED_ORIGINS=http://ВАШ_IP,http://localhost
 
-ENCRYPTION_KEY=ySKoI9K2_Uj2qjNUSxREYTFIW3o-HILiIMYZ5enMgYs=
+ENCRYPTION_KEY=сгенерированный_fernet_ключ
 ```
 
-> **Сохранение в nano:** `Ctrl+O` → `Enter` → `Ctrl+X`
+> ⚠️ **Потеря ENCRYPTION_KEY = потеря всех зашифрованных паролей и токенов ОФД.** Сохраните резервную копию `.env`.
+
+Сохранение в nano: `Ctrl+O` → `Enter` → `Ctrl+X`
 
 ---
 
-## 4. Хранилище медиафайлов
+## Шаг 4 — Папка медиафайлов
 
 ```bash
 mkdir -p /opt/support-portal/media
@@ -307,19 +115,17 @@ mkdir -p /opt/support-portal/media
 
 ---
 
-## 5. Скрипт для работы с ОФД (на хосте)
+## Шаг 5 — Скрипт ОФД
 
-Скрипт `ofd_fetch.sh` необходим для получения данных от ОФД. Из Docker-контейнера нет прямого доступа к интернету, поэтому скрипт запускается на хосте и пробрасывается в контейнер через volume.
+Скрипт `ofd_fetch.sh` запускается на **хосте** (из контейнера нет доступа к интернету).
 
 ```bash
-# Убедитесь что скрипт находится в репозитории
+# Убедитесь что скрипт есть в репозитории
 ls /opt/support-portal/ofd_fetch.sh
 
-# Сделайте его исполняемым
+# Сделайте исполняемым
 chmod +x /opt/support-portal/ofd_fetch.sh
 ```
-
-> ⚠️ **Скрипт запускать только с хоста, НЕ через `docker compose exec`** — из контейнера нет доступа к интернету.
 
 В `docker-compose.yml` должен быть volume:
 ```yaml
@@ -328,32 +134,30 @@ chmod +x /opt/support-portal/ofd_fetch.sh
 
 ---
 
-## 6. Запускаем
+## Шаг 6 — Запуск
 
 ```bash
 cd /opt/support-portal
 docker compose up -d --build
 ```
 
-Первый запуск занимает 5–10 минут. Следим:
+Первый запуск занимает 5–10 минут. Следим за логами:
 
 ```bash
 docker compose logs -f
 ```
 
-Проверяем контейнеры:
-
+Должны быть запущены три контейнера:
 ```bash
 docker compose ps
+# support-portal-db-1
+# support-portal-backend-1
+# support-portal-nginx-1
 ```
-
-Должны быть запущены: `support-portal-db-1`, `support-portal-backend-1`, `support-portal-nginx-1`.
 
 ---
 
-## 7. Проверяем Python-пакеты в контейнере
-
-После первого запуска убедитесь что все необходимые пакеты установлены:
+## Шаг 7 — Проверка пакетов
 
 ```bash
 docker compose exec backend python -c "
@@ -364,434 +168,68 @@ print('openpyxl OK')
 "
 ```
 
-Если какой-то пакет отсутствует — установите вручную:
-
+Если пакет отсутствует:
 ```bash
 docker compose exec backend pip install cryptography paramiko openpyxl --break-system-packages
 docker compose restart backend
 ```
 
-> ⚠️ **Важно:** пакеты `cryptography`, `paramiko` и `openpyxl` могут слетать при пересборке контейнера (`docker compose up --build`) если во время сборки нет доступа к интернету. В этом случае устанавливайте вручную командой выше после каждой пересборки.
+> ⚠️ Пакеты могут слетать при пересборке контейнера (`--build`) если нет доступа к интернету. Устанавливайте вручную после каждой пересборки.
 
 ---
 
-## 8. Создаём администратора и роли
+## Шаг 8 — Создание администратора и ролей
 
 ```bash
 docker compose exec backend python create_admin.py
 ```
 
-Доступные роли после установки:
+Роли после установки:
 
 | Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | Пользователи | Настройки |
 |------|---------|-----------|---------|----------|----------|-------------|----------|
-| Администратор | Полный доступ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Системный администратор | Полный доступ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Связист | Полный доступ | ✅ | 👁 просмотр | ✅ | ❌ | ❌ | ❌ |
+| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Связист | Полный | ✅ | 👁 просмотр | ✅ | ❌ | ❌ | ❌ |
 
 ---
 
-## 9. Первоначальная настройка в интерфейсе
+## Шаг 9 — Первоначальная настройка в интерфейсе
 
 1. Откройте `http://ВАШ_IP` в браузере
 2. Войдите под учётными данными администратора
-3. Перейдите в **Настройки**:
-   - Укажите SSH пользователь и пароль для Микротиков
-   - Укажите SMTP настройки (сервер, порт, логин, пароль, адрес отправителя)
-   - Проверьте отправку кнопкой «Тест отправки»
-4. Перейдите в **Компании** → добавьте компании с ИНН и токеном ОФД (из личного кабинета lk.ofd.ru)
-5. Перейдите в **Провайдеры** → добавьте провайдеров
-6. Перейдите в **Пользователи** → заполните дни рождения сотрудников
+3. **Настройки** → SSH пользователь/пароль для Микротиков, SMTP для отправки писем → кнопка «Тест отправки»
+4. **Компании** → добавьте компании с ИНН и токеном ОФД (из `lk.ofd.ru → Настройки → API`)
+5. **Провайдеры** → добавьте провайдеров
+6. **Пользователи** → заполните дни рождения сотрудников
 7. Создавайте карточки клиентов
 
 ---
 
-## 10. Работа с ККТ
+## Установка Node.js зависимостей (один раз)
 
-### Настройка
-
-1. Перейдите в раздел **«Компании»** в боковом меню
-2. Добавьте компанию: название, ИНН, токен ОФД (берётся из личного кабинета lk.ofd.ru → Настройки → API)
-3. В карточке клиента в поле **«Компания»** выберите нужную компанию
-4. Убедитесь что у клиента заполнен **Адрес** — он используется для фильтрации ККТ
-
-### Получение данных ККТ
-
-- **Вкладка ККТ в просмотре карточки** → кнопка **«Обновить по РНМ»** — обновляет уже загруженные ККТ
-- **Вкладка ККТ в редактировании карточки** → кнопка **«Получить данные ККТ по ИНН»** — полный поиск по ИНН + фильтрация по адресу
-- **Вкладка ККТ при создании клиента** → кнопки **«ИНН»** и **«РНМ»** — можно получить данные сразу при создании
-
-### Разница между кнопками
-
-| Кнопка | Метод | Что делает |
-|--------|-------|-----------|
-| Получить данные ККТ по ИНН | POST | Полный поиск по ИНН компании + фильтрация по адресу. Находит новые ККТ |
-| Обновить по РНМ | PATCH | Обновляет только уже сохранённые ККТ по их РНМ. Быстрее |
-| По РНМ (при создании) | PATCH | Получает данные по введённым вручную РНМ. Проверяет совпадение адреса |
-
-### Архитектура запросов к ОФД
-
-```
-Браузер → Django API (контейнер) → ofd_fetch.sh (хост) → lk.ofd.ru
-```
-
-Скрипт `ofd_fetch.sh` принимает аргументы:
-```bash
-# Поиск по адресу (полный)
-python3 /opt/support-portal/ofd_fetch.sh <ИНН> <ТОКЕН> "Город, Улица, д. N"
-
-# Прямой запрос по РНМ (быстрый)
-python3 /opt/support-portal/ofd_fetch.sh <ИНН> <ТОКЕН> 0001234567890123
-```
-
----
-
-## 11. Обновление фронтенда (быстрый деплой)
-
-```bash
-/opt/support-portal/deploy-frontend.sh
-```
-
----
-
-## 12. Когда что использовать
-
-| Изменение | Команда |
-|-----------|---------|
-| Изменения в Python-коде бэкенда | `docker compose restart backend` |
-| Изменения в коде фронтенда (JSX, CSS) | `/opt/support-portal/deploy-frontend.sh` |
-| Новые Python-зависимости (requirements.txt) | `docker compose up -d --build` |
-| Новые миграции базы данных | `docker compose exec backend python manage.py migrate` |
-
----
-
-## Полезные команды
-
-```bash
-# Статус контейнеров
-docker compose ps
-
-# Логи в реальном времени
-docker compose logs -f backend
-docker compose logs -f nginx
-
-# Перезапустить бэкенд
-docker compose restart backend
-
-# Быстрый деплой фронтенда
-/opt/support-portal/deploy-frontend.sh
-
-# Полная пересборка (после изменений в requirements.txt или Dockerfile)
-docker compose up -d --build
-
-# Применить миграции
-docker compose exec backend python manage.py migrate
-
-# Резервная копия БД
-docker compose exec db pg_dump -U postgres support_portal > backup_$(date +%Y%m%d).sql
-
-# Восстановление из резервной копии
-cat backup_20240101.sql | docker compose exec -T db psql -U postgres support_portal
-
-# Проверка всех Python-пакетов
-docker compose exec backend python -c "import cryptography, paramiko, openpyxl; print('Все пакеты OK')"
-
-# Проверка доступности скрипта ОФД в контейнере
-docker compose exec backend ls -la /usr/local/bin/ofd_fetch.sh
-
-# Просмотр компаний и токенов ОФД
-docker compose exec backend python manage.py shell -c "
-from apps.clients.models import OfdCompany
-for c in OfdCompany.objects.all():
-    print(c.id, c.name, c.inn, 'токен:', c.ofd_token[:10] + '...' if c.ofd_token else 'НЕТ')
-"
-
-# Создать тестовых провайдеров
-docker compose exec backend python manage.py shell -c "
-from apps.clients.models import Provider
-providers = [('Ростелеком','8-800-100-08-00'),('МТС','8-800-250-08-90')]
-for name, phone in providers:
-    p, created = Provider.objects.get_or_create(name=name, defaults={'support_phones': phone})
-    print('Создан' if created else 'Уже есть', name)
-"
-```
-
----
-
-## Обновление системы
-
-```bash
-cd /opt/support-portal
-git pull
-
-# Применяем миграции если они есть
-docker compose exec backend python manage.py migrate
-
-# Перезапускаем бэкенд
-docker compose restart backend
-
-# Деплоим фронтенд если были изменения
-/opt/support-portal/deploy-frontend.sh
-
-# После пересборки — проверяем пакеты
-docker compose exec backend python -c "import cryptography, paramiko, openpyxl; print('OK')"
-```
-
----
-
-## Устранение неполадок
-
-### 🔍 Универсальная диагностика
-
-При любой непонятной ошибке (500, 400, токены не сохраняются, API не отвечает) — запустите диагностический скрипт. Он автоматически включит `DEBUG=True`, воспроизведёт запрос, покажет traceback и вернёт `DEBUG=False`.
-
-```bash
-cd /opt/support-portal
-bash diagnose.sh 2>&1 | tee /tmp/diag_result.txt
-cat /tmp/diag_result.txt
-```
-
-Содержимое `diagnose.sh`:
-
-```bash
-#!/bin/bash
-cd /opt/support-portal
-DIVIDER="=================================================="
-
-echo "$DIVIDER"
-echo "1. ОКРУЖЕНИЕ"
-echo "$DIVIDER"
-grep -E "DEBUG|ALLOWED_HOSTS|ENCRYPTION_KEY" .env | sed 's/=.*/=***/'
-docker compose exec backend python manage.py shell -c "
-from django.conf import settings
-print('DEBUG:', settings.DEBUG)
-print('ALLOWED_HOSTS:', settings.ALLOWED_HOSTS)
-print('ENCRYPTION_KEY задан:', bool(getattr(settings, 'ENCRYPTION_KEY', '')))
-print('ENCRYPTION_KEY длина:', len(getattr(settings, 'ENCRYPTION_KEY', '')))
-"
-
-echo ""; echo "$DIVIDER"; echo "2. СТАТУС КОНТЕЙНЕРОВ"; echo "$DIVIDER"
-docker compose ps
-
-echo ""; echo "$DIVIDER"; echo "3. ИМПОРТЫ В VIEWS.PY"; echo "$DIVIDER"
-grep -n "from .serializers\|OfdCompanyWriteSerializer\|OfdCompanySerializer" backend/apps/clients/views.py
-echo "Количество OfdCompanyViewSet:"
-grep -c "class OfdCompanyViewSet" backend/apps/clients/views.py
-grep -n "class OfdCompanyViewSet\|get_serializer_class\|OfdCompanyWriteSerializer" backend/apps/clients/views.py
-
-echo ""; echo "$DIVIDER"; echo "4. ПАКЕТЫ"; echo "$DIVIDER"
-docker compose exec backend python -c "
-import cryptography, paramiko, openpyxl
-print('cryptography:', cryptography.__version__)
-print('paramiko:', paramiko.__version__)
-print('openpyxl:', openpyxl.__version__)
-"
-
-echo ""; echo "$DIVIDER"; echo "5. ТЕСТ ШИФРОВАНИЯ"; echo "$DIVIDER"
-docker compose exec backend python manage.py shell -c "
-from apps.clients.models import encrypt_value, decrypt_value
-try:
-    enc = encrypt_value('test_token_diag')
-    dec = decrypt_value(enc)
-    print('encrypt/decrypt:', 'OK' if dec == 'test_token_diag' else 'FAIL: ' + dec)
-except Exception as e:
-    import traceback; traceback.print_exc()
-"
-
-echo ""; echo "$DIVIDER"; echo "6. ВКЛЮЧАЕМ DEBUG=True"; echo "$DIVIDER"
-cp .env .env.diag_backup
-sed -i 's/DEBUG=False/DEBUG=True/' .env
-docker compose restart backend > /dev/null 2>&1
-sleep 7
-echo "DEBUG включён"
-
-echo ""; echo "$DIVIDER"; echo "7. PATCH ЗАПРОС С TRACEBACK"; echo "$DIVIDER"
-docker compose exec backend python manage.py shell -c "
-import traceback
-from rest_framework.test import APIClient
-from apps.clients.models import OfdCompany
-from django.contrib.auth import get_user_model
-User = get_user_model()
-user = User.objects.filter(is_superuser=True).first()
-company = OfdCompany.objects.first()
-print(f'Пользователь: {user}')
-print(f'Компания: {company.name} (id={company.id})')
-client = APIClient()
-client.force_authenticate(user=user)
-try:
-    r = client.patch(
-        f'/api/clients/ofd-companies/{company.id}/',
-        {'ofd_token': 'DIAG_TEST_TOKEN'},
-        format='json',
-        HTTP_HOST='192.168.142.145',
-    )
-    print('HTTP статус:', r.status_code)
-    if hasattr(r, 'data'): print('response.data:', r.data)
-    print('content:', r.content[:1000].decode('utf-8', errors='replace'))
-except Exception as e:
-    traceback.print_exc()
-company.refresh_from_db()
-print('has_token после:', bool(company.ofd_token_encrypted))
-print('token:', company.ofd_token)
-"
-
-echo ""; echo "$DIVIDER"; echo "8. ЛОГИ БЭКЕНДА"; echo "$DIVIDER"
-docker compose logs --tail=40 backend 2>&1 | grep -v "RuntimeWarning\|warnings.warn\|UnorderedObject\|Booting worker\|Listening at\|Starting gunicorn\|Control socket\|copied to\|No migrations\|Apply all\|accounts, admin"
-
-echo ""; echo "$DIVIDER"; echo "9. CURL ТЕСТ"; echo "$DIVIDER"
-TOKEN=$(docker compose exec backend python manage.py shell -c "
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model
-User = get_user_model()
-user = User.objects.filter(is_superuser=True).first()
-print(str(RefreshToken.for_user(user).access_token))
-" 2>/dev/null | tail -1)
-echo "Токен: ${TOKEN:0:30}..."
-curl -s -X PATCH "http://localhost/api/clients/ofd-companies/1/" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Host: 192.168.142.145" \
-  -d '{"ofd_token": "CURL_TEST"}' | head -c 500
-
-echo ""; echo ""; echo "$DIVIDER"; echo "10. ВОЗВРАЩАЕМ DEBUG=False"; echo "$DIVIDER"
-cp .env.diag_backup .env
-docker compose restart backend > /dev/null 2>&1
-echo "DEBUG=False восстановлен"
-echo "✅ Диагностика завершена"
-```
-
----
-
-**Белый экран в браузере**
-```bash
-docker compose logs nginx --tail=30
-# Жёсткий сброс кэша: Ctrl+Shift+R
-```
-
-**Ошибка 500 от API**
-```bash
-docker compose logs backend --tail=50
-```
-
-**No module named 'cryptography' / 'paramiko' / 'openpyxl'**
-
-Пакеты слетели при пересборке контейнера. Установите вручную:
-```bash
-docker compose exec backend pip install cryptography paramiko openpyxl --break-system-packages
-docker compose restart backend
-```
-
-**Скрипт ОФД не найден в контейнере**
-```bash
-ls -la /opt/support-portal/ofd_fetch.sh
-# Убедитесь что в docker-compose.yml есть volume для ofd_fetch.sh
-```
-
-**Пустой ответ от скрипта ОФД / timeout**
-```bash
-# Тест с хоста (не из контейнера!)
-python3 /opt/support-portal/ofd_fetch.sh <ИНН> <ТОКЕН> "Адрес"
-# Если timeout — проверьте токен и доступ к интернету с хоста
-```
-
-**DEBUG включён случайно**
-```bash
-# Найти .env и убедиться что DEBUG=False
-grep "DEBUG" /opt/support-portal/.env
-docker compose restart backend
-```
-
-**Черновики накапливаются в базе**
-
-Черновики старше 2 часов удаляются автоматически при открытии списка клиентов. Для ручной очистки:
-```bash
-docker compose exec backend python manage.py shell -c "
-from apps.clients.models import Client
-from django.utils import timezone
-from datetime import timedelta
-old = Client.objects.filter(is_draft=True, created_at__lt=timezone.now()-timedelta(hours=2))
-print(f'Найдено черновиков: {old.count()}')
-for c in old:
-    for f in c.files.all(): f.file.delete(); f.delete()
-    c.delete()
-print('Готово')
-"
-```
-
-**После смены ENCRYPTION_KEY перестали читаться пароли**
-
-Введите SSH и SMTP пароли заново в разделе «Настройки», а также обновите токены ОФД в разделе «Компании».
-
-**Конфликт миграций (Conflicting migrations detected)**
-```bash
-cat > /opt/support-portal/backend/apps/accounts/migrations/0004_merge.py << 'MIGRATION'
-from django.db import migrations
-class Migration(migrations.Migration):
-    dependencies = [
-        ('accounts', '0002_user_birthday'),
-        ('accounts', '0003_update_role_choices'),
-    ]
-    operations = []
-MIGRATION
-docker compose exec backend python manage.py migrate
-```
-
-**Ошибка сортировки по полям Компания / ИНН**
-
-Поля `company` и `inn` являются вычисляемыми (`@property`) и берутся из связанной модели `OfdCompany`. Сортировка идёт через `ofd_company__name` и `ofd_company__inn`. Если после обновления сортировка не работает — сбросьте кэш браузера (`Ctrl+Shift+R`).
-
-**Ошибка сборки фронтенда**
 ```bash
 cd /opt/support-portal/frontend
-rm -rf node_modules
 npm install
-npm run build
 ```
 
-**Токен ОФД не сохраняется / ошибка 500 при сохранении компании**
+---
 
-Причина: в `views.py` отсутствует импорт `OfdCompanyWriteSerializer` или присутствует дублирующий класс `OfdCompanyViewSet`.
+## Настройка HTTPS (опционально)
 
 ```bash
-# Проверяем — должно быть 1
-grep -c "class OfdCompanyViewSet" /opt/support-portal/backend/apps/clients/views.py
-
-# Проверяем наличие импорта
-grep "OfdCompanyWriteSerializer" /opt/support-portal/backend/apps/clients/views.py
-
-# Если импорта нет — добавляем одной командой
-sed -i 's/OfdCompanySerializer,$/OfdCompanySerializer, OfdCompanyWriteSerializer,/' \
-  /opt/support-portal/backend/apps/clients/views.py
-
-docker compose restart backend
+apt install certbot python3-certbot-nginx -y
+docker compose stop nginx
+certbot certonly --standalone -d ваш-домен.ru
+# Обновите nginx/default.conf — добавьте блок SSL
+docker compose start nginx
 ```
-
-**Ошибки при получении данных ККТ / обновление зависает**
-
-Используйте скрипты диагностики ОФД:
-
-`check_ofd_network.sh` — проверяет сетевой доступ к `lk.ofd.ru` с хоста. Запустите если скрипт вообще не может достучаться до сервера (TimeoutError на все компании):
-```bash
-bash /opt/support-portal/check_ofd_network.sh
-```
-Ожидаемый результат: TCP 443 OK, curl возвращает HTTP 403 на тестовый токен — это нормально, значит сеть работает.
-
-`check_ofd_tokens.sh` — проверяет каждый токен в базе реальным запросом к API. Показывает какая именно компания возвращает ошибку и почему:
-```bash
-bash /opt/support-portal/check_ofd_tokens.sh
-```
-Возможные результаты для каждой компании: `✅ OK` (токен рабочий), `❌ HTTP 403` (токен протух — обновите в `lk.ofd.ru`), `❌ TimeoutError` (сервер не отвечает на этот токен), `❌ КИРИЛЛИЦА В ТОКЕНЕ` (введён мусор вместо токена).
-
-**Обновление ККТ занимает много времени (это нормально)**
-
-API `lk.ofd.ru` ограничивает частоту запросов: не более 1 запроса в секунду. При 700 кассах обновление занимает ~13 минут. Это штатное поведение. Gunicorn настроен с `--timeout 1000` чтобы воркер не убивался раньше времени.
 
 ---
 
 ## Безопасность
 
 Файл `.env` **не должен попадать в git**. Убедитесь что `.gitignore` содержит:
-
 ```
 .env
 media/
@@ -806,93 +244,3 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 docker compose restart backend
 # После — заново введите SSH/SMTP пароли и токены ОФД
 ```
-
-Регулярно делайте резервные копии базы данных и папки `media/`.
-
----
-
-## Настройка HTTPS
-
-```bash
-apt install certbot python3-certbot-nginx -y
-docker compose stop nginx
-certbot certonly --standalone -d ваш-домен.ru
-# Обновите nginx/default.conf — добавьте блок SSL
-docker compose start nginx
-```
-
----
-
-## Структура проекта
-
-```
-support-portal/
-├── backend/
-│   ├── apps/
-│   │   ├── accounts/             # Пользователи, роли, JWT
-│   │   │   ├── models.py         # User (+ поле birthday), Role
-│   │   │   ├── views.py
-│   │   │   ├── serializers.py
-│   │   │   └── migrations/
-│   │   └── clients/
-│   │       ├── models.py         # Client, Provider, ClientFile, SystemSettings,
-│   │       │                     # DutySchedule, CustomHoliday, OfdCompany, KktData
-│   │       ├── views.py          # API, SSH, Excel, провайдер, календарь, ККТ, замена ФН
-│   │       ├── serializers.py
-│   │       ├── settings_views.py # Настройки SSH и SMTP
-│   │       └── migrations/       # включая 0024_kktdata, 0025_ofdcompany
-│   ├── config/
-│   │   ├── settings.py
-│   │   └── urls.py
-│   ├── requirements.txt
-│   ├── create_admin.py
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── ClientsPage.jsx
-│   │   │   ├── ClientDetailPage.jsx  # Вкладка ККТ: просмотр + кнопка «Обновить по РНМ»
-│   │   │   ├── ClientFormPage.jsx    # Вкладка ККТ: поля РНМ, кнопки ИНН/РНМ/добавить по РНМ
-│   │   │   ├── OfdCompaniesPage.jsx  # Страница управления компаниями (ИНН, токен ОФД)
-│   │   │   ├── FnReplacementPage.jsx # Раздел «Замена ФН»: вкладки Общий и По месяцам
-│   │   │   ├── CalendarPage.jsx      # Календарь дежурств с мультивыделением (Ctrl+клик)
-│   │   │   ├── SettingsPage.jsx
-│   │   │   ├── UsersPage.jsx
-│   │   │   └── ProvidersPage.jsx
-│   │   ├── components/
-│   │   │   └── AppLayout.jsx         # Меню + пункты «Компании», «Замена ФН»
-│   │   ├── store/
-│   │   │   ├── authStore.js
-│   │   │   └── themeStore.js
-│   │   └── api/index.js
-│   └── Dockerfile
-├── nginx/
-│   └── default.conf
-├── media/                         # Медиафайлы (bind mount, не в git)
-├── ofd_fetch.sh                   # Скрипт для запросов к ОФД (запускается на хосте)
-├── check_ofd_network.sh           # Диагностика сети до lk.ofd.ru
-├── check_ofd_tokens.sh            # Проверка валидности токенов всех компаний
-├── deploy-frontend.sh
-├── docker-compose.yml
-├── .env                           # Не в git!
-└── .env.example
-```
-
----
-
-## Python-зависимости (requirements.txt)
-
-| Пакет | Назначение |
-|-------|-----------|
-| django | Основной веб-фреймворк |
-| djangorestframework | REST API |
-| djangorestframework-simplejwt | JWT аутентификация |
-| psycopg2-binary | Драйвер PostgreSQL |
-| django-cors-headers | CORS заголовки для фронтенда |
-| django-filter | Фильтрация в API |
-| python-dotenv | Загрузка .env файла |
-| cryptography | Шифрование паролей SSH, SMTP и токенов ОФД (Fernet) |
-| paramiko | SSH-подключение к Микротику для получения внешнего IP |
-| openpyxl | Генерация Excel файлов для экспорта клиентов |
-| gunicorn | WSGI-сервер для продакшена |
-| Pillow | Обработка изображений |
