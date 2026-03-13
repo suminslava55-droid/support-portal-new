@@ -62,6 +62,31 @@ export default function SettingsPage() {
   const pollRef                             = useRef(null);
   const [taskResult, setTaskResult]         = useState(null);
   const [resultModal, setResultModal]       = useState(false);
+  const [timezoneOffset, setTimezoneOffset] = useState(0);
+  const [savingTimezone, setSavingTimezone] = useState(false);
+
+  const TIMEZONE_OPTIONS = [
+    { label: 'UTC−12', value: -12 }, { label: 'UTC−11', value: -11 },
+    { label: 'UTC−10', value: -10 }, { label: 'UTC−9', value: -9 },
+    { label: 'UTC−8 (США/Запад)', value: -8 }, { label: 'UTC−7', value: -7 },
+    { label: 'UTC−6 (США/Центр)', value: -6 }, { label: 'UTC−5 (США/Восток)', value: -5 },
+    { label: 'UTC−4', value: -4 }, { label: 'UTC−3', value: -3 },
+    { label: 'UTC−2', value: -2 }, { label: 'UTC−1', value: -1 },
+    { label: 'UTC+0 (Лондон)', value: 0 },
+    { label: 'UTC+1 (Берлин, Варшава)', value: 1 },
+    { label: 'UTC+2 (Калининград, Хельсинки)', value: 2 },
+    { label: 'UTC+3 (Москва)', value: 3 },
+    { label: 'UTC+4 (Самара, Баку)', value: 4 },
+    { label: 'UTC+5 (Екатеринбург)', value: 5 },
+    { label: 'UTC+6 (Омск, Нур-Султан)', value: 6 },
+    { label: 'UTC+7 (Красноярск, Новосибирск)', value: 7 },
+    { label: 'UTC+8 (Иркутск, Пекин)', value: 8 },
+    { label: 'UTC+9 (Якутск, Токио)', value: 9 },
+    { label: 'UTC+10 (Владивосток)', value: 10 },
+    { label: 'UTC+11 (Магадан)', value: 11 },
+    { label: 'UTC+12 (Камчатка)', value: 12 },
+  ];
+
   const DAYS_OPTIONS = [
     { label: 'Пн', value: 0 }, { label: 'Вт', value: 1 },
     { label: 'Ср', value: 2 }, { label: 'Чт', value: 3 },
@@ -87,6 +112,7 @@ export default function SettingsPage() {
         setHasSMTPPassword(data.has_smtp_password);
         setUseSsl(data.smtp_use_ssl);
         setUseTls(data.smtp_use_tls);
+        setTimezoneOffset(data.timezone_offset ?? 0);
       } catch {
         message.error('Ошибка загрузки настроек');
       } finally {
@@ -106,6 +132,19 @@ export default function SettingsPage() {
       message.error('Не удалось проверить пакеты');
     } finally {
       setPackagesLoading(false);
+    }
+  };
+
+  const saveTimezone = async (val) => {
+    setSavingTimezone(true);
+    try {
+      await api.post('/clients/system-settings/', { section: 'general', timezone_offset: val });
+      setTimezoneOffset(val);
+      message.success('Часовой пояс сохранён');
+    } catch {
+      message.error('Ошибка сохранения часового пояса');
+    } finally {
+      setSavingTimezone(false);
     }
   };
 
@@ -576,6 +615,24 @@ export default function SettingsPage() {
           title={<Space><CalendarOutlined style={{ color: '#1677ff' }} /><span>Регламентные задания</span></Space>}
           loading={tasksLoading}
         >
+          {/* Часовой пояс */}
+          <div style={{ marginBottom: 20, padding: '12px 16px', background: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <ClockCircleOutlined style={{ color: '#1677ff', fontSize: 16 }} />
+            <span style={{ fontWeight: 500 }}>Часовой пояс расписания:</span>
+            <Select
+              value={timezoneOffset}
+              onChange={saveTimezone}
+              loading={savingTimezone}
+              style={{ width: 260 }}
+              options={TIMEZONE_OPTIONS}
+              showSearch
+              filterOption={(input, opt) => opt.label.toLowerCase().includes(input.toLowerCase())}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Время в расписании вводится по выбранному поясу, автоматически конвертируется в UTC для cron
+            </Text>
+          </div>
+
           {tasks.map(task => {
             const isRunning = task.status === 'running';
             const dayList   = (task.schedule_days || '').split(',').filter(Boolean).map(Number);
@@ -672,7 +729,14 @@ export default function SettingsPage() {
                           <Space wrap size={16} align="start">
                             {/* Время */}
                             <div>
-                              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Время запуска</div>
+                              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
+                                Время запуска
+                                {timezoneOffset !== 0 && (
+                                  <span style={{ marginLeft: 6, color: '#1677ff' }}>
+                                    (UTC{timezoneOffset > 0 ? '+' : ''}{timezoneOffset})
+                                  </span>
+                                )}
+                              </div>
                               <Input
                                 style={{ width: 100 }}
                                 placeholder="03:00"

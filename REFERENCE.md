@@ -38,6 +38,7 @@
 - SMTP-параметры для Email (пароль шифруется Fernet)
 - **Автоматизация** — массовая загрузка клиентов из JSON
 - **Регламентные задания** — настройка расписания обновления ККТ
+  - Выбор часового пояса (UTC offset) — время вводится по местному, конвертируется в UTC автоматически
 
 ---
 
@@ -49,14 +50,32 @@
 cron (хост) → scheduler_run.sh → Django API (контейнер) → ofd_fetch.sh (хост) → lk.ofd.ru
 ```
 
+### Механизм обновления crontab
+
+Из контейнера нельзя вызвать `systemctl` хоста напрямую. Решение в два компонента:
+
+1. **`cron_manager.sh`** пишет напрямую в `/var/spool/cron/crontabs/root` (пробрасывается через volume)
+2. **`cron-watch.service`** на хосте следит за изменением этого файла через `inotifywait` и посылает `kill -HUP` процессу cron
+
+Необходимые volumes в `docker-compose.yml`:
+```yaml
+- /var/spool/cron/crontabs:/var/spool/cron/crontabs
+- /run/crond.pid:/run/crond.pid:ro
+```
+
+### Часовой пояс расписания
+
+Время в интерфейсе вводится по **местному времени** (выбирается в настройках). Бэкенд автоматически конвертирует в UTC перед записью в crontab. Смещение хранится в `SystemSettings.timezone_offset`.
+
 ### Файлы планировщика
 
 | Файл | Описание |
 |------|----------|
 | `/opt/support-portal/setup_scheduler.py` | Создаёт пользователя и токен, запускать один раз |
 | `/opt/support-portal/.scheduler_token` | JWT-токен (365 дней). **Не в git!** |
-| `/opt/support-portal/scheduler_run.sh` | Скрипт для cron |
-| `/opt/support-portal/cron_manager.sh` | Управляет crontab хоста из контейнера |
+| `/opt/support-portal/scheduler_run.sh` | Скрипт для cron (создаётся `setup_scheduler.py`) |
+| `/opt/support-portal/cron_manager.sh` | Пишет crontab хоста из контейнера (volume) |
+| `/etc/systemd/system/cron-watch.service` | Служба-наблюдатель: перезагружает cron при изменении crontab |
 | `/var/log/support-portal-scheduler.log` | Лог выполнения cron-заданий |
 
 ### Доступные задания
@@ -150,7 +169,7 @@ support-portal/
 ├── nginx/default.conf
 ├── media/                        # Медиафайлы (не в git)
 ├── ofd_fetch.sh                  # Запросы к lk.ofd.ru (запускается на хосте)
-├── cron_manager.sh               # Управление crontab хоста из контейнера
+├── cron_manager.sh               # Пишет crontab хоста из контейнера (volume)
 ├── setup_scheduler.py            # Первичная настройка планировщика
 ├── scheduler_run.sh              # Скрипт для cron (создаётся setup_scheduler.py)
 ├── check_ofd_network.sh          # Диагностика сети до lk.ofd.ru

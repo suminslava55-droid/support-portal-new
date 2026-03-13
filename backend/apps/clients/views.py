@@ -2030,7 +2030,7 @@ def _run_update_rnm(task_id, company_id, user_id):
     except Exception:
         user = None
 
-    def _set(t, **kwargs):
+    def _set(**kwargs):
         ScheduledTask.objects.filter(task_id=task_id).update(**kwargs)
 
     _set(status='running', progress=0, progress_text='Инициализация...', last_run_at=timezone.now())
@@ -2085,19 +2085,29 @@ def _run_update_rnm(task_id, company_id, user_id):
                     )
                     if not result.stdout.strip():
                         errors_total += 1
-                        error_log.append(f'РНМ {rnm} ({client.address}): пустой ответ')
+                        stderr_info = result.stderr.strip()[:200] if result.stderr else ''
+                        error_log.append(
+                            f'РНМ {rnm} | {client.address or client.pharmacy_code}: '
+                            f'пустой ответ скрипта' + (f' | stderr: {stderr_info}' if stderr_info else '')
+                        )
                         done_kkts += 1
                         continue
                     detail_data = json.loads(result.stdout)
+                except subprocess.TimeoutExpired:
+                    errors_total += 1
+                    error_log.append(f'РНМ {rnm} | {client.address or client.pharmacy_code}: таймаут (20 сек)')
+                    done_kkts += 1
+                    continue
                 except Exception as e:
                     errors_total += 1
-                    error_log.append(f'РНМ {rnm}: {str(e)[:80]}')
+                    error_log.append(f'РНМ {rnm} | {client.address or client.pharmacy_code}: {str(e)}')
                     done_kkts += 1
                     continue
 
                 if detail_data.get('Status') != 'Success':
                     errors_total += 1
-                    error_log.append(f'РНМ {rnm}: ОФД вернул ошибку')
+                    ofd_msg = detail_data.get('Message') or detail_data.get('Error') or 'нет описания'
+                    error_log.append(f'РНМ {rnm} | {client.address or client.pharmacy_code}: ОФД ошибка — {ofd_msg}')
                     done_kkts += 1
                     continue
 
@@ -2193,21 +2203,41 @@ class ScheduledTaskCronView(APIView):
             except ValueError:
                 return Response({'error': 'Некорректное время'}, status=400)
 
+            # Конвертируем местное время → UTC с учётом timezone_offset из настроек
+            from .models import SystemSettings
+            settings_obj = SystemSettings.get()
+            tz_offset = settings_obj.timezone_offset  # например +6 для Омска
+            total_minutes = hh * 60 + mm - tz_offset * 60
+            # Нормализуем в 0..1439
+            total_minutes = total_minutes % (24 * 60)
+            utc_hh = total_minutes // 60
+            utc_mm = total_minutes % 60
+
+            # Если смещение сдвигает за полночь — корректируем дни
+            day_shift = (hh * 60 + mm - tz_offset * 60) // (24 * 60)
+
             # Конвертируем дни: у нас 0=пн..6=вс → cron 1=пн..7=вс (0=вс тоже работает)
             if isinstance(schedule_days, list):
                 days_list = [int(d) for d in schedule_days]
             else:
                 days_list = [int(d) for d in str(schedule_days).split(',') if d.strip()]
+
+            # Применяем сдвиг дня если время переехало за полночь
+            if day_shift != 0:
+                days_list = [((d + day_shift) % 7) for d in days_list]
+
             cron_days = [(d + 1) % 7 for d in days_list]
             cron_days_str = ','.join(str(d) for d in sorted(set(cron_days)))
 
-            cron_line = f'{mm} {hh} * * {cron_days_str} {self.SCHEDULER_SCRIPT} {task_id} {MARKER}'
+            cron_line = f'{utc_mm} {utc_hh} * * {cron_days_str} {self.SCHEDULER_SCRIPT} {task_id} {MARKER}'
 
             stdout, stderr, rc = self._call('set', MARKER, cron_line)
             if rc != 0 or stdout != 'OK':
                 return Response({'error': f'Ошибка записи в crontab: {stderr or stdout}'}, status=500)
 
-            action = f'Расписание включено: {schedule_time}, дни {cron_days_str} (cron)'
+            utc_str = f'{utc_hh:02d}:{utc_mm:02d} UTC'
+            tz_label = f'UTC+{tz_offset}' if tz_offset >= 0 else f'UTC{tz_offset}'
+            action = f'Расписание включено: {schedule_time} ({tz_label}) = {utc_str}, дни {cron_days_str} (cron)'
         else:
             cron_line = None
             stdout, stderr, rc = self._call('remove', MARKER)

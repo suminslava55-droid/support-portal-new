@@ -38,6 +38,7 @@ class SystemSettingsView(APIView):
             'smtp_use_ssl': s.smtp_use_ssl,
             'smtp_use_tls': s.smtp_use_tls,
             'has_smtp_password': bool(s.smtp_password_encrypted),
+            'timezone_offset': s.timezone_offset,
         })
 
     def delete(self, request):
@@ -90,6 +91,10 @@ class SystemSettingsView(APIView):
                 'smtp_use_tls': s.smtp_use_tls,
                 'has_smtp_password': bool(s.smtp_password_encrypted),
             })
+        elif section == 'general':
+            s.timezone_offset = int(request.data.get('timezone_offset', s.timezone_offset) or 0)
+            s.save()
+            return Response({'timezone_offset': s.timezone_offset})
         else:
             s.ssh_user = request.data.get('ssh_user', s.ssh_user)
             password = request.data.get('ssh_password', '')

@@ -305,6 +305,13 @@ class SystemSettings(models.Model):
     def set_smtp_password(self, value):
         self.smtp_password_encrypted = encrypt_value(value)
 
+    # Часовой пояс для расписания
+    timezone_offset = models.IntegerField(
+        'Часовой пояс (смещение от UTC)',
+        default=0,
+        help_text='Например: +3 для Москвы, +6 для Омска, 0 для UTC'
+    )
+
     @classmethod
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)

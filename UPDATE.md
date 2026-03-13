@@ -9,6 +9,8 @@
 | Новые Python-зависимости (requirements.txt) | `docker compose up -d --build` |
 | Новые миграции базы данных | `docker compose exec backend python manage.py migrate` |
 | Обновление токена планировщика (раз в год) | `python3 /opt/support-portal/setup_scheduler.py` |
+| Статус службы cron-watch | `systemctl status cron-watch` |
+| Перезапуск cron-watch | `systemctl restart cron-watch` |
 
 ---
 
@@ -53,6 +55,8 @@ python3 /opt/support-portal/setup_scheduler.py
 
 После этого в **Настройки → Регламентные задания** настройте расписание через интерфейс и нажмите **«Применить расписание»**.
 
+Выберите **часовой пояс** в блоке над расписанием — время вводится по местному времени, автоматически конвертируется в UTC при сохранении.
+
 ### Обновление токена планировщика (раз в год)
 
 JWT-токен планировщика действителен 365 дней. За несколько дней до истечения обновите:
@@ -72,8 +76,32 @@ crontab -l
 # Проверка работы cron
 systemctl status cron
 
+# Служба cron-watch (перезагружает cron при изменении расписания)
+systemctl status cron-watch
+journalctl -u cron-watch --no-pager -n 20
+
 # Просмотр лога выполнения заданий
 tail -50 /var/log/support-portal-scheduler.log
+```
+
+### Если расписание не срабатывает
+
+Применить расписание через интерфейс, затем сразу проверить:
+
+```bash
+journalctl -u cron-watch --no-pager -n 5
+# Должна появиться строка вида: "Fri Mar 13 08:34:00 UTC 2026: cron reloaded"
+```
+
+Если строки нет — cron-watch не запущен или не видит файл:
+
+```bash
+# Перезапустить
+systemctl restart cron-watch
+
+# Проверить что volumes пробрасываются в контейнер
+docker compose exec backend ls /var/spool/cron/crontabs/
+docker compose exec backend cat /run/crond.pid   # должен быть PID cron хоста
 ```
 
 ### Ручной запуск задания (минуя интерфейс)

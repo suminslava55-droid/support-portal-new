@@ -92,9 +92,9 @@ node --version   # v18.x.x или выше
 npm --version    # 9.x.x или выше
 ```
 
-### 1.8 Проверка cron
+### 1.8 Установка cron и inotify-tools
 
-На большинстве Ubuntu cron уже установлен и запущен. Проверить:
+На большинстве Ubuntu cron уже установлен. Проверить:
 
 ```bash
 systemctl status cron
@@ -106,6 +106,12 @@ systemctl status cron
 apt install cron -y
 systemctl enable cron
 systemctl start cron
+```
+
+`inotify-tools` нужен для службы `cron-watch` — она следит за изменением crontab и автоматически перезагружает cron:
+
+```bash
+apt install inotify-tools -y
 ```
 
 ### 1.9 Установка системных утилит
@@ -299,7 +305,40 @@ python3 setup_scheduler.py
 
 ---
 
-## 11. Первоначальная настройка в интерфейсе
+## 11. Установка службы cron-watch ⚡
+
+Служба следит за изменениями crontab и автоматически перезагружает cron при нажатии «Применить расписание» в интерфейсе. **Без неё расписание не будет срабатывать.**
+
+```bash
+cat > /etc/systemd/system/cron-watch.service << 'SVCEOF'
+[Unit]
+Description=Reload cron when crontab file changes
+After=cron.service
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -c 'while true; do inotifywait -e close_write,modify /var/spool/cron/crontabs/root 2>/dev/null && kill -HUP $(cat /run/crond.pid) && echo "$(date): cron reloaded"; sleep 1; done'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+systemctl daemon-reload
+systemctl enable --now cron-watch
+systemctl status cron-watch
+```
+
+Проверяем что служба запущена:
+
+```bash
+systemctl is-active cron-watch   # должно быть: active
+```
+
+---
+
+## 12. Первоначальная настройка в интерфейсе
 
 1. Откройте `http://ВАШ_IP` в браузере
 2. Войдите под учётными данными администратора
@@ -313,7 +352,7 @@ python3 setup_scheduler.py
 
 ---
 
-## 12. Когда что использовать
+## 13. Когда что использовать
 
 | Изменение | Команда |
 |-----------|---------|
