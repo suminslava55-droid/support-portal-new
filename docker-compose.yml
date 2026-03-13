@@ -21,14 +21,14 @@ services:
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
              gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 1000"
+    pid: host
+    privileged: true
     volumes:
       - ./backend:/app
       - static_volume:/app/staticfiles
       - ./media:/app/media
       - ./ofd_fetch.sh:/usr/local/bin/ofd_fetch.sh:ro
       - ./cron_manager.sh:/usr/local/bin/cron_manager.sh:ro
-      - /var/spool/cron/crontabs:/var/spool/cron/crontabs
-      - /run/crond.pid:/run/crond.pid:ro
     env_file: .env
     depends_on:
       db:

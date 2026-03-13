@@ -115,48 +115,60 @@ npm run build
 
 ## Проблемы с регламентными заданиями
 
-### «Не удалось прочитать crontab» при сохранении расписания
+### «Не удалось прочитать crontab» / ошибка nsenter при сохранении расписания
 
-Причина: Django-контейнер пытается вызвать `crontab` напрямую, которого нет внутри контейнера.
-
-Решение: убедитесь что `cron_manager.sh` смонтирован в контейнер:
+Причина: `cron_manager.sh` использует `nsenter` для доступа к crontab хоста из контейнера. Требуются `pid: host` и `privileged: true` в `docker-compose.yml`.
 
 ```bash
-# Проверяем наличие скрипта на хосте
-ls -la /opt/support-portal/cron_manager.sh
+# Проверяем настройки docker-compose.yml
+grep -A3 "backend:" /opt/support-portal/docker-compose.yml
+# Должны быть строки:
+#   pid: host
+#   privileged: true
 
-# Проверяем права
-chmod +x /opt/support-portal/cron_manager.sh
-
-# Проверяем что смонтирован в контейнер
+# Проверяем наличие скрипта
 docker compose exec backend ls -la /usr/local/bin/cron_manager.sh
 
-# Если не смонтирован — проверьте docker-compose.yml
-grep "cron_manager" /opt/support-portal/docker-compose.yml
-# Должна быть строка:
-# - ./cron_manager.sh:/usr/local/bin/cron_manager.sh:ro
+# Проверяем что nsenter работает из контейнера
+docker compose exec backend nsenter -m -u -i -n -p -t 1 crontab -l
 ```
 
-Если строки нет в `docker-compose.yml` — добавьте и перезапустите:
+Если `pid: host` или `privileged: true` отсутствуют — добавьте и перезапустите:
 ```bash
+docker compose down
 docker compose up -d
 ```
 
 ### Задание не запускается по расписанию
 
 ```bash
-# Проверить что cron-строка добавлена
-crontab -l | grep support-portal
+# Проверить что cron-строка есть
+crontab -l
 
 # Проверить что cron запущен
 systemctl status cron
 
-# Посмотреть лог выполнения
+# Посмотреть лог выполнения заданий
+grep "scheduler_run" /var/log/syslog | tail -20
+
+# Посмотреть лог планировщика
 tail -50 /var/log/support-portal-scheduler.log
 
-# Проверить токен планировщика
-ls -la /opt/support-portal/.scheduler_token
-cat /opt/support-portal/.scheduler_token
+# Проверить статус cron-watch
+systemctl status cron-watch
+journalctl -u cron-watch --no-pager -n 10
+```
+
+### Crontab слетел или пуст
+
+При полной остановке контейнеров (`docker compose down`) crontab может обнулиться. Восстановление:
+
+Зайдите в **Настройки → Регламентные задания** и нажмите **«Применить расписание»** для каждого задания.
+
+Или вручную:
+```bash
+crontab -l   # проверяем
+# Если пусто — вручную восстанавливаем через crontab -e
 ```
 
 ### Токен планировщика истёк (задание возвращает 401)
@@ -176,12 +188,12 @@ ls -la /opt/support-portal/.scheduler_token
 ```bash
 docker compose exec backend python manage.py shell -c "
 from apps.clients.models import ScheduledTask
-t = ScheduledTask.objects.get(task_id='update_rnm')
-t.status = 'idle'
-t.progress = 0
-t.progress_text = ''
-t.save()
-print('Сброшено')
+for t in ScheduledTask.objects.filter(status='running'):
+    t.status = 'idle'
+    t.progress = 0
+    t.progress_text = ''
+    t.save()
+    print(f'Сброшено: {t.task_id}')
 "
 ```
 
@@ -194,6 +206,42 @@ ls -la /opt/support-portal/scheduler_run.sh
 Если файл отсутствует — повторно запустите настройку:
 ```bash
 python3 /opt/support-portal/setup_scheduler.py
+```
+
+### cron-watch не перезагружает cron (нет строки «cron reloaded» в логе)
+
+```bash
+# Проверяем статус
+systemctl status cron-watch
+
+# Проверяем что скрипт существует и исполняемый
+ls -la /usr/local/bin/cron-watch.sh
+
+# Проверяем что inotify-tools установлен
+which inotifywait
+
+# Перезапускаем
+systemctl restart cron-watch
+```
+
+Если служба падает с ошибкой — пересоздайте:
+```bash
+cat > /usr/local/bin/cron-watch.sh << 'EOF'
+#!/bin/bash
+while true; do
+  inotifywait -e close_write,modify /var/spool/cron/crontabs/root 2>/dev/null
+  SEC=$((10#$(date +%S)))
+  if [ "$SEC" -gt 55 ]; then
+    sleep 10
+  fi
+  kill -HUP $(cat /run/crond.pid) && echo "$(date): cron reloaded"
+  sleep 1
+done
+EOF
+
+chmod +x /usr/local/bin/cron-watch.sh
+systemctl daemon-reload
+systemctl restart cron-watch
 ```
 
 ---

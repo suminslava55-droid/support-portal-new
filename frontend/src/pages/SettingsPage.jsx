@@ -183,7 +183,7 @@ export default function SettingsPage() {
 
   const handleApplyCron = async (task_id) => {
     const local = scheduleLocal[task_id] || {};
-    if (local.enabled && !local.schedule_time) {
+    if (local.enabled && local.schedule_time === undefined) {
       message.warning('Укажите время запуска');
       return;
     }
@@ -239,6 +239,16 @@ export default function SettingsPage() {
       setSelectedCompany(null);
       await loadTasks();
       startPolling('update_rnm');
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка запуска');
+    }
+  };
+
+  const handleRunTaskDirect = async (task_id) => {
+    try {
+      await api.post('/clients/scheduled-tasks/run/', { task_id });
+      await loadTasks();
+      startPolling(task_id);
     } catch (e) {
       message.error(e.response?.data?.error || 'Ошибка запуска');
     }
@@ -399,25 +409,366 @@ export default function SettingsPage() {
 
   if (loading) return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>;
 
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-        <SettingOutlined style={{ fontSize: 22, color: '#1677ff' }} />
-        <Title level={4} style={{ margin: 0 }}>Настройки системы</Title>
-      </div>
+  // ─── Вкладки ───────────────────────────────────────────
+  const tabItems = [
+    {
+      key: 'accounts',
+      label: <Space><SettingOutlined />Учётные записи</Space>,
+      children: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* SSH */}
+          <Form form={sshForm} layout="vertical" onFinish={onSaveSsh}>
+            <Card title="Подключение к Микротику по SSH">
+              <Form.Item name="ssh_user" label="SSH пользователь">
+                <Input placeholder="admin" />
+              </Form.Item>
+              <Form.Item
+                name="ssh_password"
+                label={
+                  <span>
+                    SSH пароль{' '}
+                    {hasSSHPassword && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        (задан — введите новый чтобы изменить)
+                      </Text>
+                    )}
+                  </span>
+                }
+              >
+                <Input.Password
+                  placeholder={hasSSHPassword ? '••••••••' : 'Введите пароль'}
+                  iconRender={(v) => (v ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+                />
+              </Form.Item>
+              <Space>
+                <Button type="primary" htmlType="submit" loading={savingSsh} icon={<SaveOutlined />}>
+                  Сохранить
+                </Button>
+                <Popconfirm
+                  title="Очистить SSH данные?"
+                  description="Логин и пароль будут удалены из базы данных"
+                  onConfirm={handleClearSsh}
+                  okText="Очистить" okType="danger" cancelText="Отмена"
+                >
+                  <Button danger icon={<DeleteOutlined />}>Очистить</Button>
+                </Popconfirm>
+              </Space>
+            </Card>
+          </Form>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 640 }}>
+          {/* SMTP */}
+          <Form form={smtpForm} layout="vertical" onFinish={onSaveSmtp}>
+            <Card
+              title={<Space><MailOutlined style={{ color: '#1677ff' }} /><span>Настройки Email (SMTP)</span></Space>}
+              extra={
+                <Button
+                  size="small"
+                  icon={<SendOutlined />}
+                  onClick={() => setTestEmailModal(true)}
+                >
+                  Тест отправки
+                </Button>
+              }
+            >
+              <Form.Item name="smtp_host" label="SMTP сервер">
+                <Input placeholder="smtp.gmail.com  /  smtp.yandex.ru  /  smtp.mail.ru" />
+              </Form.Item>
 
-        {/* ===== ПАКЕТЫ ===== */}
+              <Space style={{ width: '100%' }} align="start">
+                <Form.Item name="smtp_port" label="Порт" style={{ width: 120 }}>
+                  <InputNumber style={{ width: '100%' }} min={1} max={65535} />
+                </Form.Item>
+                <Form.Item label="SSL (порт 465)" style={{ marginLeft: 16 }}>
+                  <Switch checked={useSsl} onChange={handleSslChange} checkedChildren="Вкл" unCheckedChildren="Выкл" />
+                </Form.Item>
+                <Form.Item label="TLS / STARTTLS (порт 587)">
+                  <Switch checked={useTls} onChange={handleTlsChange} checkedChildren="Вкл" unCheckedChildren="Выкл" />
+                </Form.Item>
+              </Space>
+              <Form.Item name="smtp_use_ssl" hidden><Input /></Form.Item>
+              <Form.Item name="smtp_use_tls" hidden><Input /></Form.Item>
+
+              <Divider style={{ margin: '4px 0 16px' }} />
+
+              <Form.Item name="smtp_user" label="Логин (обычно совпадает с email отправителя)">
+                <Input placeholder="noreply@mycompany.ru" />
+              </Form.Item>
+              <Form.Item
+                name="smtp_password"
+                label={
+                  <span>
+                    Пароль{' '}
+                    {hasSMTPPassword && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        (задан — введите новый чтобы изменить)
+                      </Text>
+                    )}
+                  </span>
+                }
+              >
+                <Input.Password
+                  placeholder={hasSMTPPassword ? '••••••••' : 'Введите пароль'}
+                  iconRender={(v) => (v ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+                />
+              </Form.Item>
+
+              <Divider style={{ margin: '4px 0 16px' }} />
+
+              <Form.Item name="smtp_from_email" label='Email отправителя (поле "From")'>
+                <Input placeholder="noreply@mycompany.ru" />
+              </Form.Item>
+              <Form.Item name="smtp_from_name" label='Имя отправителя (поле "From name")'>
+                <Input placeholder="Support Portal" />
+              </Form.Item>
+
+              <Space>
+                <Button type="primary" htmlType="submit" loading={savingSmtp} icon={<SaveOutlined />}>
+                  Сохранить
+                </Button>
+                <Popconfirm
+                  title="Очистить SMTP данные?"
+                  description="Все SMTP настройки будут удалены"
+                  onConfirm={handleClearSmtp}
+                  okText="Очистить" okType="danger" cancelText="Отмена"
+                >
+                  <Button danger icon={<DeleteOutlined />}>Очистить</Button>
+                </Popconfirm>
+              </Space>
+            </Card>
+          </Form>
+        </div>
+      ),
+    },
+    {
+      key: 'automation',
+      label: <Space><RobotOutlined />Автоматизация</Space>,
+      children: (
+        <Card title={<Space><RobotOutlined style={{ color: '#1677ff' }} /><span>Массовая загрузка клиентов</span></Space>}>
+          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+            <div style={{ fontSize: 13, color: '#555' }}>
+              Импорт клиентов из JSON-файла. Поддерживается загрузка тысяч записей за один раз.
+            </div>
+            <Space>
+              <Button
+                icon={<UploadOutlined />}
+                type="primary"
+                onClick={() => { setImportModal(true); setImportFile(null); setImportFileName(''); }}
+              >
+                Массовая загрузка клиентов
+              </Button>
+              {importReport && (
+                <Button icon={<FileTextOutlined />} onClick={() => setReportModal(true)}>
+                  Последний отчёт
+                </Button>
+              )}
+            </Space>
+          </Space>
+        </Card>
+      ),
+    },
+    {
+      key: 'scheduler',
+      label: <Space><CalendarOutlined />Регламентные задания</Space>,
+      children: (() => {
+        // Вспомогательный компонент для рендера одного задания
+        const TaskCard = ({ taskId, title, icon, onRun }) => {
+          const task = tasks.find(t => t.task_id === taskId);
+          if (!task && tasksLoading) return <Card loading />;
+          if (!task) return null;
+
+          const isRunning = task.status === 'running';
+          const statusIcon = {
+            idle:    <MinusCircleOutlined style={{ color: '#bbb' }} />,
+            running: <SyncOutlined spin style={{ color: '#1677ff' }} />,
+            success: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+            error:   <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
+          }[task.status] || null;
+          const statusColor = { idle: 'default', running: 'processing', success: 'success', error: 'error' }[task.status];
+          const statusLabel = { idle: 'Ожидает', running: 'Выполняется', success: 'Успешно', error: 'Ошибка' }[task.status];
+          const loc = scheduleLocal[taskId] || {};
+          const currentCron = cronLine[taskId];
+
+          return (
+            <Card title={<Space>{icon}<span>{title}</span></Space>} style={{ marginBottom: 16 }}>
+              {/* Статус и кнопки */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                <Space>
+                  {statusIcon}
+                  <Badge status={statusColor} text={statusLabel} />
+                </Space>
+                <Space>
+                  <Tooltip title={isRunning ? 'Задание выполняется' : 'Запустить вручную'}>
+                    <Button
+                      type="primary"
+                      icon={<PlayCircleOutlined />}
+                      disabled={isRunning}
+                      loading={isRunning && polling}
+                      onClick={onRun}
+                    >
+                      Запустить
+                    </Button>
+                  </Tooltip>
+                  {task.last_run_at && (
+                    <Tooltip title="Результат последнего запуска">
+                      <Button icon={<FileTextOutlined />} onClick={() => { setTaskResult(task); setResultModal(true); }}>
+                        Результат
+                      </Button>
+                    </Tooltip>
+                  )}
+                </Space>
+              </div>
+
+              {/* Прогресс */}
+              {isRunning && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>{task.progress_text || 'Выполняется...'}</div>
+                  <Progress percent={task.progress} status="active" strokeColor={{ '0%': '#1677ff', '100%': '#52c41a' }} />
+                </div>
+              )}
+
+              {/* Последний запуск */}
+              {task.last_run_at && (
+                <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>
+                  <ClockCircleOutlined style={{ marginRight: 4 }} />
+                  Последний запуск: {new Date(task.last_run_at).toLocaleString('ru-RU')}
+                </div>
+              )}
+
+              <Divider style={{ margin: '4px 0 14px' }} />
+
+              {/* Расписание */}
+              <div style={{ background: '#fafafa', borderRadius: 8, padding: '14px 16px' }}>
+                <div style={{ fontWeight: 500, marginBottom: 12 }}>
+                  <CalendarOutlined style={{ marginRight: 6, color: '#1677ff' }} />
+                  Расписание
+                </div>
+                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                  <Space>
+                    <Switch
+                      checked={!!loc.enabled}
+                      onChange={val => patchLocal(taskId, { enabled: val })}
+                      checkedChildren="Вкл"
+                      unCheckedChildren="Выкл"
+                    />
+                    <span style={{ fontSize: 13 }}>
+                      {loc.enabled ? 'Запускать по расписанию' : 'Только ручной запуск'}
+                    </span>
+                  </Space>
+                  {loc.enabled && (() => {
+                    const [selHH, selMM] = (loc.schedule_time || '00:00').split(':');
+                    const hourOptions  = Array.from({ length: 24 }, (_, i) => ({ value: String(i).padStart(2, '0'), label: String(i).padStart(2, '0') }));
+                    const minuteOptions = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(v => ({ value: v, label: v }));
+                    const onHourChange = v => patchLocal(taskId, { schedule_time: `${v}:${selMM || '00'}` });
+                    const onMinChange  = v => patchLocal(taskId, { schedule_time: `${selHH || '00'}:${v}` });
+                    return (
+                      <Space wrap size={16} align="start">
+                        <div>
+                          <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
+                            Время запуска
+                            {timezoneOffset !== 0 && (
+                              <span style={{ marginLeft: 6, color: '#1677ff' }}>
+                                (UTC{timezoneOffset > 0 ? '+' : ''}{timezoneOffset})
+                              </span>
+                            )}
+                          </div>
+                          <Space size={6}>
+                            <Select
+                              value={selHH || '00'}
+                              onChange={onHourChange}
+                              options={hourOptions}
+                              style={{ width: 72 }}
+                              size="middle"
+                            />
+                            <span style={{ color: '#888', fontWeight: 600 }}>:</span>
+                            <Select
+                              value={selMM || '00'}
+                              onChange={onMinChange}
+                              options={minuteOptions}
+                              style={{ width: 72 }}
+                              size="middle"
+                            />
+                          </Space>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Дни недели</div>
+                          <Checkbox.Group
+                            options={DAYS_OPTIONS}
+                            value={loc.schedule_days || []}
+                            onChange={val => patchLocal(taskId, { schedule_days: val })}
+                          />
+                        </div>
+                      </Space>
+                    );
+                  })()}
+                  {currentCron && (
+                    <div style={{ fontSize: 12, color: '#888' }}>
+                      <span style={{ marginRight: 6 }}>Активная cron-строка:</span>
+                      <code style={{ background: '#f0f0f0', padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace' }}>
+                        {currentCron.split('#')[0].trim()}
+                      </code>
+                    </div>
+                  )}
+                  <Button
+                    type="primary"
+                    icon={<CalendarOutlined />}
+                    loading={applyingCron}
+                    onClick={() => handleApplyCron(taskId)}
+                  >
+                    Применить расписание
+                  </Button>
+                  <div style={{ fontSize: 12, color: '#aaa' }}>
+                    Изменения применяются к crontab сервера. Перед применением убедитесь что выполнен <code>python3 setup_scheduler.py</code>
+                  </div>
+                </Space>
+              </div>
+            </Card>
+          );
+        };
+
+        return (
+          <div>
+            {/* Часовой пояс — общий для всех заданий */}
+            <div style={{ marginBottom: 16, padding: '12px 16px', background: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <ClockCircleOutlined style={{ color: '#1677ff', fontSize: 16 }} />
+              <span style={{ fontWeight: 500 }}>Часовой пояс расписания:</span>
+              <Select
+                value={timezoneOffset}
+                onChange={saveTimezone}
+                loading={savingTimezone}
+                style={{ width: 260 }}
+                options={TIMEZONE_OPTIONS}
+                showSearch
+                filterOption={(input, opt) => opt.label.toLowerCase().includes(input.toLowerCase())}
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Время вводится по выбранному поясу, конвертируется в UTC для cron
+              </Text>
+            </div>
+
+            <TaskCard
+              taskId="update_rnm"
+              title="Обновление данных по ККТ"
+              icon={<SyncOutlined style={{ color: '#1677ff' }} />}
+              onRun={openRunModal}
+            />
+            <TaskCard
+              taskId="fetch_external_ip"
+              title="Обновление внешнего IP"
+              icon={<SettingOutlined style={{ color: '#52c41a' }} />}
+              onRun={() => handleRunTaskDirect('fetch_external_ip')}
+            />
+          </div>
+        );
+      })(),
+    },
+    {
+      key: 'diagnostics',
+      label: <Space><SettingOutlined />Диагностика</Space>,
+      children: (
         <Card
           title={<Space><SettingOutlined style={{ color: '#1677ff' }} /><span>Зависимости Python</span></Space>}
           extra={
-            <Button
-              size="small"
-              icon={<ReloadOutlined spin={packagesLoading} />}
-              onClick={loadPackages}
-              loading={packagesLoading}
-            >
+            <Button size="small" icon={<ReloadOutlined spin={packagesLoading} />} onClick={loadPackages} loading={packagesLoading}>
               Проверить
             </Button>
           }
@@ -449,351 +800,24 @@ export default function SettingsPage() {
             <Text type="secondary">Нажмите «Проверить»</Text>
           )}
         </Card>
+      ),
+    },
+  ];
 
-        {/* ===== SSH ===== */}
-        <Form form={sshForm} layout="vertical" onFinish={onSaveSsh}>
-          <Card title="Подключение к Микротику по SSH">
-            <Form.Item name="ssh_user" label="SSH пользователь">
-              <Input placeholder="admin" />
-            </Form.Item>
-            <Form.Item
-              name="ssh_password"
-              label={
-                <span>
-                  SSH пароль{' '}
-                  {hasSSHPassword && (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      (задан — введите новый чтобы изменить)
-                    </Text>
-                  )}
-                </span>
-              }
-            >
-              <Input.Password
-                placeholder={hasSSHPassword ? '••••••••' : 'Введите пароль'}
-                iconRender={(v) => (v ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
-              />
-            </Form.Item>
-            <Space>
-              <Button type="primary" htmlType="submit" loading={savingSsh} icon={<SaveOutlined />}>
-                Сохранить
-              </Button>
-              <Popconfirm
-                title="Очистить SSH данные?"
-                description="Логин и пароль будут удалены из базы данных"
-                onConfirm={handleClearSsh}
-                okText="Очистить" okType="danger" cancelText="Отмена"
-              >
-                <Button danger icon={<DeleteOutlined />}>Очистить</Button>
-              </Popconfirm>
-            </Space>
-          </Card>
-        </Form>
-
-        {/* ===== SMTP ===== */}
-        <Form form={smtpForm} layout="vertical" onFinish={onSaveSmtp}>
-          <Card
-            title={<Space><MailOutlined style={{ color: '#1677ff' }} /><span>Настройки Email (SMTP)</span></Space>}
-            extra={
-              <Button
-                size="small"
-                icon={<SendOutlined />}
-                onClick={() => setTestEmailModal(true)}
-              >
-                Тест отправки
-              </Button>
-            }
-          >
-            <Form.Item name="smtp_host" label="SMTP сервер">
-              <Input placeholder="smtp.gmail.com  /  smtp.yandex.ru  /  smtp.mail.ru" />
-            </Form.Item>
-
-            <Space style={{ width: '100%' }} align="start">
-              <Form.Item name="smtp_port" label="Порт" style={{ width: 120 }}>
-                <InputNumber style={{ width: '100%' }} min={1} max={65535} />
-              </Form.Item>
-              <Form.Item label="SSL (порт 465)" style={{ marginLeft: 16 }}>
-                <Switch
-                  checked={useSsl}
-                  onChange={handleSslChange}
-                  checkedChildren="Вкл"
-                  unCheckedChildren="Выкл"
-                />
-              </Form.Item>
-              <Form.Item label="TLS / STARTTLS (порт 587)">
-                <Switch
-                  checked={useTls}
-                  onChange={handleTlsChange}
-                  checkedChildren="Вкл"
-                  unCheckedChildren="Выкл"
-                />
-              </Form.Item>
-            </Space>
-            <Form.Item name="smtp_use_ssl" hidden><Input /></Form.Item>
-            <Form.Item name="smtp_use_tls" hidden><Input /></Form.Item>
-
-            <Divider style={{ margin: '4px 0 16px' }} />
-
-            <Form.Item name="smtp_user" label="Логин (обычно совпадает с email отправителя)">
-              <Input placeholder="noreply@mycompany.ru" />
-            </Form.Item>
-            <Form.Item
-              name="smtp_password"
-              label={
-                <span>
-                  Пароль{' '}
-                  {hasSMTPPassword && (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      (задан — введите новый чтобы изменить)
-                    </Text>
-                  )}
-                </span>
-              }
-            >
-              <Input.Password
-                placeholder={hasSMTPPassword ? '••••••••' : 'Введите пароль'}
-                iconRender={(v) => (v ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
-              />
-            </Form.Item>
-
-            <Divider style={{ margin: '4px 0 16px' }} />
-
-            <Form.Item name="smtp_from_email" label='Email отправителя (поле "From")'>
-              <Input placeholder="noreply@mycompany.ru" />
-            </Form.Item>
-            <Form.Item name="smtp_from_name" label='Имя отправителя (поле "From name")'>
-              <Input placeholder="Support Portal" />
-            </Form.Item>
-
-            <Space>
-              <Button type="primary" htmlType="submit" loading={savingSmtp} icon={<SaveOutlined />}>
-                Сохранить
-              </Button>
-              <Popconfirm
-                title="Очистить SMTP данные?"
-                description="Все SMTP настройки будут удалены"
-                onConfirm={handleClearSmtp}
-                okText="Очистить" okType="danger" cancelText="Отмена"
-              >
-                <Button danger icon={<DeleteOutlined />}>Очистить</Button>
-              </Popconfirm>
-            </Space>
-          </Card>
-        </Form>
-
-        {/* ===== АВТОМАТИЗАЦИЯ ===== */}
-        <Card title={<Space><RobotOutlined style={{ color: '#1677ff' }} /><span>Автоматизация</span></Space>}>
-          <Space direction="vertical" style={{ width: '100%' }} size={12}>
-            <div>
-              <div style={{ fontWeight: 500, marginBottom: 4 }}>Массовая загрузка клиентов</div>
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
-                Импорт клиентов из JSON-файла. Поддерживается загрузка тысяч записей за один раз.
-              </div>
-              <Space>
-                <Button
-                  icon={<UploadOutlined />}
-                  type="primary"
-                  onClick={() => { setImportModal(true); setImportFile(null); setImportFileName(''); }}
-                >
-                  Массовая загрузка клиентов
-                </Button>
-                {importReport && (
-                  <Button
-                    icon={<FileTextOutlined />}
-                    onClick={() => setReportModal(true)}
-                  >
-                    Последний отчёт
-                  </Button>
-                )}
-              </Space>
-            </div>
-          </Space>
-        </Card>
-
-        {/* ===== РЕГЛАМЕНТНЫЕ ЗАДАНИЯ ===== */}
-        <Card
-          title={<Space><CalendarOutlined style={{ color: '#1677ff' }} /><span>Регламентные задания</span></Space>}
-          loading={tasksLoading}
-        >
-          {/* Часовой пояс */}
-          <div style={{ marginBottom: 20, padding: '12px 16px', background: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <ClockCircleOutlined style={{ color: '#1677ff', fontSize: 16 }} />
-            <span style={{ fontWeight: 500 }}>Часовой пояс расписания:</span>
-            <Select
-              value={timezoneOffset}
-              onChange={saveTimezone}
-              loading={savingTimezone}
-              style={{ width: 260 }}
-              options={TIMEZONE_OPTIONS}
-              showSearch
-              filterOption={(input, opt) => opt.label.toLowerCase().includes(input.toLowerCase())}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              Время в расписании вводится по выбранному поясу, автоматически конвертируется в UTC для cron
-            </Text>
-          </div>
-
-          {tasks.map(task => {
-            const isRunning = task.status === 'running';
-            const dayList   = (task.schedule_days || '').split(',').filter(Boolean).map(Number);
-
-            const statusIcon = {
-              idle:    <MinusCircleOutlined style={{ color: '#bbb' }} />,
-              running: <SyncOutlined spin style={{ color: '#1677ff' }} />,
-              success: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-              error:   <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
-            }[task.status] || null;
-
-            const statusColor = { idle: 'default', running: 'processing', success: 'success', error: 'error' }[task.status];
-            const statusLabel = { idle: 'Ожидает', running: 'Выполняется', success: 'Успешно', error: 'Ошибка' }[task.status];
-
-            return (
-              <div key={task.task_id} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Заголовок задания */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                  <Space>
-                    {statusIcon}
-                    <span style={{ fontWeight: 600, fontSize: 15 }}>{task.name}</span>
-                    <Badge status={statusColor} text={statusLabel} />
-                  </Space>
-                  <Space>
-                    <Tooltip title={isRunning ? 'Задание выполняется' : 'Запустить вручную'}>
-                      <Button
-                        type="primary"
-                        icon={<PlayCircleOutlined />}
-                        disabled={isRunning}
-                        loading={isRunning && polling}
-                        onClick={openRunModal}
-                      >
-                        Запустить
-                      </Button>
-                    </Tooltip>
-                    {task.last_run_result && (
-                      <Tooltip title="Результат последнего запуска">
-                        <Button icon={<FileTextOutlined />} onClick={() => { setTaskResult(task); setResultModal(true); }}>
-                          Результат
-                        </Button>
-                      </Tooltip>
-                    )}
-                  </Space>
-                </div>
-
-                {/* Прогресс — показываем только во время выполнения */}
-                {isRunning && (
-                  <div>
-                    <div style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>{task.progress_text || 'Выполняется...'}</div>
-                    <Progress
-                      percent={task.progress}
-                      status="active"
-                      strokeColor={{ '0%': '#1677ff', '100%': '#52c41a' }}
-                    />
-                  </div>
-                )}
-
-                {/* Последний запуск */}
-                {task.last_run_at && (
-                  <div style={{ fontSize: 12, color: '#888' }}>
-                    <ClockCircleOutlined style={{ marginRight: 4 }} />
-                    Последний запуск: {new Date(task.last_run_at).toLocaleString('ru-RU')}
-                  </div>
-                )}
-
-                <Divider style={{ margin: '4px 0' }} />
-
-                {/* Настройки расписания */}
-                {(() => {
-                  const loc = scheduleLocal[task.task_id] || {};
-                  const currentCron = cronLine[task.task_id];
-                  return (
-                    <div style={{ background: '#fafafa', borderRadius: 8, padding: '14px 16px' }}>
-                      <div style={{ fontWeight: 500, marginBottom: 12 }}>
-                        <CalendarOutlined style={{ marginRight: 6, color: '#1677ff' }} />
-                        Расписание
-                      </div>
-
-                      <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                        {/* Включить/выключить */}
-                        <Space>
-                          <Switch
-                            checked={!!loc.enabled}
-                            onChange={val => patchLocal(task.task_id, { enabled: val })}
-                            checkedChildren="Вкл"
-                            unCheckedChildren="Выкл"
-                          />
-                          <span style={{ fontSize: 13 }}>
-                            {loc.enabled ? 'Запускать по расписанию' : 'Только ручной запуск'}
-                          </span>
-                        </Space>
-
-                        {loc.enabled && (
-                          <Space wrap size={16} align="start">
-                            {/* Время */}
-                            <div>
-                              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
-                                Время запуска
-                                {timezoneOffset !== 0 && (
-                                  <span style={{ marginLeft: 6, color: '#1677ff' }}>
-                                    (UTC{timezoneOffset > 0 ? '+' : ''}{timezoneOffset})
-                                  </span>
-                                )}
-                              </div>
-                              <Input
-                                style={{ width: 100 }}
-                                placeholder="03:00"
-                                value={loc.schedule_time || ''}
-                                onChange={e => patchLocal(task.task_id, { schedule_time: e.target.value })}
-                                maxLength={5}
-                              />
-                            </div>
-
-                            {/* Дни недели */}
-                            <div>
-                              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Дни недели</div>
-                              <Checkbox.Group
-                                options={DAYS_OPTIONS}
-                                value={loc.schedule_days || []}
-                                onChange={val => patchLocal(task.task_id, { schedule_days: val })}
-                              />
-                            </div>
-                          </Space>
-                        )}
-
-                        {/* Текущая cron-строка */}
-                        {currentCron && (
-                          <div style={{ fontSize: 12, color: '#888' }}>
-                            <span style={{ marginRight: 6 }}>Активная cron-строка:</span>
-                            <code style={{
-                              background: '#f0f0f0', padding: '2px 8px',
-                              borderRadius: 4, fontFamily: 'monospace',
-                            }}>
-                              {currentCron.split('#')[0].trim()}
-                            </code>
-                          </div>
-                        )}
-
-                        {/* Кнопка применить */}
-                        <Button
-                          type="primary"
-                          icon={<CalendarOutlined />}
-                          loading={applyingCron}
-                          onClick={() => handleApplyCron(task.task_id)}
-                        >
-                          Применить расписание
-                        </Button>
-
-                        <div style={{ fontSize: 12, color: '#aaa' }}>
-                          Изменения применяются к crontab сервера. Перед применением убедитесь что выполнен <code>python3 setup_scheduler.py</code>
-                        </div>
-                      </Space>
-                    </div>
-                  );
-                })()}
-              </div>
-            );
-          })}
-        </Card>
-
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+        <SettingOutlined style={{ fontSize: 22, color: '#1677ff' }} />
+        <Title level={4} style={{ margin: 0 }}>Настройки системы</Title>
       </div>
+
+      <Tabs
+        defaultActiveKey="accounts"
+        type="card"
+        size="middle"
+        items={tabItems}
+        style={{ maxWidth: 700 }}
+      />
 
       {/* ─── Модал: запуск задания ─── */}
       <Modal
@@ -808,7 +832,6 @@ export default function SettingsPage() {
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '8px 0' }}>
           <div style={{ fontWeight: 500, marginBottom: 4 }}>Выберите область обновления:</div>
-
           <div
             onClick={() => setRunScope('all')}
             style={{
@@ -829,7 +852,6 @@ export default function SettingsPage() {
               </div>
             </Space>
           </div>
-
           <div
             onClick={() => setRunScope('company')}
             style={{
@@ -922,8 +944,6 @@ export default function SettingsPage() {
               </div>
             }
           />
-
-          {/* Скрытый file input */}
           <input
             ref={fileInputRef}
             type="file"
@@ -931,7 +951,6 @@ export default function SettingsPage() {
             style={{ display: 'none' }}
             onChange={handleFileSelect}
           />
-
           <div
             onClick={() => !importing && fileInputRef.current?.click()}
             style={{
@@ -959,7 +978,6 @@ export default function SettingsPage() {
               </Space>
             )}
           </div>
-
           {importing && (
             <div>
               <div style={{ marginBottom: 6, fontSize: 13, color: '#555' }}>{importProgressText}</div>
@@ -970,7 +988,6 @@ export default function SettingsPage() {
               />
             </div>
           )}
-
           <Space style={{ justifyContent: 'flex-end', width: '100%' }}>
             <Button onClick={() => { if (!importing) { setImportModal(false); setImportFile(null); setImportFileName(''); setImportProgress(0); } }} disabled={importing}>
               Отмена
@@ -1000,14 +1017,12 @@ export default function SettingsPage() {
           const s = importReport.summary;
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Итоговые цифры */}
               <Row gutter={12}>
                 <Col span={6}><Statistic title="Всего в файле" value={s.total} /></Col>
                 <Col span={6}><Statistic title="Создано" value={s.created} valueStyle={{ color: '#52c41a' }} prefix={<CheckOutlined />} /></Col>
                 <Col span={6}><Statistic title="Дублей" value={s.skipped_dup} valueStyle={{ color: '#faad14' }} prefix={<WarningOutlined />} /></Col>
                 <Col span={6}><Statistic title="Ошибок" value={s.errors} valueStyle={{ color: s.errors ? '#ff4d4f' : undefined }} prefix={<StopOutlined />} /></Col>
               </Row>
-
               <Tabs
                 size="small"
                 items={[
@@ -1016,9 +1031,7 @@ export default function SettingsPage() {
                     label: <span><Tag color="green">{s.created}</Tag>Создано</span>,
                     children: importReport.created.length === 0
                       ? <div style={{ color: '#888', padding: 8 }}>Нет созданных записей</div>
-                      : <Table
-                          size="small"
-                          pagination={{ pageSize: 10, showSizeChanger: false }}
+                      : <Table size="small" pagination={{ pageSize: 10, showSizeChanger: false }}
                           dataSource={importReport.created.map((r, i) => ({ ...r, key: i }))}
                           columns={[
                             { title: 'Код аптеки', dataIndex: 'pharmacy_code', width: 110 },
@@ -1033,9 +1046,7 @@ export default function SettingsPage() {
                     label: <span><Tag color="orange">{s.skipped_dup}</Tag>Дубли</span>,
                     children: importReport.skipped_dup.length === 0
                       ? <div style={{ color: '#888', padding: 8 }}>Дублей нет</div>
-                      : <Table
-                          size="small"
-                          pagination={{ pageSize: 10, showSizeChanger: false }}
+                      : <Table size="small" pagination={{ pageSize: 10, showSizeChanger: false }}
                           dataSource={importReport.skipped_dup.map((r, i) => ({ ...r, key: i }))}
                           columns={[
                             { title: 'Код аптеки', dataIndex: 'pharmacy_code', width: 110 },
@@ -1049,9 +1060,7 @@ export default function SettingsPage() {
                     label: <span><Tag color="red">{s.errors + s.skipped_null}</Tag>Ошибки / пропущено</span>,
                     children: (importReport.errors.length + importReport.skipped_null.length) === 0
                       ? <div style={{ color: '#888', padding: 8 }}>Ошибок нет</div>
-                      : <Table
-                          size="small"
-                          pagination={{ pageSize: 10, showSizeChanger: false }}
+                      : <Table size="small" pagination={{ pageSize: 10, showSizeChanger: false }}
                           dataSource={[
                             ...importReport.skipped_null.map((r, i) => ({ key: `n${i}`, pharmacy_code: `строка #${r.row}`, reason: r.reason })),
                             ...importReport.errors.map((r, i) => ({ key: `e${i}`, pharmacy_code: r.pharmacy_code || '—', reason: r.reason })),
@@ -1068,6 +1077,7 @@ export default function SettingsPage() {
           );
         })()}
       </Modal>
+
       <Modal
         title={<Space><SendOutlined />Тестовая отправка письма</Space>}
         open={testEmailModal}

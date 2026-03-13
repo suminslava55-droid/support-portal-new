@@ -1920,7 +1920,8 @@ class BulkImportClientsView(APIView):
 def _get_or_create_task(task_id):
     from .models import ScheduledTask
     TASKS = {
-        'update_rnm': 'Обновление данных по РНМ',
+        'update_rnm':        'Обновление данных по РНМ',
+        'fetch_external_ip': 'Получение внешнего IP',
     }
     obj, _ = ScheduledTask.objects.get_or_create(
         task_id=task_id,
@@ -1935,6 +1936,7 @@ class ScheduledTaskListView(APIView):
     def get(self, request):
         from .models import ScheduledTask
         _get_or_create_task('update_rnm')
+        _get_or_create_task('fetch_external_ip')
         tasks = ScheduledTask.objects.all().order_by('task_id')
         result = []
         for t in tasks:
@@ -1973,27 +1975,43 @@ class ScheduledTaskListView(APIView):
 
 
 class ScheduledTaskRunView(APIView):
-    """Ручной запуск задания — стартует поток, возвращает сразу"""
+    """Ручной запуск задания — стартует поток, возвращает сразу.
+    Параметр scheduled=true (от cron) включает режим only_expiring (только ФН ≤30 дней).
+    Ручной запуск через интерфейс — всегда все ККТ.
+    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         import threading
         from .models import ScheduledTask
-        task_id    = request.data.get('task_id', 'update_rnm')
-        company_id = request.data.get('company_id')   # None = все компании
+        task_id      = request.data.get('task_id', 'update_rnm')
+        company_id   = request.data.get('company_id')   # None = все компании
+        # scheduled=true передаётся из scheduler_run.sh (cron) — обновляем только истекающие ФН
+        only_expiring = str(request.data.get('scheduled', '')).lower() == 'true'
 
         t = _get_or_create_task(task_id)
         if t.status == 'running':
             return Response({'error': 'Задание уже выполняется'}, status=400)
 
         # Стартуем в фоне
-        thread = threading.Thread(
-            target=_run_update_rnm,
-            args=(task_id, company_id, request.user.id),
-            daemon=True,
-        )
-        thread.start()
-        return Response({'ok': True, 'message': 'Задание запущено'})
+        if task_id == 'fetch_external_ip':
+            thread = threading.Thread(
+                target=_run_fetch_external_ip,
+                args=(task_id, request.user.id),
+                daemon=True,
+            )
+            thread.start()
+            return Response({'ok': True, 'message': 'Задание запущено (внешний IP)'})
+        else:
+            thread = threading.Thread(
+                target=_run_update_rnm,
+                args=(task_id, company_id, request.user.id),
+                kwargs={'only_expiring': only_expiring},
+                daemon=True,
+            )
+            thread.start()
+            mode = 'истекающие ФН (≤30 дней)' if only_expiring else 'все ККТ'
+            return Response({'ok': True, 'message': f'Задание запущено ({mode})'})
 
 
 class ScheduledTaskProgressView(APIView):
@@ -2016,11 +2034,14 @@ class ScheduledTaskProgressView(APIView):
         })
 
 
-def _run_update_rnm(task_id, company_id, user_id):
-    """Фоновая функция обновления ККТ по РНМ для всех/одной компании"""
+def _run_update_rnm(task_id, company_id, user_id, only_expiring=False):
+    """Фоновая функция обновления ККТ по РНМ для всех/одной компании.
+    only_expiring=True — только ККТ с истекающим ФН (≤30 дней), используется при запуске по расписанию.
+    """
     import time
     import re as re_mod
     from django.utils import timezone
+    from datetime import timedelta
     from django.contrib.auth import get_user_model
     from .models import ScheduledTask, Client, KktData, ClientActivity, OfdCompany
 
@@ -2033,10 +2054,28 @@ def _run_update_rnm(task_id, company_id, user_id):
     def _set(**kwargs):
         ScheduledTask.objects.filter(task_id=task_id).update(**kwargs)
 
-    _set(status='running', progress=0, progress_text='Инициализация...', last_run_at=timezone.now())
+    # Определяем название компании если задан фильтр
+    company_name = None
+    if company_id:
+        try:
+            company_name = OfdCompany.objects.get(pk=company_id).name
+        except Exception:
+            company_name = f'ID={company_id}'
+
+    if only_expiring:
+        mode_label = 'истекающие ФН (≤30 дней)'
+    elif company_name:
+        mode_label = f'компания: {company_name}'
+    else:
+        mode_label = 'все клиенты'
+
+    _set(status='running', progress=0, progress_text=f'Инициализация... ({mode_label})', last_run_at=timezone.now())
+    started_at = timezone.now()
 
     try:
         script = '/usr/local/bin/ofd_fetch.sh'
+        now = timezone.now().date()
+        expiry_threshold = now + timedelta(days=30)
 
         # Выбираем клиентов
         qs = Client.objects.filter(is_draft=False).select_related('ofd_company')
@@ -2048,7 +2087,17 @@ def _run_update_rnm(task_id, company_id, user_id):
         for c in qs:
             if not c.ofd_company:
                 continue
-            kkts = list(c.kkt_data.filter(kkt_reg_id__isnull=False).exclude(kkt_reg_id=''))
+            kkt_qs = c.kkt_data.filter(kkt_reg_id__isnull=False).exclude(kkt_reg_id='')
+            if only_expiring:
+                # Берём только ККТ у которых fn_end_date не задан или ≤ 30 дней
+                from django.db import models as django_models
+                from datetime import datetime, timezone as dt_timezone
+                expiry_dt = datetime.combine(expiry_threshold, datetime.min.time()).replace(tzinfo=dt_timezone.utc)
+                kkt_qs = kkt_qs.filter(
+                    django_models.Q(fn_end_date__isnull=True) |
+                    django_models.Q(fn_end_date__lte=expiry_dt)
+                )
+            kkts = list(kkt_qs)
             if kkts:
                 clients_with_kkt.append((c, kkts))
 
@@ -2111,7 +2160,14 @@ def _run_update_rnm(task_id, company_id, user_id):
                     done_kkts += 1
                     continue
 
-                for item in detail_data.get('Data', []):
+                data_items = detail_data.get('Data', [])
+                if not data_items:
+                    errors_total += 1
+                    error_log.append(f'РНМ {rnm} | {client.address or client.pharmacy_code}: ОФД вернул пустой Data (касса не найдена по РНМ)')
+                    done_kkts += 1
+                    continue
+
+                for item in data_items:
                     old_fn     = kkt_obj.fn_number
                     old_serial = kkt_obj.serial_number
                     was_empty  = not old_serial and not old_fn
@@ -2140,10 +2196,22 @@ def _run_update_rnm(task_id, company_id, user_id):
                 # Rate limit ОФД — 1 запрос/сек
                 time.sleep(1.05)
 
+        elapsed = timezone.now() - started_at
+        elapsed_str = f'{int(elapsed.total_seconds() // 60)} мин {int(elapsed.total_seconds() % 60)} сек'
+
+        if only_expiring:
+            mode_str = 'только истекающие ФН (≤30 дней)'
+        elif company_name:
+            mode_str = f'компания: {company_name}'
+        else:
+            mode_str = 'все клиенты'
+
         summary = (
+            f'Режим: {mode_str}. '
             f'Обновлено ККТ: {fetched_total} из {total_kkts}. '
             f'Клиентов: {total_clients}. '
-            f'Ошибок: {errors_total}.'
+            f'Ошибок: {errors_total}. '
+            f'Время выполнения: {elapsed_str}.'
         )
         if error_log:
             summary += '\n\nОшибки:\n' + '\n'.join(error_log[:20])
@@ -2152,7 +2220,7 @@ def _run_update_rnm(task_id, company_id, user_id):
 
         _set(status='success' if errors_total == 0 else 'error',
              progress=100,
-             progress_text=f'Готово: обновлено {fetched_total} ККТ',
+             progress_text=f'Готово: обновлено {fetched_total} ККТ за {elapsed_str}',
              last_run_result=summary)
 
     except Exception as e:
@@ -2162,6 +2230,120 @@ def _run_update_rnm(task_id, company_id, user_id):
              last_run_result=f'Критическая ошибка: {str(e)}\n{traceback.format_exc()[:500]}')
 
 
+
+
+def _run_fetch_external_ip(task_id, user_id):
+    """Фоновая функция получения внешнего IP по всем клиентам через SSH на Микротик"""
+    import paramiko
+    from django.utils import timezone
+    from django.contrib.auth import get_user_model
+    from .models import ScheduledTask, Client, ClientActivity, SystemSettings
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(pk=user_id)
+    except Exception:
+        user = None
+
+    def _set(**kwargs):
+        ScheduledTask.objects.filter(task_id=task_id).update(**kwargs)
+
+    _set(status='running', progress=0, progress_text='Инициализация...', last_run_at=timezone.now())
+    started_at = timezone.now()
+
+    try:
+        settings_obj = SystemSettings.get()
+        if not settings_obj.ssh_user or not settings_obj.ssh_password_encrypted:
+            _set(status='error', progress=0,
+                 progress_text='Ошибка: SSH не настроен',
+                 last_run_result='SSH пользователь или пароль не заданы в настройках системы')
+            return
+
+        ssh_user     = settings_obj.ssh_user
+        ssh_password = settings_obj.ssh_password
+
+        # Клиенты у которых есть subnet (из него вычисляется mikrotik_ip)
+        clients = [c for c in Client.objects.filter(is_draft=False, subnet__isnull=False).exclude(subnet='') if c.mikrotik_ip]
+        total = len(clients)
+
+        if total == 0:
+            _set(status='success', progress=100,
+                 progress_text='Нет клиентов с Микротиком',
+                 last_run_result='Нет клиентов с заполненным полем Subnet для определения IP Микротика')
+            return
+
+        updated   = 0
+        changed   = 0
+        errors    = 0
+        error_log = []
+        cmd = ':put ([/tool fetch url="https://api.ipify.org" http-method=get output=user as-value]->"data")'
+
+        for i, client in enumerate(clients):
+            mikrotik_ip = client.mikrotik_ip
+            pct = int((i / total) * 100)
+            _set(progress=pct,
+                 progress_text=f'Клиент {i+1}/{total}: {client.address or client.pharmacy_code} ({mikrotik_ip})')
+            try:
+                ssh = paramiko.SSHClient()
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.connect(mikrotik_ip, username=ssh_user, password=ssh_password, timeout=10, port=22)
+                stdin, stdout, stderr = ssh.exec_command(cmd, timeout=15)
+                new_ip = stdout.read().decode().strip()
+                ssh.close()
+
+                if not new_ip:
+                    errors += 1
+                    error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): пустой ответ')
+                    continue
+
+                old_ip = client.external_ip or ''
+                if new_ip != old_ip:
+                    changed += 1
+                    client.external_ip = new_ip
+                    client.save(update_fields=['external_ip'])
+                    if user:
+                        ClientActivity.objects.create(
+                            client=client, user=user,
+                            action=f'Обновлён внешний IP (регламент)\n«{old_ip or "не задан"}» → «{new_ip}»'
+                        )
+                updated += 1
+
+            except paramiko.AuthenticationException:
+                errors += 1
+                error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): ошибка аутентификации SSH')
+            except Exception as e:
+                errors += 1
+                err_str = str(e)
+                if 'timed out' in err_str.lower() or 'timeout' in err_str.lower():
+                    error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): таймаут подключения')
+                else:
+                    error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): {err_str[:120]}')
+
+        elapsed = timezone.now() - started_at
+        elapsed_str = f'{int(elapsed.total_seconds() // 60)} мин {int(elapsed.total_seconds() % 60)} сек'
+
+        summary = (
+            f'Всего клиентов: {total}. '
+            f'Опрошено: {updated}. '
+            f'Изменился IP: {changed}. '
+            f'Ошибок: {errors}. '
+            f'Время выполнения: {elapsed_str}.'
+        )
+        if error_log:
+            summary += '\n\nОшибки:\n' + '\n'.join(error_log[:30])
+            if len(error_log) > 30:
+                summary += f'\n...и ещё {len(error_log)-30}'
+
+        _set(status='success' if errors == 0 else 'error',
+             progress=100,
+             progress_text=f'Готово: опрошено {updated} из {total}, изменился IP: {changed}. Время: {elapsed_str}',
+             last_run_result=summary)
+
+    except Exception as e:
+        import traceback
+        _set(status='error', progress=0,
+             progress_text='Ошибка выполнения',
+             last_run_result=f'Критическая ошибка: {str(e)}\n{traceback.format_exc()[:500]}')
 
 
 class ScheduledTaskCronView(APIView):
@@ -2189,7 +2371,7 @@ class ScheduledTaskCronView(APIView):
         schedule_time = (request.data.get('schedule_time') or '').strip()
         schedule_days = request.data.get('schedule_days', '0,1,2,3,4')
 
-        MARKER = f'# support-portal-task:{task_id}'
+        MARKER = f'{self.SCHEDULER_SCRIPT} {task_id}'
 
         if enabled:
             # Валидация времени
@@ -2229,7 +2411,7 @@ class ScheduledTaskCronView(APIView):
             cron_days = [(d + 1) % 7 for d in days_list]
             cron_days_str = ','.join(str(d) for d in sorted(set(cron_days)))
 
-            cron_line = f'{utc_mm} {utc_hh} * * {cron_days_str} {self.SCHEDULER_SCRIPT} {task_id} {MARKER}'
+            cron_line = f'{utc_mm} {utc_hh} * * {cron_days_str} {self.SCHEDULER_SCRIPT} {task_id}'
 
             stdout, stderr, rc = self._call('set', MARKER, cron_line)
             if rc != 0 or stdout != 'OK':
@@ -2259,7 +2441,7 @@ class ScheduledTaskCronView(APIView):
     def get(self, request):
         """Показать текущую crontab-строку для задания"""
         task_id = request.query_params.get('task_id', 'update_rnm')
-        MARKER  = f'# support-portal-task:{task_id}'
+        MARKER  = f'{self.SCHEDULER_SCRIPT} {task_id}'
         stdout, stderr, rc = self._call('list', MARKER)
         if rc != 0:
             return Response({'error': stderr or 'Ошибка чтения crontab'}, status=500)

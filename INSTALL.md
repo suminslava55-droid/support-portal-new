@@ -204,12 +204,14 @@ chmod +x /opt/support-portal/cron_manager.sh
 ```
 
 - **`ofd_fetch.sh`** — запросы к API lk.ofd.ru (у контейнера нет доступа к интернету)
-- **`cron_manager.sh`** — управление crontab хоста из Django-контейнера
+- **`cron_manager.sh`** — управление crontab хоста из Django-контейнера через `nsenter`
 
-В `docker-compose.yml` должны быть volumes:
+В `docker-compose.yml` у бэкенда должны быть:
 ```yaml
-- ./ofd_fetch.sh:/usr/local/bin/ofd_fetch.sh:ro
-- ./cron_manager.sh:/usr/local/bin/cron_manager.sh:ro
+pid: host
+privileged: true
+volumes:
+  - ./cron_manager.sh:/usr/local/bin/cron_manager.sh:ro
 ```
 
 ---
@@ -297,8 +299,8 @@ python3 setup_scheduler.py
 - Создаёт `/opt/support-portal/scheduler_run.sh` — скрипт вызова API для cron
 
 После этого в **Настройки → Регламентные задания** можно:
-- Запускать задания вручную (все клиенты или отдельная компания)
-- Настроить расписание (время + дни недели) и нажать **«Применить расписание»** — crontab обновится автоматически
+- Запускать задания вручную
+- Настроить расписание (время через два выпадающих списка Час/Минуты + дни недели) и нажать **«Применить расписание»** — crontab обновится автоматически
 - Видеть прогресс в реальном времени и результат последнего запуска
 
 > ⚠️ Токен действителен 365 дней. Повторный запуск `setup_scheduler.py` безопасен — обновит токен и скрипт.
@@ -310,25 +312,42 @@ python3 setup_scheduler.py
 Служба следит за изменениями crontab и автоматически перезагружает cron при нажатии «Применить расписание» в интерфейсе. **Без неё расписание не будет срабатывать.**
 
 ```bash
-cat > /etc/systemd/system/cron-watch.service << 'SVCEOF'
+cat > /usr/local/bin/cron-watch.sh << 'EOF'
+#!/bin/bash
+while true; do
+  inotifywait -e close_write,modify /var/spool/cron/crontabs/root 2>/dev/null
+  SEC=$((10#$(date +%S)))
+  if [ "$SEC" -gt 55 ]; then
+    sleep 10
+  fi
+  kill -HUP $(cat /run/crond.pid) && echo "$(date): cron reloaded"
+  sleep 1
+done
+EOF
+
+chmod +x /usr/local/bin/cron-watch.sh
+
+cat > /etc/systemd/system/cron-watch.service << 'EOF'
 [Unit]
 Description=Reload cron when crontab file changes
 After=cron.service
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -c 'while true; do inotifywait -e close_write,modify /var/spool/cron/crontabs/root 2>/dev/null && kill -HUP $(cat /run/crond.pid) && echo "$(date): cron reloaded"; sleep 1; done'
+ExecStart=/usr/local/bin/cron-watch.sh
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-SVCEOF
+EOF
 
 systemctl daemon-reload
 systemctl enable --now cron-watch
 systemctl status cron-watch
 ```
+
+> ⚠️ **Важно:** не применяйте расписание менее чем за 5 секунд до времени срабатывания — cron-watch успеет перезагрузить cron, но cron уже мог зафиксировать очередь заданий. Лучший вариант — устанавливать расписание заранее (хотя бы за 1–2 минуты).
 
 Проверяем что служба запущена:
 

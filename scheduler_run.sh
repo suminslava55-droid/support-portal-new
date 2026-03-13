@@ -1,7 +1,7 @@
 #!/bin/bash
 # scheduler_run.sh — запуск регламентного задания через API
 # Генерируется автоматически setup_scheduler.py
-
+# scheduled=true → бэкенд включает режим only_expiring (только ФН ≤30 дней)
 TASK_ID="${1:-update_rnm}"
 COMPANY_ID="${2:-}"
 TOKEN_FILE="/opt/support-portal/.scheduler_token"
@@ -12,13 +12,12 @@ if [ ! -f "$TOKEN_FILE" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: Файл токена не найден: $TOKEN_FILE" >> "$LOG_FILE"
     exit 1
 fi
-
 TOKEN=$(cat "$TOKEN_FILE")
 
 if [ -n "$COMPANY_ID" ]; then
-    BODY=$(printf '{"task_id":"%s","company_id":%s}' "$TASK_ID" "$COMPANY_ID")
+    BODY=$(printf '{"task_id":"%s","company_id":%s,"scheduled":true}' "$TASK_ID" "$COMPANY_ID")
 else
-    BODY=$(printf '{"task_id":"%s"}' "$TASK_ID")
+    BODY=$(printf '{"task_id":"%s","scheduled":true}' "$TASK_ID")
 fi
 
 RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "$API_URL" \
@@ -30,11 +29,10 @@ RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "$API_URL" \
 
 HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
 BODY_RESP=$(echo "$RESPONSE" | grep -v "HTTP_STATUS:")
-
 echo "$(date '+%Y-%m-%d %H:%M:%S') task=$TASK_ID status=$HTTP_STATUS response=$BODY_RESP" >> "$LOG_FILE"
 
 if [ "$HTTP_STATUS" = "200" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') OK: Задание $TASK_ID запущено" >> "$LOG_FILE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') OK: Задание $TASK_ID запущено (только истекающие ФН ≤30 дней)" >> "$LOG_FILE"
     exit 0
 else
     echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: HTTP $HTTP_STATUS" >> "$LOG_FILE"
