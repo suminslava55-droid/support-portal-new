@@ -10,3 +10,4 @@ __pycache__/
 frontend/build/
 .env.backup
 .env.diag_backup
+.scheduler_token

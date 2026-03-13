@@ -8,6 +8,7 @@
 | Изменения в коде фронтенда (JSX, CSS) | `bash /opt/support-portal/deploy-frontend.sh` |
 | Новые Python-зависимости (requirements.txt) | `docker compose up -d --build` |
 | Новые миграции базы данных | `docker compose exec backend python manage.py migrate` |
+| Обновление токена планировщика (раз в год) | `python3 /opt/support-portal/setup_scheduler.py` |
 
 ---
 
@@ -42,6 +43,51 @@ bash /opt/support-portal/deploy-frontend.sh
 
 ---
 
+## Регламентные задания и планировщик
+
+### Первичная настройка (один раз)
+
+```bash
+python3 /opt/support-portal/setup_scheduler.py
+```
+
+После этого в **Настройки → Регламентные задания** настройте расписание через интерфейс и нажмите **«Применить расписание»**.
+
+### Обновление токена планировщика (раз в год)
+
+JWT-токен планировщика действителен 365 дней. За несколько дней до истечения обновите:
+
+```bash
+python3 /opt/support-portal/setup_scheduler.py
+```
+
+Скрипт безопасен — пересоздаёт токен без потери данных.
+
+### Проверка crontab
+
+```bash
+# Просмотр текущих заданий
+crontab -l
+
+# Проверка работы cron
+systemctl status cron
+
+# Просмотр лога выполнения заданий
+tail -50 /var/log/support-portal-scheduler.log
+```
+
+### Ручной запуск задания (минуя интерфейс)
+
+```bash
+# Все клиенты
+bash /opt/support-portal/scheduler_run.sh update_rnm
+
+# Конкретная компания (указать ID компании из базы)
+bash /opt/support-portal/scheduler_run.sh update_rnm 3
+```
+
+---
+
 ## Полезные команды
 
 ```bash
@@ -70,8 +116,9 @@ cat backup_20240101.sql | docker compose exec -T db psql -U postgres support_por
 # Проверка всех Python-пакетов
 docker compose exec backend python -c "import cryptography, paramiko, openpyxl; print('Все пакеты OK')"
 
-# Проверка доступности скрипта ОФД в контейнере
+# Проверка доступности скриптов в контейнере
 docker compose exec backend ls -la /usr/local/bin/ofd_fetch.sh
+docker compose exec backend ls -la /usr/local/bin/cron_manager.sh
 
 # Просмотр компаний и токенов ОФД
 docker compose exec backend python manage.py shell -c "
@@ -80,13 +127,11 @@ for c in OfdCompany.objects.all():
     print(c.id, c.name, c.inn, 'токен:', c.ofd_token[:10] + '...' if c.ofd_token else 'НЕТ')
 "
 
-# Создать тестовых провайдеров
+# Просмотр регламентных заданий и их статуса
 docker compose exec backend python manage.py shell -c "
-from apps.clients.models import Provider
-providers = [('Ростелеком','8-800-100-08-00'),('МТС','8-800-250-08-90')]
-for name, phone in providers:
-    p, created = Provider.objects.get_or_create(name=name, defaults={'support_phones': phone})
-    print('Создан' if created else 'Уже есть', name)
+from apps.clients.models import ScheduledTask
+for t in ScheduledTask.objects.all():
+    print(t.task_id, '|', t.status, '|', t.last_run_at, '|', t.schedule_time if t.enabled else 'выкл')
 "
 ```
 
@@ -106,3 +151,5 @@ tar -czf /backup/media_$(date +%Y%m%d).tar.gz /opt/support-portal/media/
 # Файл окружения (содержит ключи шифрования!)
 cp /opt/support-portal/.env /backup/.env.$(date +%Y%m%d)
 ```
+
+> ⚠️ Файл `.env` содержит `ENCRYPTION_KEY` — без него зашифрованные пароли и токены нечитаемы. Храните резервную копию в надёжном месте.

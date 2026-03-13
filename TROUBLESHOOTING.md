@@ -2,63 +2,13 @@
 
 ## 🔍 Универсальная диагностика
 
-При любой непонятной ошибке (500, 400, токены не сохраняются, API не отвечает) — запустите диагностический скрипт. Он автоматически включит `DEBUG=True`, воспроизведёт запрос, покажет traceback и вернёт `DEBUG=False`.
+При любой непонятной ошибке (500, 400, токены не сохраняются, API не отвечает):
 
 ```bash
 cd /opt/support-portal
 bash diagnose.sh 2>&1 | tee /tmp/diag_result.txt
 cat /tmp/diag_result.txt
 ```
-
-<details>
-<summary>Содержимое diagnose.sh</summary>
-
-```bash
-#!/bin/bash
-cd /opt/support-portal
-DIVIDER="=================================================="
-
-echo "$DIVIDER"; echo "1. ОКРУЖЕНИЕ"; echo "$DIVIDER"
-grep -E "DEBUG|ALLOWED_HOSTS|ENCRYPTION_KEY" .env | sed 's/=.*/=***/'
-docker compose exec backend python manage.py shell -c "
-from django.conf import settings
-print('DEBUG:', settings.DEBUG)
-print('ALLOWED_HOSTS:', settings.ALLOWED_HOSTS)
-print('ENCRYPTION_KEY задан:', bool(getattr(settings, 'ENCRYPTION_KEY', '')))
-print('ENCRYPTION_KEY длина:', len(getattr(settings, 'ENCRYPTION_KEY', '')))
-"
-
-echo ""; echo "$DIVIDER"; echo "2. СТАТУС КОНТЕЙНЕРОВ"; echo "$DIVIDER"
-docker compose ps
-
-echo ""; echo "$DIVIDER"; echo "3. ИМПОРТЫ В VIEWS.PY"; echo "$DIVIDER"
-grep -n "from .serializers\|OfdCompanyWriteSerializer\|OfdCompanySerializer" backend/apps/clients/views.py
-echo "Количество OfdCompanyViewSet:"
-grep -c "class OfdCompanyViewSet" backend/apps/clients/views.py
-
-echo ""; echo "$DIVIDER"; echo "4. ПАКЕТЫ"; echo "$DIVIDER"
-docker compose exec backend python -c "
-import cryptography, paramiko, openpyxl
-print('cryptography:', cryptography.__version__)
-print('paramiko:', paramiko.__version__)
-print('openpyxl:', openpyxl.__version__)
-"
-
-echo ""; echo "$DIVIDER"; echo "5. ТЕСТ ШИФРОВАНИЯ"; echo "$DIVIDER"
-docker compose exec backend python manage.py shell -c "
-from apps.clients.models import encrypt_value, decrypt_value
-try:
-    enc = encrypt_value('test_token_diag')
-    dec = decrypt_value(enc)
-    print('encrypt/decrypt:', 'OK' if dec == 'test_token_diag' else 'FAIL: ' + dec)
-except Exception as e:
-    import traceback; traceback.print_exc()
-"
-
-echo ""; echo "$DIVIDER"; echo "6. ЛОГИ БЭКЕНДА (последние 40 строк)"; echo "$DIVIDER"
-docker compose logs --tail=40 backend 2>&1 | grep -v "RuntimeWarning\|warnings.warn\|UnorderedObject\|Booting worker\|Listening at\|Starting gunicorn\|Control socket\|copied to\|No migrations\|Apply all\|accounts, admin"
-```
-</details>
 
 ---
 
@@ -82,10 +32,9 @@ docker compose exec backend pip install cryptography paramiko openpyxl --break-s
 docker compose restart backend
 ```
 
-### Скрипт ОФД не найден
+### Скрипт ОФД не найден в контейнере
 ```bash
 ls -la /opt/support-portal/ofd_fetch.sh
-# Убедитесь что в docker-compose.yml есть volume для ofd_fetch.sh
 docker compose exec backend ls -la /usr/local/bin/ofd_fetch.sh
 ```
 
@@ -93,35 +42,33 @@ docker compose exec backend ls -la /usr/local/bin/ofd_fetch.sh
 ```bash
 # Тест с хоста (НЕ из контейнера!)
 python3 /opt/support-portal/ofd_fetch.sh <ИНН> <ТОКЕН> "Адрес"
-# Если timeout — проверьте токен и доступ к интернету с хоста
 ```
 
-### Ошибки при получении данных ККТ
+### Обновление ККТ занимает много времени (это нормально)
+API `lk.ofd.ru` — не более 1 запроса в секунду. При 700 кассах ~13 минут. Gunicorn настроен с `--timeout 1000`.
 
-**Проверка сети до lk.ofd.ru:**
+### Токен ОФД не сохраняется / ошибка 500
 ```bash
-bash /opt/support-portal/check_ofd_network.sh
-```
-Ожидаемый результат: TCP 443 OK, curl возвращает HTTP 403 на тестовый токен — это нормально.
+# Проверяем — должно быть 1
+grep -c "class OfdCompanyViewSet" /opt/support-portal/backend/apps/clients/views.py
 
-**Проверка токенов всех компаний:**
-```bash
-bash /opt/support-portal/check_ofd_tokens.sh
-```
-Результаты: `✅ OK` — токен рабочий, `❌ HTTP 403` — токен протух (обновите в lk.ofd.ru), `❌ TimeoutError` — сервер не отвечает, `❌ КИРИЛЛИЦА В ТОКЕНЕ` — введён мусор.
+# Проверяем импорт
+grep "OfdCompanyWriteSerializer" /opt/support-portal/backend/apps/clients/views.py
 
-### Обновление ККТ занимает много времени
-API `lk.ofd.ru` ограничивает частоту: не более 1 запроса в секунду. При 700 кассах — ~13 минут. Это штатное поведение. Gunicorn настроен с `--timeout 1000`.
+# Если импорта нет — добавляем
+sed -i 's/OfdCompanySerializer,$/OfdCompanySerializer, OfdCompanyWriteSerializer,/' \
+  /opt/support-portal/backend/apps/clients/views.py
+
+docker compose restart backend
+```
 
 ### DEBUG включён случайно
 ```bash
-grep "DEBUG" /opt/support-portal/.env
-# Должно быть DEBUG=False
+grep "DEBUG" /opt/support-portal/.env  # должно быть DEBUG=False
 docker compose restart backend
 ```
 
 ### Черновики накапливаются в базе
-Черновики старше 2 часов удаляются автоматически при открытии списка клиентов. Для ручной очистки:
 ```bash
 docker compose exec backend python manage.py shell -c "
 from apps.clients.models import Client
@@ -161,20 +108,106 @@ npm install
 npm run build
 ```
 
-### Токен ОФД не сохраняется / ошибка 500 при сохранении компании
+### Ошибка сортировки по полям Компания / ИНН
+Сортировка идёт через `ofd_company__name` и `ofd_company__inn`. Сбросьте кэш браузера (`Ctrl+Shift+R`).
+
+---
+
+## Проблемы с регламентными заданиями
+
+### «Не удалось прочитать crontab» при сохранении расписания
+
+Причина: Django-контейнер пытается вызвать `crontab` напрямую, которого нет внутри контейнера.
+
+Решение: убедитесь что `cron_manager.sh` смонтирован в контейнер:
+
 ```bash
-# Проверяем — должно быть 1
-grep -c "class OfdCompanyViewSet" /opt/support-portal/backend/apps/clients/views.py
+# Проверяем наличие скрипта на хосте
+ls -la /opt/support-portal/cron_manager.sh
 
-# Проверяем наличие импорта
-grep "OfdCompanyWriteSerializer" /opt/support-portal/backend/apps/clients/views.py
+# Проверяем права
+chmod +x /opt/support-portal/cron_manager.sh
 
-# Если импорта нет — добавляем
-sed -i 's/OfdCompanySerializer,$/OfdCompanySerializer, OfdCompanyWriteSerializer,/' \
-  /opt/support-portal/backend/apps/clients/views.py
+# Проверяем что смонтирован в контейнер
+docker compose exec backend ls -la /usr/local/bin/cron_manager.sh
 
-docker compose restart backend
+# Если не смонтирован — проверьте docker-compose.yml
+grep "cron_manager" /opt/support-portal/docker-compose.yml
+# Должна быть строка:
+# - ./cron_manager.sh:/usr/local/bin/cron_manager.sh:ro
 ```
 
-### Ошибка сортировки по полям Компания / ИНН
-Поля являются вычисляемыми (`@property`) и берутся из связанной модели `OfdCompany`. Сортировка идёт через `ofd_company__name` и `ofd_company__inn`. Сбросьте кэш браузера (`Ctrl+Shift+R`).
+Если строки нет в `docker-compose.yml` — добавьте и перезапустите:
+```bash
+docker compose up -d
+```
+
+### Задание не запускается по расписанию
+
+```bash
+# Проверить что cron-строка добавлена
+crontab -l | grep support-portal
+
+# Проверить что cron запущен
+systemctl status cron
+
+# Посмотреть лог выполнения
+tail -50 /var/log/support-portal-scheduler.log
+
+# Проверить токен планировщика
+ls -la /opt/support-portal/.scheduler_token
+cat /opt/support-portal/.scheduler_token
+```
+
+### Токен планировщика истёк (задание возвращает 401)
+
+```bash
+# Обновить токен
+python3 /opt/support-portal/setup_scheduler.py
+
+# Проверить что новый токен сохранился
+ls -la /opt/support-portal/.scheduler_token
+```
+
+### Задание висит в статусе «running»
+
+Если сервер перезапускался во время выполнения задания, статус может зависнуть. Сброс вручную:
+
+```bash
+docker compose exec backend python manage.py shell -c "
+from apps.clients.models import ScheduledTask
+t = ScheduledTask.objects.get(task_id='update_rnm')
+t.status = 'idle'
+t.progress = 0
+t.progress_text = ''
+t.save()
+print('Сброшено')
+"
+```
+
+### scheduler_run.sh не найден
+
+```bash
+ls -la /opt/support-portal/scheduler_run.sh
+```
+
+Если файл отсутствует — повторно запустите настройку:
+```bash
+python3 /opt/support-portal/setup_scheduler.py
+```
+
+---
+
+## Проблемы с ОФД
+
+### Проверка сети до lk.ofd.ru
+```bash
+bash /opt/support-portal/check_ofd_network.sh
+```
+Ожидаемый результат: TCP 443 OK, curl HTTP 403 — это нормально.
+
+### Проверка токенов всех компаний
+```bash
+bash /opt/support-portal/check_ofd_tokens.sh
+```
+Результаты: `✅ OK` — токен рабочий, `❌ HTTP 403` — токен протух (обновите в lk.ofd.ru), `❌ TimeoutError` — сервер не отвечает, `❌ КИРИЛЛИЦА В ТОКЕНЕ` — введён мусор.

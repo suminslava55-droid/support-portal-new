@@ -1,17 +1,28 @@
-# Support Portal — Установка
+# Support Portal — Инструкция по установке
+
+## ⚠️ Известные проблемы
+
+- **Пакеты `paramiko`/`openpyxl` слетают** при пересборке контейнера — устанавливать вручную после `docker compose up --build`
+- **Обновление ККТ зависает** — `lk.ofd.ru` лимит 1 запрос/сек, при 700 кассах ~13 мин, это нормально (gunicorn `--timeout 1000`)
+- **Токен ОФД не сохраняется** — проверьте наличие `OfdCompanyWriteSerializer` в `views.py` и что класс `OfdCompanyViewSet` один
+
+---
 
 ## Описание системы
 
 **Support Portal** — веб-приложение для управления клиентами (аптеками), провайдерами, сетевой инфраструктурой и кассовой техникой (ККТ) с интеграцией ОФД.
 
-| Компонент | Технология |
-|-----------|-----------|
-| Backend | Django 4.x + Django REST Framework |
-| Frontend | React 18 + Ant Design |
-| База данных | PostgreSQL 16 |
-| Веб-сервер | Nginx (Alpine) |
-| Контейнеризация | Docker + Docker Compose |
-| Сборка фронтенда | Node.js 18 + npm |
+### Стек технологий
+
+| Компонент | Технология | Назначение |
+|-----------|-----------|------------|
+| Backend | Django 4.x + DRF | REST API, бизнес-логика, аутентификация |
+| Frontend | React 18 + Ant Design | Веб-интерфейс |
+| База данных | PostgreSQL 16 | Хранение данных |
+| Веб-сервер | Nginx | Проксирование, статика |
+| Контейнеризация | Docker + Docker Compose | Изоляция сервисов |
+| Сборка фронтенда | Node.js 18 + npm | Компиляция React на сервере |
+| Планировщик | cron (хост) + cron_manager.sh | Регламентные задания |
 
 ---
 
@@ -24,41 +35,100 @@
 
 ---
 
-## Шаг 1 — Подготовка сервера
+## 1. Подготовка сервера
+
+### 1.1 Обновление системы
 
 ```bash
-# Обновление системы
 apt update && apt upgrade -y
+```
 
-# Docker
+### 1.2 Установка Docker
+
+```bash
 curl -fsSL https://get.docker.com | sh
+```
+
+### 1.3 Установка Docker Compose Plugin
+
+```bash
 apt install docker-compose-plugin -y
+```
 
-# Git
+### 1.4 Установка Git
+
+```bash
 apt install git -y
+```
 
-# Python (для генерации ключей и запуска скрипта ОФД на хосте)
+### 1.5 Установка Python 3 и pip
+
+Python нужен для генерации ключей шифрования, запуска скрипта ОФД и настройки планировщика.
+
+```bash
 apt install python3 python3-pip -y
+```
+
+### 1.6 Установка библиотеки cryptography
+
+Используется для генерации `ENCRYPTION_KEY` — Fernet-ключа, которым шифруются SSH-пароль, SMTP-пароль и токены ОФД.
+
+```bash
 pip3 install cryptography --break-system-packages
+```
 
-# Node.js (для быстрой сборки фронтенда)
+### 1.7 Установка Node.js и npm
+
+Node.js используется для быстрой сборки фронтенда на сервере (20–40 сек вместо 5–10 мин пересборки Docker).
+
+```bash
 apt install nodejs npm -y
+```
 
-# Утилиты
+Проверяем версии:
+
+```bash
+node --version   # v18.x.x или выше
+npm --version    # 9.x.x или выше
+```
+
+### 1.8 Проверка cron
+
+На большинстве Ubuntu cron уже установлен и запущен. Проверить:
+
+```bash
+systemctl status cron
+```
+
+Если не установлен:
+
+```bash
+apt install cron -y
+systemctl enable cron
+systemctl start cron
+```
+
+### 1.9 Установка системных утилит
+
+```bash
 apt install curl nano iputils-ping openssl -y
 ```
 
-Проверяем:
+### 1.10 Проверка установки
+
 ```bash
-docker --version && docker compose version
+docker --version
+docker compose version
 git --version
 python3 --version
-node --version && npm --version
+node --version
+npm --version
+systemctl is-active cron
 ```
 
 ---
 
-## Шаг 2 — Загрузка проекта
+## 2. Загружаем проект
 
 ```bash
 git clone https://github.com/suminslava55-droid/support-portal-new.git /opt/support-portal
@@ -67,47 +137,50 @@ cd /opt/support-portal
 
 ---
 
-## Шаг 3 — Переменные окружения
+## 3. Настраиваем переменные окружения
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Генерируем значения:
-
-```bash
-# SECRET_KEY
-openssl rand -hex 50
-
-# ENCRYPTION_KEY (Fernet)
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-Заполненный `.env`:
+Содержимое `.env`:
 
 ```env
+# База данных
 DB_NAME=support_portal
 DB_USER=postgres
-DB_PASSWORD=СИЛЬНЫЙ_ПАРОЛЬ
+DB_PASSWORD=CHANGE_ME_STRONG_PASSWORD
 DB_HOST=db
 DB_PORT=5432
 
-SECRET_KEY=сгенерированный_ключ
+# Django
+SECRET_KEY=CHANGE_ME_VERY_LONG_SECRET_KEY_HERE
 DEBUG=False
-ALLOWED_HOSTS=ВАШ_IP,localhost
-CORS_ALLOWED_ORIGINS=http://ВАШ_IP,http://localhost
+ALLOWED_HOSTS=your-ip-or-domain,localhost
+CORS_ALLOWED_ORIGINS=http://your-ip-or-domain,http://localhost
 
-ENCRYPTION_KEY=сгенерированный_fernet_ключ
+# Ключ шифрования (для SSH, SMTP паролей и токенов ОФД)
+ENCRYPTION_KEY=CHANGE_ME_FERNET_KEY
 ```
 
-> ⚠️ **Потеря ENCRYPTION_KEY = потеря всех зашифрованных паролей и токенов ОФД.** Сохраните резервную копию `.env`.
+### Генерация значений
 
-Сохранение в nano: `Ctrl+O` → `Enter` → `Ctrl+X`
+**SECRET_KEY:**
+```bash
+openssl rand -hex 50
+```
+
+**ENCRYPTION_KEY** (Fernet-ключ):
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+> ⚠️ **Потеря ENCRYPTION_KEY = потеря всех зашифрованных паролей и токенов ОФД.** Делайте резервную копию `.env`.
 
 ---
 
-## Шаг 4 — Папка медиафайлов
+## 4. Хранилище медиафайлов
 
 ```bash
 mkdir -p /opt/support-portal/media
@@ -115,49 +188,61 @@ mkdir -p /opt/support-portal/media
 
 ---
 
-## Шаг 5 — Скрипт ОФД
+## 5. Скрипты для работы на хосте
 
-Скрипт `ofd_fetch.sh` запускается на **хосте** (из контейнера нет доступа к интернету).
+В `docker-compose.yml` пробрасываются скрипты с хоста в контейнер:
 
 ```bash
-# Убедитесь что скрипт есть в репозитории
-ls /opt/support-portal/ofd_fetch.sh
-
-# Сделайте исполняемым
 chmod +x /opt/support-portal/ofd_fetch.sh
+chmod +x /opt/support-portal/cron_manager.sh
 ```
 
-В `docker-compose.yml` должен быть volume:
+- **`ofd_fetch.sh`** — запросы к API lk.ofd.ru (у контейнера нет доступа к интернету)
+- **`cron_manager.sh`** — управление crontab хоста из Django-контейнера
+
+В `docker-compose.yml` должны быть volumes:
 ```yaml
-- /opt/support-portal/ofd_fetch.sh:/usr/local/bin/ofd_fetch.sh:ro
+- ./ofd_fetch.sh:/usr/local/bin/ofd_fetch.sh:ro
+- ./cron_manager.sh:/usr/local/bin/cron_manager.sh:ro
 ```
 
 ---
 
-## Шаг 6 — Запуск
+## 6. Запускаем
 
 ```bash
 cd /opt/support-portal
 docker compose up -d --build
 ```
 
-Первый запуск занимает 5–10 минут. Следим за логами:
+Первый запуск занимает 5–10 минут. Следим:
 
 ```bash
 docker compose logs -f
 ```
 
-Должны быть запущены три контейнера:
+Проверяем контейнеры:
+
 ```bash
 docker compose ps
-# support-portal-db-1
-# support-portal-backend-1
-# support-portal-nginx-1
+```
+
+Должны быть запущены: `support-portal-db-1`, `support-portal-backend-1`, `support-portal-nginx-1`.
+
+---
+
+## 7. Устанавливаем зависимости фронтенда
+
+Выполняется один раз после клонирования:
+
+```bash
+cd /opt/support-portal/frontend
+npm install
 ```
 
 ---
 
-## Шаг 7 — Проверка пакетов
+## 8. Проверяем Python-пакеты в контейнере
 
 ```bash
 docker compose exec backend python -c "
@@ -168,74 +253,84 @@ print('openpyxl OK')
 "
 ```
 
-Если пакет отсутствует:
+Если какой-то пакет отсутствует:
+
 ```bash
 docker compose exec backend pip install cryptography paramiko openpyxl --break-system-packages
 docker compose restart backend
 ```
 
-> ⚠️ Пакеты могут слетать при пересборке контейнера (`--build`) если нет доступа к интернету. Устанавливайте вручную после каждой пересборки.
-
 ---
 
-## Шаг 8 — Создание администратора и ролей
+## 9. Создаём администратора и роли
 
 ```bash
 docker compose exec backend python create_admin.py
 ```
 
-Роли после установки:
-
 | Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | Пользователи | Настройки |
 |------|---------|-----------|---------|----------|----------|-------------|----------|
-| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Связист | Полный | ✅ | 👁 просмотр | ✅ | ❌ | ❌ | ❌ |
+| Администратор | Полный доступ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Системный администратор | Полный доступ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Связист | Полный доступ | ✅ | 👁 | ✅ | ❌ | ❌ | ❌ |
 
 ---
 
-## Шаг 9 — Первоначальная настройка в интерфейсе
+## 10. Настройка планировщика заданий ⚡
+
+> Выполняется **один раз** после первого запуска контейнеров.
+
+```bash
+cd /opt/support-portal
+python3 setup_scheduler.py
+```
+
+Скрипт автоматически:
+- Создаёт системного пользователя `scheduler@system.local` внутри Django (вход по паролю заблокирован)
+- Генерирует JWT-токен на 365 дней → сохраняет в `/opt/support-portal/.scheduler_token` (права 600)
+- Создаёт `/opt/support-portal/scheduler_run.sh` — скрипт вызова API для cron
+
+После этого в **Настройки → Регламентные задания** можно:
+- Запускать задания вручную (все клиенты или отдельная компания)
+- Настроить расписание (время + дни недели) и нажать **«Применить расписание»** — crontab обновится автоматически
+- Видеть прогресс в реальном времени и результат последнего запуска
+
+> ⚠️ Токен действителен 365 дней. Повторный запуск `setup_scheduler.py` безопасен — обновит токен и скрипт.
+
+---
+
+## 11. Первоначальная настройка в интерфейсе
 
 1. Откройте `http://ВАШ_IP` в браузере
 2. Войдите под учётными данными администратора
-3. **Настройки** → SSH пользователь/пароль для Микротиков, SMTP для отправки писем → кнопка «Тест отправки»
-4. **Компании** → добавьте компании с ИНН и токеном ОФД (из `lk.ofd.ru → Настройки → API`)
+3. Перейдите в **Настройки**:
+   - SSH пользователь и пароль для Микротиков
+   - SMTP настройки (сервер, порт, логин, пароль, адрес отправителя) + кнопка «Тест отправки»
+4. **Компании** → добавьте компании с ИНН и токеном ОФД (lk.ofd.ru → Настройки → API)
 5. **Провайдеры** → добавьте провайдеров
 6. **Пользователи** → заполните дни рождения сотрудников
 7. Создавайте карточки клиентов
 
 ---
 
-## Установка Node.js зависимостей (один раз)
+## 12. Когда что использовать
 
-```bash
-cd /opt/support-portal/frontend
-npm install
-```
-
----
-
-## Настройка HTTPS (опционально)
-
-```bash
-apt install certbot python3-certbot-nginx -y
-docker compose stop nginx
-certbot certonly --standalone -d ваш-домен.ru
-# Обновите nginx/default.conf — добавьте блок SSL
-docker compose start nginx
-```
+| Изменение | Команда |
+|-----------|---------|
+| Изменения в Python-коде бэкенда | `docker compose restart backend` |
+| Изменения в коде фронтенда (JSX, CSS) | `bash /opt/support-portal/deploy-frontend.sh` |
+| Новые Python-зависимости (requirements.txt) | `docker compose up -d --build` |
+| Новые миграции базы данных | `docker compose exec backend python manage.py migrate` |
+| Обновление токена планировщика | `python3 /opt/support-portal/setup_scheduler.py` |
 
 ---
 
 ## Безопасность
 
-Файл `.env` **не должен попадать в git**. Убедитесь что `.gitignore` содержит:
-```
-.env
-media/
-*.pyc
-__pycache__/
-```
+Файлы **не попадают в git** (добавлены в `.gitignore`):
+- `.env` — ключи и пароли
+- `.scheduler_token` — JWT-токен планировщика
+- `media/` — загруженные файлы
 
 При компрометации ключей:
 ```bash
@@ -243,4 +338,5 @@ openssl rand -hex 50                                                            
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # новый ENCRYPTION_KEY
 docker compose restart backend
 # После — заново введите SSH/SMTP пароли и токены ОФД
+python3 /opt/support-portal/setup_scheduler.py  # обновить токен планировщика
 ```

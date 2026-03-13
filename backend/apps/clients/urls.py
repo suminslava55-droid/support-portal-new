@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView
 from .settings_views import SystemSettingsView, TestEmailView, CheckPackagesView
 
 router = DefaultRouter()
@@ -18,6 +18,11 @@ urlpatterns = [
     path('fetch_external_ip/', FetchExternalIPView.as_view(), name='fetch-external-ip'),
     path('kkt-list/', KktListView.as_view(), name='kkt-list'),
     path('kkt-export/', KktExportView.as_view(), name='kkt-export'),
+    path('bulk-import/', BulkImportClientsView.as_view(), name='bulk-import'),
+    path('scheduled-tasks/', ScheduledTaskListView.as_view(), name='scheduled-tasks'),
+    path('scheduled-tasks/run/', ScheduledTaskRunView.as_view(), name='scheduled-tasks-run'),
+    path('scheduled-tasks/cron/', ScheduledTaskCronView.as_view(), name='scheduled-tasks-cron'),
+    path('scheduled-tasks/<str:task_id>/progress/', ScheduledTaskProgressView.as_view(), name='scheduled-tasks-progress'),
     path('<int:pk>/ofd_kkt/', OfdKktView.as_view(), name='ofd-kkt'),
     path('<int:pk>/ofd_kkt/<int:kkt_id>/', OfdKktView.as_view(), name='ofd-kkt-detail'),
     path('', include(router.urls)),

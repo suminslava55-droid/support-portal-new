@@ -382,3 +382,41 @@ class KktData(models.Model):
 
     def __str__(self):
         return f'ККТ {self.kkt_reg_id} — {self.client}'
+
+
+class ScheduledTask(models.Model):
+    """Регламентное задание"""
+    TASK_CHOICES = [
+        ('update_rnm', 'Обновление данных по РНМ'),
+    ]
+    STATUS_CHOICES = [
+        ('idle',    'Ожидает'),
+        ('running', 'Выполняется'),
+        ('success', 'Успешно'),
+        ('error',   'Ошибка'),
+    ]
+
+    task_id      = models.CharField('Идентификатор задания', max_length=50, unique=True)
+    name         = models.CharField('Название', max_length=200)
+    # Расписание: cron-строка "ЧЧ:ММ", либо пустое = вручную
+    schedule_time = models.CharField('Время запуска (ЧЧ:ММ)', max_length=10, blank=True)
+    schedule_days = models.CharField(
+        'Дни недели (0=пн…6=вс, через запятую)', max_length=20, blank=True, default='0,1,2,3,4'
+    )
+    enabled      = models.BooleanField('Включено', default=False)
+
+    status       = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES, default='idle')
+    last_run_at  = models.DateTimeField('Последний запуск', null=True, blank=True)
+    last_run_result = models.TextField('Результат последнего запуска', blank=True)
+    progress     = models.IntegerField('Прогресс (%)', default=0)
+    progress_text = models.CharField('Текст прогресса', max_length=500, blank=True)
+
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Регламентное задание'
+        verbose_name_plural = 'Регламентные задания'
+
+    def __str__(self):
+        return self.name
