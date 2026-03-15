@@ -33,3 +33,5 @@ from .scheduler_views import (
     ScheduledTaskProgressView,
     ScheduledTaskCronView,
 )
+
+from .search_views import GlobalSearchView

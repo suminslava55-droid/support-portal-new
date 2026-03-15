@@ -214,6 +214,12 @@ volumes:
   - ./cron_manager.sh:/usr/local/bin/cron_manager.sh:ro
 ```
 
+У nginx должен быть volume для фронтенда — чтобы после `docker compose down/up` не слетала сборка:
+```yaml
+volumes:
+  - ./frontend/build:/usr/share/nginx/html
+```
+
 ---
 
 ## 6. Запускаем

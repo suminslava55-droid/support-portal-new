@@ -33,6 +33,15 @@
 - Мультивыделение: Ctrl+клик, затем «Применить тип…»
 - Кнопка **Отчёт за месяц**
 
+### 🔍 Поиск
+- Раздел доступен всем пользователям из левого меню
+- Поиск по: адресу, телефону, email, кодам аптеки/склада, ICCID, лицевым счетам, ИНН, IP
+- Поиск по ККТ: номер ФН, серийный номер, РНМ, модель (включая исторические данные)
+- Поиск по истории изменений — находит даже замененные ФН и старые данные
+- Поиск по заметкам клиентов
+- Минимум 2 символа, задержка 400мс, до 20 результатов каждого типа
+- Подсветка найденного фрагмента, клик открывает карточку клиента
+
 ### ⚙️ Настройки (только Администратор)
 Страница разделена на 4 вкладки:
 
@@ -108,6 +117,7 @@ privileged: true
 | POST | `/api/clients/scheduled-tasks/run/` | Ручной запуск |
 | GET | `/api/clients/scheduled-tasks/{task_id}/progress/` | Статус выполнения |
 | GET | `/api/clients/scheduled-tasks/cron/` | Текущая cron-строка |
+| GET | `/api/clients/search/?q=` | Глобальный поиск |
 | POST | `/api/clients/scheduled-tasks/cron/` | Применить расписание в crontab |
 
 ### Формат расписания
@@ -170,6 +180,7 @@ support-portal/
 │   │       │   ├── kkt_views.py      # OfdKktView, KktListView, KktExportView
 │   │       │   ├── bulk_views.py     # BulkImportClientsView
 │   │       │   ├── scheduler_views.py # ScheduledTask*, _run_update_rnm, _run_fetch_external_ip
+│   │       │   ├── search_views.py    # GlobalSearchView — глобальный поиск
 │   │       │   └── utils.py          # ping_ip, build_change_log, FIELD_LABELS
 │   │       ├── serializers.py    # Сериализаторы моделей
 │   │       ├── settings_views.py # Настройки SSH и SMTP (SystemSettingsView, TestEmailView)
@@ -205,6 +216,7 @@ support-portal/
 │   │   ├── SettingsAutomation.jsx    # Вкладка: Массовая загрузка клиентов
 │   │   ├── SettingsScheduler.jsx     # Вкладка: Регламентные задания
 │   │   └── SettingsDiagnostics.jsx   # Вкладка: Зависимости Python
+│   ├── SearchPage.jsx            # Глобальный поиск по клиентам, ККТ, истории, заметкам
 │   ├── UsersPage.jsx             # Управление пользователями
 │   └── ProvidersPage.jsx         # Управление провайдерами
 ├── nginx/default.conf

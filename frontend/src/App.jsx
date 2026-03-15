@@ -18,6 +18,7 @@ import UsersPage from './pages/UsersPage';
 import ProvidersPage from './pages/ProvidersPage';
 import OfdCompaniesPage from './pages/OfdCompaniesPage';
 import FnReplacementPage from './pages/FnReplacementPage';
+import SearchPage from './pages/SearchPage';
 
 dayjs.locale('ru');
 
@@ -118,6 +119,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={isAuthenticated ? <Navigate to="/clients" /> : <LoginPage />} />
+          <Route path="/search" element={<RequireAuth><SearchPage /></RequireAuth>} />
           <Route path="/calendar" element={<RequireAuth><RequireCalendar><CalendarPage /></RequireCalendar></RequireAuth>} />
           <Route path="/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
           <Route path="/clients/new" element={<RequireAuth><ClientFormPage /></RequireAuth>} />

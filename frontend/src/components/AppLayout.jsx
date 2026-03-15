@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   SyncOutlined, TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
   WifiOutlined, LockOutlined, BulbOutlined, BulbFilled, CalendarOutlined, BankOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
@@ -45,6 +46,7 @@ export default function AppLayout({ children }) {
   const menuItems = [
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
     { key: '/fn-replacement', icon: <SyncOutlined />, label: 'Замена ФН' },
+    { key: '/search', icon: <SearchOutlined />, label: 'Поиск' },
     { key: '/providers', icon: <WifiOutlined />, label: 'Провайдеры' },
     { key: '/ofd-companies', icon: <BankOutlined />, label: 'Компании' },
     ...(!isCommunications ? [{ key: '/calendar', icon: <CalendarOutlined />, label: 'Календарь' }] : []),

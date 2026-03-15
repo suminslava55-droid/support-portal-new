@@ -14,6 +14,22 @@ cat /tmp/diag_result.txt
 
 ## Частые проблемы
 
+### После docker compose down/up показывается старый фронтенд
+
+После полного перезапуска nginx пересобирается из образа и возвращает старую версию фронтенда.
+
+Быстрое исправление — задеплоить фронтенд заново:
+```bash
+bash /opt/support-portal/deploy-frontend.sh
+```
+
+Постоянное решение — убедитесь что в `docker-compose.yml` у nginx есть volume:
+```yaml
+volumes:
+  - ./frontend/build:/usr/share/nginx/html
+```
+Тогда nginx всегда берёт актуальную сборку с хоста.
+
 ### Белый экран в браузере
 ```bash
 docker compose logs nginx --tail=30
