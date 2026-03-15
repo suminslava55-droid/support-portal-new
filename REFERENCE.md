@@ -162,7 +162,15 @@ support-portal/
 │   │   ├── accounts/             # Пользователи, роли, JWT
 │   │   └── clients/
 │   │       ├── models.py         # Client, Provider, OfdCompany, KktData, ScheduledTask
-│   │       ├── views.py          # API, SSH, Excel, ККТ, замена ФН, регл. задания
+│   │       ├── views/            # API разбит по модулям
+│   │       │   ├── __init__.py       # Re-export всего для urls.py
+│   │       │   ├── client_views.py   # ClientViewSet, CustomFieldDefinitionViewSet
+│   │       │   ├── misc_views.py     # FetchExternalIPView, OfdCompanyViewSet, ProviderViewSet, DashboardStatsView
+│   │       │   ├── calendar_views.py # DutyScheduleViewSet (календарь дежурств)
+│   │       │   ├── kkt_views.py      # OfdKktView, KktListView, KktExportView
+│   │       │   ├── bulk_views.py     # BulkImportClientsView
+│   │       │   ├── scheduler_views.py # ScheduledTask*, _run_update_rnm, _run_fetch_external_ip
+│   │       │   └── utils.py          # ping_ip, build_change_log, FIELD_LABELS
 │   │       ├── serializers.py
 │   │       ├── settings_views.py # Настройки SSH и SMTP
 │   │       └── migrations/

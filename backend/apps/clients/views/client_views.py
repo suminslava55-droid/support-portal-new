@@ -1,0 +1,542 @@
+import subprocess
+import json
+import os
+from datetime import datetime
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from ..models import Client, ClientNote, CustomFieldDefinition, ClientActivity, Provider, ClientFile, SystemSettings, DutySchedule, CustomHoliday, KktData, OfdCompany
+from ..serializers import (
+    ClientListSerializer, ClientDetailSerializer, ClientWriteSerializer,
+    ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer,
+    DutyScheduleSerializer, CustomHolidaySerializer, OfdCompanySerializer, OfdCompanyWriteSerializer,
+)
+from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
+from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
+
+
+class CustomFieldDefinitionViewSet(viewsets.ModelViewSet):
+    queryset = CustomFieldDefinition.objects.filter(is_active=True)
+    serializer_class = CustomFieldDefinitionSerializer
+    permission_classes = [IsAuthenticated, CanManageCustomFields]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+
+class ClientViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, CanEditClient]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['status']
+    search_fields = ['address', 'phone', 'email', 'pharmacy_code', 'warehouse_code', 'ofd_company__name', 'ofd_company__inn', 'personal_account', 'contract_number', 'personal_account2', 'contract_number2']
+    ordering_fields = ['address', 'phone', 'email', 'status', 'created_at', 'provider__name', 'ofd_company__name', 'ofd_company__inn']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        # Удаляем черновики старше 2 часов (пользователь ушёл не сохранив)
+        from django.utils import timezone
+        from datetime import timedelta
+        stale_drafts = Client.objects.filter(
+            is_draft=True,
+            created_at__lt=timezone.now() - timedelta(hours=2)
+        )
+        for draft in stale_drafts:
+            for f in draft.files.all():
+                f.file.delete()
+                f.delete()
+            draft.delete()
+
+        qs = Client.objects.select_related('created_by', 'provider').filter(is_draft=False)
+        providers_param = self.request.query_params.get('provider', '')
+        if providers_param:
+            from django.db.models import Q
+            provider_ids = [p.strip() for p in providers_param.split(',') if p.strip().isdigit()]
+            if provider_ids:
+                qs = qs.filter(
+                    Q(provider__id__in=provider_ids) | Q(provider2__id__in=provider_ids)
+                )
+        return qs
+
+    def get_object_including_draft(self):
+        from django.shortcuts import get_object_or_404
+        return get_object_or_404(Client, pk=self.kwargs['pk'])
+
+    def get_object(self):
+        if self.action in ('update', 'partial_update', 'ping', 'files', 'delete_file', 'discard_draft'):
+            from django.shortcuts import get_object_or_404
+            obj = get_object_or_404(Client, pk=self.kwargs['pk'])
+            self.check_object_permissions(self.request, obj)
+            return obj
+        return super().get_object()
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            CONNECTION_TYPE_CHOICES = [
+                ('fiber', 'Оптоволокно'), ('dsl', 'DSL'), ('cable', 'Кабель'),
+                ('wireless', 'Беспроводное'), ('modem', 'Модем'), ('mrnet', 'MR-Net'),
+            ]
+            matched_types = [code for code, label in CONNECTION_TYPE_CHOICES
+                             if search.lower() in label.lower()]
+            if matched_types:
+                from django.db.models import Q
+                qs = (qs | Client.objects.filter(
+                    is_draft=False,
+                ).filter(
+                    Q(connection_type__in=matched_types) |
+                    Q(connection_type2__in=matched_types)
+                )).distinct()
+        return qs
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return ClientListSerializer
+        if self.action in ('create', 'update', 'partial_update'):
+            return ClientWriteSerializer
+        return ClientDetailSerializer
+
+    def perform_create(self, serializer):
+        client = serializer.save(created_by=self.request.user)
+        ClientActivity.objects.create(
+            client=client, user=self.request.user,
+            action='Карточка клиента создана'
+        )
+
+    def perform_update(self, serializer):
+        old = self.get_object()
+        if old.is_draft:
+            # Конвертируем черновик в клиента только если явно передан finalize=true
+            # или если запрос идёт не через saveDraftField (draft_save=true означает промежуточное сохранение)
+            is_draft_save = self.request.data.get('_draft_save') == True or                             str(self.request.data.get('_draft_save', '')).lower() == 'true'
+            if is_draft_save:
+                # Промежуточное сохранение — оставляем черновиком
+                serializer.save(is_draft=True)
+                return
+            client = serializer.save(is_draft=False)
+            ClientActivity.objects.create(
+                client=client, user=self.request.user,
+                action='Карточка клиента создана'
+            )
+            return
+        provider_map = {p.id: p.name for p in Provider.objects.all()}
+        changes = build_change_log(old, self.request.data, provider_map)
+        client = serializer.save()
+        if changes:
+            action = 'Изменено: ' + ' | '.join(changes)
+            if len(action) > 490:
+                action = action[:490] + '...'
+        else:
+            action = 'Карточка обновлена'
+        ClientActivity.objects.create(client=client, user=self.request.user, action=action)
+
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.has_perm_flag('can_delete_client'):
+            return Response({'detail': 'Недостаточно прав.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['get', 'post'])
+    def notes(self, request, pk=None):
+        client = self.get_object()
+        if request.method == 'GET':
+            return Response(ClientNoteSerializer(client.notes.all(), many=True).data)
+        serializer = ClientNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save(client=client, author=request.user)
+        ClientActivity.objects.create(client=client, user=request.user, action='Добавлена заметка')
+        return Response(ClientNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get', 'post'], url_path='export_excel')
+    def export_excel(self, request):
+        import openpyxl
+        import io
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from django.http import HttpResponse
+        from ..models import SystemSettings
+
+        if request.method == 'POST':
+            params = request.data
+        else:
+            params = request.query_params
+
+        search = params.get('search', '').strip()
+        status_filter = params.get('status', '').strip()
+        send_via = params.get('send_via', 'file')
+        to_email = params.get('to_email', '').strip()
+        fields_raw = params.get('fields', '')
+        if isinstance(fields_raw, list):
+            selected_fields = set(fields_raw)
+        else:
+            selected_fields = set(f.strip() for f in fields_raw.split(',') if f.strip()) if fields_raw else None
+
+        ALL_GROUPS = {'basic', 'network', 'provider1', 'provider2'}
+        if not selected_fields:
+            selected_fields = ALL_GROUPS
+
+        qs = Client.objects.select_related('provider', 'provider2').filter(is_draft=False)
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(address__icontains=search) |
+                Q(phone__icontains=search) | Q(email__icontains=search) |
+                Q(pharmacy_code__icontains=search) |
+                Q(warehouse_code__icontains=search) |
+                Q(ofd_company__name__icontains=search) |
+                Q(ofd_company__inn__icontains=search) |
+                Q(personal_account__icontains=search) |
+                Q(contract_number__icontains=search) |
+                Q(personal_account2__icontains=search) |
+                Q(contract_number2__icontains=search)
+            )
+            # Поиск по типу подключения — по читаемому названию
+            CONNECTION_TYPE_CHOICES = [
+                ('fiber', 'Оптоволокно'), ('dsl', 'DSL'), ('cable', 'Кабель'),
+                ('wireless', 'Беспроводное'), ('modem', 'Модем'), ('mrnet', 'MR-Net'),
+            ]
+            matched_types = [code for code, label in CONNECTION_TYPE_CHOICES
+                             if search.lower() in label.lower()]
+            if matched_types:
+                qs = (qs | Client.objects.filter(
+                    is_draft=False,
+                    **{}
+                ).filter(
+                    Q(connection_type__in=matched_types) |
+                    Q(connection_type2__in=matched_types)
+                )).distinct()
+            else:
+                qs = qs.distinct()
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        clients = qs.order_by('-created_at')
+
+        CONNECTION_LABELS = {
+            'fiber': 'Оптоволокно', 'dsl': 'DSL', 'cable': 'Кабель',
+            'wireless': 'Беспроводное', 'modem': 'Модем', 'mrnet': 'MR-Net',
+        }
+        STATUS_LABELS = {'active': 'Активен', 'inactive': 'Неактивен'}
+
+        ALL_FIELDS = {
+            'address':       ('Адрес',       35, lambda c: c.address or ''),
+            'company':       ('Компания',    25, lambda c: c.company or ''),
+            'inn':           ('ИНН',         14, lambda c: c.inn or ''),
+            'phone':         ('Телефон',     16, lambda c: c.phone or ''),
+            'email':         ('Email',       25, lambda c: c.email or ''),
+            'pharmacy_code': ('Код аптеки (UT)', 12, lambda c: c.pharmacy_code or ''),
+            'warehouse_code': ('Код склада',    12, lambda c: c.warehouse_code or ''),
+            'iccid':         ('ICCID',       22, lambda c: c.iccid or ''),
+            'status':        ('Статус',      10, lambda c: STATUS_LABELS.get(c.status, c.status)),
+            'subnet':        ('Подсеть',     16, lambda c: c.subnet or ''),
+            'external_ip':   ('Внешний IP',  14, lambda c: c.external_ip or ''),
+            'mikrotik_ip':   ('Микротик IP', 14, lambda c: c.mikrotik_ip or ''),
+            'server_ip':     ('Сервер IP',   12, lambda c: c.server_ip or ''),
+        }
+        PROVIDER1_FIELDS = [
+            ('Провайдер 1',               20, lambda c: c.provider.name if c.provider else ''),
+            ('Тип подключения 1',         18, lambda c: CONNECTION_LABELS.get(c.connection_type, c.connection_type or '')),
+            ('Тариф 1 (Мбит/с)',          14, lambda c: c.tariff or ''),
+            ('Лицевой счёт 1',            16, lambda c: c.personal_account or ''),
+            ('№ договора 1',              20, lambda c: c.contract_number or ''),
+            ('Номер модема 1',            16, lambda c: c.modem_number or ''),
+            ('ICCID модема 1',            22, lambda c: c.modem_iccid or ''),
+            ('Оборудование провайдера 1', 12, lambda c: 'Присутствует' if c.provider_equipment else 'Отсутствует'),
+        ]
+        PROVIDER2_FIELDS = [
+            ('Провайдер 2',               20, lambda c: c.provider2.name if c.provider2 else ''),
+            ('Тип подключения 2',         18, lambda c: CONNECTION_LABELS.get(c.connection_type2, c.connection_type2 or '')),
+            ('Тариф 2 (Мбит/с)',          14, lambda c: c.tariff2 or ''),
+            ('Лицевой счёт 2',            16, lambda c: c.personal_account2 or ''),
+            ('№ договора 2',              20, lambda c: c.contract_number2 or ''),
+            ('Номер модема 2',            16, lambda c: c.modem_number2 or ''),
+            ('ICCID модема 2',            22, lambda c: c.modem_iccid2 or ''),
+            ('Оборудование провайдера 2', 12, lambda c: 'Присутствует' if c.provider_equipment2 else 'Отсутствует'),
+        ]
+
+        FIELD_ORDER = [
+            'address', 'company', 'inn', 'phone', 'email',
+            'pharmacy_code', 'warehouse_code', 'iccid', 'status',
+            'subnet', 'external_ip', 'mikrotik_ip', 'server_ip',
+        ]
+
+        headers = []
+        for key in FIELD_ORDER:
+            if key in selected_fields:
+                headers.append(ALL_FIELDS[key])
+        if 'provider1' in selected_fields:
+            headers += PROVIDER1_FIELDS
+        if 'provider2' in selected_fields:
+            headers += PROVIDER2_FIELDS
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Клиенты'
+
+        header_font  = Font(name='Arial', bold=True, color='FFFFFF', size=11)
+        header_fill  = PatternFill('solid', start_color='1677FF')
+        header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell_align   = Alignment(vertical='center', wrap_text=True)
+        thin   = Side(style='thin', color='CCCCCC')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        for col, (title, width, _) in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=title)
+            cell.font      = header_font
+            cell.fill      = header_fill
+            cell.alignment = header_align
+            cell.border    = border
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = width
+        ws.row_dimensions[1].height = 35
+
+        for row, c in enumerate(clients, 2):
+            fill = PatternFill('solid', start_color='F8FBFF') if row % 2 == 0 else PatternFill('solid', start_color='FFFFFF')
+            for col, (_, _, getter) in enumerate(headers, 1):
+                cell = ws.cell(row=row, column=col, value=getter(c))
+                cell.font      = Font(name='Arial', size=10)
+                cell.alignment = cell_align
+                cell.border    = border
+                cell.fill      = fill
+            ws.row_dimensions[row].height = 20
+
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:{openpyxl.utils.get_column_letter(len(headers))}1'
+
+        filename = f'clients_{__import__("datetime").date.today()}.xlsx'
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        excel_bytes = buf.read()
+
+        if send_via == 'email':
+            if not to_email:
+                return Response({'error': 'Не указан email для отправки'}, status=400)
+            s = SystemSettings.get()
+            if not s.smtp_host or not s.smtp_user or not s.smtp_password_encrypted or not s.smtp_from_email:
+                return Response({'error': 'SMTP настройки не заполнены'}, status=400)
+            try:
+                import smtplib, ssl
+                from email.mime.multipart import MIMEMultipart
+                from email.mime.base import MIMEBase
+                from email.mime.text import MIMEText
+                from email import encoders
+
+                from_addr = f'{s.smtp_from_name} <{s.smtp_from_email}>' if s.smtp_from_name else s.smtp_from_email
+                msg = MIMEMultipart()
+                msg['Subject'] = f'Выгрузка клиентов — {__import__("datetime").date.today()}'
+                msg['From']    = from_addr
+                msg['To']      = to_email
+                msg.attach(MIMEText(
+                    f'<html><body style="font-family:Arial,sans-serif;padding:20px;">'
+                    f'<h2 style="color:#1677ff;">Выгрузка клиентов</h2>'
+                    f'<p>Во вложении файл Excel с выгрузкой клиентов на {__import__("datetime").date.today()}.</p>'
+                    f'<p style="color:#999;font-size:12px;">Support Portal</p>'
+                    f'</body></html>', 'html', 'utf-8'
+                ))
+                part = MIMEBase('application', 'vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                part.set_payload(excel_bytes)
+                encoders.encode_base64(part)
+                part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+                msg.attach(part)
+
+                if s.smtp_use_ssl:
+                    ctx = ssl.create_default_context()
+                    with smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, context=ctx, timeout=10) as srv:
+                        srv.login(s.smtp_user, s.smtp_password)
+                        srv.sendmail(s.smtp_from_email, to_email, msg.as_string())
+                elif s.smtp_use_tls:
+                    with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10) as srv:
+                        srv.ehlo(); srv.starttls(); srv.ehlo()
+                        srv.login(s.smtp_user, s.smtp_password)
+                        srv.sendmail(s.smtp_from_email, to_email, msg.as_string())
+                else:
+                    with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10) as srv:
+                        srv.login(s.smtp_user, s.smtp_password)
+                        srv.sendmail(s.smtp_from_email, to_email, msg.as_string())
+
+                return Response({'success': True, 'message': f'Файл отправлен на {to_email}'})
+            except smtplib.SMTPAuthenticationError:
+                return Response({'error': 'Ошибка аутентификации SMTP'}, status=400)
+            except Exception as e:
+                return Response({'error': f'Ошибка отправки: {str(e)}'}, status=400)
+
+        response = HttpResponse(
+            excel_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='create_draft')
+    def create_draft(self, request):
+        from django.utils import timezone
+        from datetime import timedelta
+        old_drafts = Client.objects.filter(
+            is_draft=True,
+            created_by=request.user,
+            created_at__lt=timezone.now() - timedelta(hours=1)
+        )
+        for draft in old_drafts:
+            for f in draft.files.all():
+                f.file.delete()
+                f.delete()
+            draft.delete()
+        client = Client.objects.create(
+            is_draft=True,
+            created_by=request.user,
+            last_name='', first_name='',
+        )
+        return Response({'id': client.id}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete', 'post'], url_path='discard_draft')
+    def discard_draft(self, request, pk=None):
+        try:
+            client = Client.objects.get(pk=pk, is_draft=True, created_by=request.user)
+            for f in client.files.all():
+                f.file.delete()
+                f.delete()
+            client.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Client.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['get', 'post'], url_path='files')
+    def files(self, request, pk=None):
+        client = self.get_object_including_draft()
+        if request.method == 'GET':
+            files = client.files.all()
+            return Response(ClientFileSerializer(files, many=True, context={'request': request}).data)
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail': 'Файл не передан.'}, status=status.HTTP_400_BAD_REQUEST)
+        if file.size > 5 * 1024 * 1024:
+            return Response({'detail': 'Файл слишком большой. Максимум 5 МБ.'}, status=status.HTTP_400_BAD_REQUEST)
+        client_file = ClientFile.objects.create(
+            client=client, file=file, name=file.name,
+            size=file.size, uploaded_by=request.user,
+        )
+        ClientActivity.objects.create(
+            client=client, user=request.user,
+            action=f'Загружен файл: {file.name}'
+        )
+        return Response(
+            ClientFileSerializer(client_file, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=True, methods=['delete'], url_path='files/(?P<file_id>[^/.]+)')
+    def delete_file(self, request, pk=None, file_id=None):
+        client = self.get_object_including_draft()
+        try:
+            client_file = ClientFile.objects.get(id=file_id, client=client)
+            name = client_file.name
+            client_file.file.delete()
+            client_file.delete()
+            ClientActivity.objects.create(
+                client=client, user=request.user,
+                action=f'Удалён файл: {name}'
+            )
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except ClientFile.DoesNotExist:
+            return Response({'detail': 'Файл не найден.'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['post'], url_path='transfer_modem')
+    def transfer_modem(self, request, pk=None):
+        from_client = self.get_object()
+        to_client_id = request.data.get('to_client_id')
+        from_slot = str(request.data.get('from_slot', '1'))
+        to_slot = str(request.data.get('to_slot', '1'))
+
+        if not to_client_id:
+            return Response({'error': 'Не указан клиент для передачи'}, status=400)
+
+        try:
+            to_client = Client.objects.get(pk=to_client_id, is_draft=False)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=400)
+
+        if from_client.pk == to_client.pk:
+            return Response({'error': 'Нельзя передать самому себе'}, status=400)
+
+        from_sfx = '' if from_slot == '1' else '2'
+        to_sfx   = '' if to_slot   == '1' else '2'
+
+        PROVIDER_FIELDS = [
+            'provider', 'personal_account', 'contract_number', 'tariff',
+            'connection_type', 'modem_number', 'modem_iccid',
+            'provider_settings', 'provider_equipment',
+        ]
+
+        from_data = {}
+        for f in PROVIDER_FIELDS:
+            from_data[f] = getattr(from_client, f + from_sfx, None)
+
+        for f in PROVIDER_FIELDS:
+            setattr(to_client, f + to_sfx, from_data[f])
+        to_client.save()
+
+        prov_name = (from_data['provider'].name if from_data['provider'] else '—')
+        from_name = from_client.company or from_client.address or f'Клиент #{from_client.pk}'
+        to_name   = to_client.company   or to_client.address   or f'Клиент #{to_client.pk}'
+        conn_labels = {
+            'fiber': 'Оптоволокно', 'dsl': 'DSL', 'cable': 'Кабель',
+            'wireless': 'Беспроводное', 'modem': 'Модем', 'mrnet': 'MR-Net',
+        }
+        conn_label = conn_labels.get(from_data['connection_type'] or '', from_data['connection_type'] or '—')
+        equip_label = 'Присутствует' if from_data['provider_equipment'] else 'Отсутствует'
+
+        log_fields = (
+            f'Провайдер: {prov_name}\n'
+            f'Тип: {conn_label}\n'
+            f'Тариф: {from_data["tariff"] or "—"} Мбит/с\n'
+            f'Лицевой счёт: {from_data["personal_account"] or "—"}\n'
+            f'№ договора: {from_data["contract_number"] or "—"}\n'
+            f'Номер модема: {from_data["modem_number"] or "—"}\n'
+            f'ICCID модема: {from_data["modem_iccid"] or "—"}\n'
+            f'Оборудование: {equip_label}'
+        )
+
+        ClientActivity.objects.create(
+            client=to_client, user=request.user,
+            action=(
+                f'Получен провайдер {to_slot} от клиента «{from_name}»:\n{log_fields}'
+            )
+        )
+
+        EMPTY_VALUES = {
+            'provider': None, 'personal_account': '', 'contract_number': '', 'tariff': '',
+            'connection_type': '', 'modem_number': '', 'modem_iccid': '',
+            'provider_settings': '', 'provider_equipment': False,
+        }
+        for f, empty in EMPTY_VALUES.items():
+            setattr(from_client, f + from_sfx, empty)
+        from_client.save()
+
+        ClientActivity.objects.create(
+            client=from_client, user=request.user,
+            action=(
+                f'Провайдер {from_slot} передан клиенту «{to_name}» в слот {to_slot}:\n{log_fields}'
+            )
+        )
+
+        return Response({
+            'success': True,
+            'to_client': {'id': to_client.pk, 'name': to_client.company or to_client.address or f'#{to_client.pk}'},
+        })
+
+    @action(detail=True, methods=['get'], url_path='ping')
+    def ping(self, request, pk=None):
+        client = self.get_object_including_draft()
+        external_ip = client.external_ip or ''
+        mikrotik_ip = client.mikrotik_ip or ''
+        server_ip = client.server_ip or ''
+        results = {
+            'external_ip': {'ip': external_ip, 'alive': ping_ip(external_ip) if external_ip else None},
+            'mikrotik_ip': {'ip': mikrotik_ip, 'alive': ping_ip(mikrotik_ip) if mikrotik_ip else None},
+            'server_ip': {'ip': server_ip, 'alive': ping_ip(server_ip) if server_ip else None},
+        }
+        return Response(results)

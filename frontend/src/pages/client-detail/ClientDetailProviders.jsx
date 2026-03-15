@@ -71,33 +71,33 @@ export default function ClientDetailProviders({ client }) {
 
   return (
     <>
-      <Card
-        title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер 1</span></Space>}
-        style={{ marginBottom: 16 }}
-      >
-        {client.provider_data ? (
-          <ProviderCard
-            title="Провайдер 1"
-            color="#1677ff"
-            providerData={client.provider_data}
-            client={client}
-            connectionType={client.connection_type}
-            tariff={client.tariff}
-            personalAccount={client.personal_account}
-            contractNumber={client.contract_number}
-            providerSettings={client.provider_settings}
-            modemNumber={client.modem_number}
-            modemIccid={client.modem_iccid}
-            providerEquipment={client.provider_equipment}
-          />
-        ) : (
+      {client.provider_data ? (
+        <ProviderCard
+          title="Провайдер 1"
+          color="#1677ff"
+          providerData={client.provider_data}
+          client={client}
+          connectionType={client.connection_type}
+          tariff={client.tariff}
+          personalAccount={client.personal_account}
+          contractNumber={client.contract_number}
+          providerSettings={client.provider_settings}
+          modemNumber={client.modem_number}
+          modemIccid={client.modem_iccid}
+          providerEquipment={client.provider_equipment}
+        />
+      ) : (
+        <Card
+          title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер 1</span></Space>}
+          style={{ marginBottom: 16 }}
+        >
           <Empty description="Провайдер не указан" image={Empty.PRESENTED_IMAGE_SIMPLE}>
             <Button type="link" onClick={() => navigate(`/clients/${id}/edit`, { state: { tab: 'providers' } })}>
               Указать провайдера
             </Button>
           </Empty>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {client.provider2_data && (
         <ProviderCard
