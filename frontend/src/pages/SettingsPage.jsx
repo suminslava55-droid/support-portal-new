@@ -17,10 +17,12 @@ import {
 } from '@ant-design/icons';
 import { settingsAPI } from '../api';
 import api from '../api/axios';
+import useThemeStore from '../store/themeStore';
 
 const { Title, Text } = Typography;
 
 export default function SettingsPage() {
+  const isDark = useThemeStore((s) => s.isDark);
   const [sshForm] = Form.useForm();
   const [smtpForm] = Form.useForm();
   const [loading, setLoading] = useState(true);
@@ -637,7 +639,7 @@ export default function SettingsPage() {
               <Divider style={{ margin: '4px 0 14px' }} />
 
               {/* Расписание */}
-              <div style={{ background: '#fafafa', borderRadius: 8, padding: '14px 16px' }}>
+              <div style={{ background: isDark ? '#141414' : '#fafafa', borderRadius: 8, padding: '14px 16px' }}>
                 <div style={{ fontWeight: 500, marginBottom: 12 }}>
                   <CalendarOutlined style={{ marginRight: 6, color: '#1677ff' }} />
                   Расписание
@@ -703,7 +705,7 @@ export default function SettingsPage() {
                   {currentCron && (
                     <div style={{ fontSize: 12, color: '#888' }}>
                       <span style={{ marginRight: 6 }}>Активная cron-строка:</span>
-                      <code style={{ background: '#f0f0f0', padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace' }}>
+                      <code style={{ background: isDark ? '#2a2a2a' : '#f0f0f0', padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace' }}>
                         {currentCron.split('#')[0].trim()}
                       </code>
                     </div>
@@ -728,7 +730,7 @@ export default function SettingsPage() {
         return (
           <div>
             {/* Часовой пояс — общий для всех заданий */}
-            <div style={{ marginBottom: 16, padding: '12px 16px', background: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ marginBottom: 16, padding: '12px 16px', background: isDark ? '#1f1f1f' : '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <ClockCircleOutlined style={{ color: '#1677ff', fontSize: 16 }} />
               <span style={{ fontWeight: 500 }}>Часовой пояс расписания:</span>
               <Select
@@ -837,7 +839,7 @@ export default function SettingsPage() {
             style={{
               border: `2px solid ${runScope === 'all' ? '#1677ff' : '#d9d9d9'}`,
               borderRadius: 8, padding: '14px 16px', cursor: 'pointer',
-              background: runScope === 'all' ? '#e6f4ff' : '#fafafa',
+              background: runScope === 'all' ? '#e6f4ff' : (isDark ? '#141414' : '#fafafa'),
               transition: 'all .15s',
             }}
           >
@@ -857,7 +859,7 @@ export default function SettingsPage() {
             style={{
               border: `2px solid ${runScope === 'company' ? '#1677ff' : '#d9d9d9'}`,
               borderRadius: 8, padding: '14px 16px', cursor: 'pointer',
-              background: runScope === 'company' ? '#e6f4ff' : '#fafafa',
+              background: runScope === 'company' ? '#e6f4ff' : (isDark ? '#141414' : '#fafafa'),
               transition: 'all .15s',
             }}
           >
@@ -911,7 +913,7 @@ export default function SettingsPage() {
               )}
             </Space>
             <div style={{
-              background: '#f5f5f5', borderRadius: 6,
+              background: isDark ? '#1f1f1f' : '#f5f5f5', borderRadius: 6,
               padding: '12px 14px', fontSize: 13,
               whiteSpace: 'pre-wrap', maxHeight: 340, overflowY: 'auto',
               fontFamily: 'monospace',
@@ -959,7 +961,7 @@ export default function SettingsPage() {
               padding: '24px 16px',
               textAlign: 'center',
               cursor: importing ? 'not-allowed' : 'pointer',
-              background: importFileName ? '#f6ffed' : '#fafafa',
+              background: importFileName ? '#f6ffed' : (isDark ? '#141414' : '#fafafa'),
               borderColor: importFileName ? '#52c41a' : '#d9d9d9',
               transition: 'all .2s',
             }}

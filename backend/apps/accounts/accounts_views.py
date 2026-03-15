@@ -48,7 +48,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def for_calendar(self, request):
         """Список пользователей для календаря дежурств — доступен всем."""
-        users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
+        users = User.objects.filter(is_active=True).exclude(email='scheduler@system.local').order_by('last_name', 'first_name')
         data = [{'id': u.id, 'full_name': u.full_name or u.email, 'birthday': u.birthday.strftime('%m-%d') if u.birthday else None} for u in users]
         return Response(data)
 

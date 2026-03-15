@@ -10,6 +10,7 @@ import 'dayjs/locale/ru';
 import api from '../api';
 import { settingsAPI } from '../api';
 import useAuthStore from '../store/authStore';
+import useThemeStore from '../store/themeStore';
 
 dayjs.locale('ru');
 
@@ -31,7 +32,6 @@ const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','
 const thStyle = {
   padding: '6px 8px',
   border: '1px solid #e8e8e8',
-  background: '#fafafa',
   fontWeight: 600,
   fontSize: 12,
   whiteSpace: 'nowrap',
@@ -44,6 +44,7 @@ const tdStyle = {
 };
 
 export default function CalendarPage() {
+  const isDark = useThemeStore((s) => s.isDark);
   const [currentDate, setCurrentDate] = useState(dayjs());
   const [users, setUsers] = useState([]);
   const [schedule, setSchedule] = useState({});
@@ -123,7 +124,8 @@ export default function CalendarPage() {
         api.get('/clients/events/', { params: { year, month: month + 1 } }),
         api.get('/clients/events/holidays/', { params: { year, month: month + 1 } }),
       ]);
-      setUsers(usersRes.data.results || usersRes.data);
+      const allUsers = usersRes.data.results || usersRes.data;
+      setUsers(allUsers.filter(u => u.email !== 'scheduler@system.local'));
 
       const map = {};
       const items = scheduleRes.data.results || scheduleRes.data;
@@ -293,7 +295,7 @@ export default function CalendarPage() {
             onClick={() => handleSetDuty(userId, date, d.value)}
             style={{
               padding: '6px 10px', borderRadius: 4, marginBottom: 4, cursor: 'pointer',
-              background: current === d.value ? d.color : '#f5f5f5',
+              background: current === d.value ? d.color : (isDark ? '#1f1f1f' : '#f5f5f5'),
               color: current === d.value ? d.textColor : '#333',
               fontWeight: current === d.value ? 600 : 400,
               border: `2px solid ${current === d.value ? d.color : 'transparent'}`,
@@ -308,7 +310,7 @@ export default function CalendarPage() {
             onClick={() => handleSetDuty(userId, date, '')}
             style={{
               padding: '5px 10px', borderRadius: 4, cursor: 'pointer',
-              background: '#fff1f0', color: '#ff4d4f',
+              background: isDark ? '#2a1215' : '#fff1f0', color: '#ff4d4f',
               border: '1px solid #ffa39e', fontSize: 12, textAlign: 'center', marginTop: 4,
             }}
           >
@@ -362,8 +364,8 @@ export default function CalendarPage() {
       key: dateStr,
       width: 44,
       align: 'center',
-      onHeaderCell: () => ({ style: { background: isToday ? '#e6f4ff' : (weekend ? '#fff8ee' : '#fafafa'), padding: '2px 1px', borderBottom: isToday ? '2px solid #1677ff' : undefined } }),
-      onCell: () => ({ style: { background: isToday ? '#f0f7ff' : undefined } }),
+      onHeaderCell: () => ({ style: { background: isToday ? (isDark ? '#111d2c' : '#e6f4ff') : (weekend ? (isDark ? '#2b1d11' : '#fff8ee') : (isDark ? '#1f1f1f' : '#fafafa')), padding: '2px 1px', borderBottom: isToday ? '2px solid #1677ff' : undefined } }),
+      onCell: () => ({ style: { background: isToday ? (isDark ? '#111d2c' : '#f0f7ff') : undefined } }),
       render: (_, record) => {
         const key = `${record.id}_${dateStr}`;
         const dutyType = schedule[key];
@@ -383,7 +385,7 @@ export default function CalendarPage() {
             )}
             <div style={{
               width: 36, height: 28, borderRadius: 4, margin: '0 auto',
-              background: isSelected ? '#bae0ff' : (duty ? duty.color : (weekend ? '#fff8ee' : 'transparent')),
+              background: isSelected ? '#bae0ff' : (duty ? duty.color : (weekend ? (isDark ? '#2b1d11' : '#fff8ee') : 'transparent')),
               cursor: canEdit ? 'pointer' : 'default',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               border: isSelected ? '2px solid #1677ff' : (isBirthday && !duty ? '2px solid #ff85c2' : (duty ? 'none' : '1px dashed #e0e0e0')),
@@ -520,7 +522,7 @@ export default function CalendarPage() {
             trigger={['click']}
             dropdownRender={() => (
               <div style={{
-                background: '#fff', borderRadius: 8, padding: '12px 16px',
+                background: isDark ? '#1f1f1f' : '#fff', borderRadius: 8, padding: '12px 16px',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 220,
                 border: '1px solid #f0f0f0',
               }}>
@@ -539,7 +541,7 @@ export default function CalendarPage() {
                       <span style={{
                         fontSize: 13,
                         textDecoration: hiddenUsers.includes(u.id) ? 'line-through' : 'none',
-                        color: hiddenUsers.includes(u.id) ? '#bbb' : '#333',
+                        color: hiddenUsers.includes(u.id) ? '#888' : (isDark ? 'rgba(255,255,255,0.85)' : '#333'),
                       }}>
                         {u.full_name || u.email}
                       </span>
@@ -583,7 +585,7 @@ export default function CalendarPage() {
       <Card styles={{ body: { padding: 0 } }}>
         {selection && selection.size > 0 && (
           <div style={{
-            padding: '8px 16px', background: '#e6f4ff',
+            padding: '8px 16px', background: isDark ? '#111d2c' : '#e6f4ff',
             borderBottom: '1px solid #91caff',
             display: 'flex', alignItems: 'center', gap: 12,
           }}>
@@ -719,7 +721,7 @@ export default function CalendarPage() {
             onClick={() => handleApplyToSelection('')}
             style={{
               padding: '7px 12px', borderRadius: 6, cursor: 'pointer',
-              background: '#fff1f0', color: '#ff4d4f',
+              background: isDark ? '#2a1215' : '#fff1f0', color: '#ff4d4f',
               border: '1px solid #ffa39e', fontSize: 13, textAlign: 'center',
             }}
           >
@@ -763,21 +765,21 @@ export default function CalendarPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, width: 160, textAlign: 'left', position: 'sticky', left: 0, background: '#fafafa', zIndex: 2 }}>
+                  <th style={{ ...thStyle, width: 160, textAlign: 'left', position: 'sticky', left: 0, background: isDark ? '#1f1f1f' : '#fafafa', zIndex: 2 }}>
                     Сотрудник
                   </th>
                   {vacationData.month_names.map((m, i) => (
-                    <th key={i} style={{ ...thStyle, minWidth: 90, textAlign: 'center', background: '#fafafa' }}>{m}</th>
+                    <th key={i} style={{ ...thStyle, minWidth: 90, textAlign: 'center', background: isDark ? '#1f1f1f' : '#fafafa' }}>{m}</th>
                   ))}
-                  <th style={{ ...thStyle, width: 60, textAlign: 'center', background: '#fafafa' }}>Дней</th>
+                  <th style={{ ...thStyle, width: 60, textAlign: 'center', background: isDark ? '#1f1f1f' : '#fafafa' }}>Дней</th>
                 </tr>
               </thead>
               <tbody>
                 {vacationData.users.map((u, ri) => (
-                  <tr key={u.user_id} style={{ background: ri % 2 === 0 ? '#fff' : '#fafafa' }}>
+                  <tr key={u.user_id} style={{ background: ri % 2 === 0 ? (isDark ? '#141414' : '#fff') : (isDark ? '#1f1f1f' : '#fafafa') }}>
                     <td style={{
                       ...tdStyle, fontWeight: 600, position: 'sticky', left: 0, zIndex: 1,
-                      background: ri % 2 === 0 ? '#fff' : '#fafafa',
+                      background: ri % 2 === 0 ? (isDark ? '#141414' : '#fff') : (isDark ? '#1f1f1f' : '#fafafa'),
                       color: u.has_overlap ? '#d46b08' : '#222',
                     }}>
                       {u.has_overlap && <Tooltip title="Есть пересечения с другими сотрудниками"><span style={{ marginRight: 4 }}>⚠️</span></Tooltip>}

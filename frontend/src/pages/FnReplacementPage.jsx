@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import api from '../api/axios';
+import useThemeStore from '../store/themeStore';
 import { settingsAPI } from '../api';
 
 dayjs.locale('ru');
@@ -98,6 +99,7 @@ function ColSettings({ visibleCols, onChange }) {
 // ─── модал экспорта ───────────────────────────────────────────────────────────
 
 function ExportModal({ open, onClose, exportParams, visibleCols }) {
+  const isDark = useThemeStore((s) => s.isDark);
   const [via,      setVia]      = useState('file');
   const [email,    setEmail]    = useState('');
   const [smtpOk,   setSmtpOk]  = useState(null);
@@ -172,7 +174,7 @@ function ExportModal({ open, onClose, exportParams, visibleCols }) {
           style={{
             flex: 1, border: `2px solid ${via === 'file' ? '#1677ff' : '#d9d9d9'}`,
             borderRadius: 8, padding: '18px 12px', cursor: 'pointer', textAlign: 'center',
-            background: via === 'file' ? '#e6f4ff' : '#fafafa', transition: 'all .2s',
+            background: via === 'file' ? (isDark ? '#111d2c' : '#e6f4ff') : (isDark ? '#141414' : '#fafafa'), transition: 'all .2s',
           }}
         >
           <DownloadOutlined style={{ fontSize: 26, color: '#217346', marginBottom: 6, display: 'block' }} />
@@ -187,7 +189,7 @@ function ExportModal({ open, onClose, exportParams, visibleCols }) {
             borderRadius: 8, padding: '18px 12px',
             cursor: smtpOk === false ? 'not-allowed' : 'pointer',
             textAlign: 'center', opacity: smtpOk === false ? 0.5 : 1,
-            background: via === 'email' ? '#e6f4ff' : '#fafafa', transition: 'all .2s',
+            background: via === 'email' ? (isDark ? '#111d2c' : '#e6f4ff') : (isDark ? '#141414' : '#fafafa'), transition: 'all .2s',
           }}
         >
           <SendOutlined style={{ fontSize: 26, color: '#1677ff', marginBottom: 6, display: 'block' }} />
@@ -381,6 +383,7 @@ function GeneralTab({ visibleCols, onColsChange }) {
 // ─── Вкладка «По месяцам» ─────────────────────────────────────────────────────
 
 function MonthTab({ visibleCols, onColsChange }) {
+  const isDark = useThemeStore((s) => s.isDark);
   const navigate = useNavigate();
   const [selectedMonth, setSelectedMonth] = useState(dayjs());
   const m = selectedMonth.month() + 1;
@@ -396,7 +399,7 @@ function MonthTab({ visibleCols, onColsChange }) {
   return (
     <Space direction="vertical" style={{ width: '100%' }} size={12}>
       {/* Выбор месяца */}
-      <Space align="center" style={{ background: '#f5f5f5', padding: '10px 16px', borderRadius: 8, flexWrap: 'wrap' }}>
+      <Space align="center" style={{ background: isDark ? '#1f1f1f' : '#f5f5f5', padding: '10px 16px', borderRadius: 8, flexWrap: 'wrap' }}>
         <Button icon={<LeftOutlined />} size="small"
           onClick={() => setSelectedMonth(d => d.subtract(1, 'month'))} />
         <DatePicker
@@ -443,6 +446,7 @@ function MonthTab({ visibleCols, onColsChange }) {
 // ─── Главный компонент ────────────────────────────────────────────────────────
 
 export default function FnReplacementPage() {
+  const isDark = useThemeStore((s) => s.isDark);
   const [activeTab, setActiveTab] = useState('general');
 
   const [visibleCols, setVisibleCols] = useState(() => {

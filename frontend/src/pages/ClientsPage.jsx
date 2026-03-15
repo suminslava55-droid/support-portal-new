@@ -10,6 +10,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { clientsAPI, settingsAPI } from '../api';
 import useAuthStore from '../store/authStore';
+import useThemeStore from '../store/themeStore';
 
 const { Title, Text } = Typography;
 
@@ -163,6 +164,7 @@ function FieldGroup({ group, selected, onChange }) {
 }
 
 export default function ClientsPage() {
+  const isDark = useThemeStore((s) => s.isDark);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -437,9 +439,9 @@ export default function ClientsPage() {
           trigger={['click']}
           dropdownRender={() => (
             <div style={{
-              background: '#fff', borderRadius: 8, padding: '12px 16px',
+              background: isDark ? '#1f1f1f' : '#fff', borderRadius: 8, padding: '12px 16px',
               boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 240,
-              border: '1px solid #f0f0f0', maxHeight: 420, overflowY: 'auto',
+              border: `1px solid ${isDark ? '#303030' : '#f0f0f0'}`, maxHeight: 420, overflowY: 'auto',
             }}>
               <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 13 }}>
                 ⚙️ Колонки таблицы
@@ -541,7 +543,7 @@ export default function ClientsPage() {
                 style={{
                   flex: 1, border: `2px solid ${exportVia === 'file' ? '#1677ff' : '#d9d9d9'}`,
                   borderRadius: 8, padding: '20px 16px', cursor: 'pointer', textAlign: 'center',
-                  background: exportVia === 'file' ? '#e6f4ff' : '#fafafa', transition: 'all 0.2s',
+                  background: exportVia === 'file' ? (isDark ? '#111d2c' : '#e6f4ff') : (isDark ? '#141414' : '#fafafa'), transition: 'all 0.2s',
                 }}
               >
                 <DownloadOutlined style={{ fontSize: 28, color: '#217346', marginBottom: 8, display: 'block' }} />
@@ -557,7 +559,7 @@ export default function ClientsPage() {
                   borderRadius: 8, padding: '20px 16px',
                   cursor: smtpOk === false ? 'not-allowed' : 'pointer',
                   textAlign: 'center',
-                  background: exportVia === 'email' ? '#e6f4ff' : smtpOk === false ? '#fff2f0' : '#fafafa',
+                  background: exportVia === 'email' ? (isDark ? '#111d2c' : '#e6f4ff') : smtpOk === false ? (isDark ? '#2a1215' : '#fff2f0') : (isDark ? '#141414' : '#fafafa'),
                   transition: 'all 0.2s',
                 }}
               >

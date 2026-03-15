@@ -56,6 +56,24 @@ export default function App() {
     document.body.style.color = color;
     document.documentElement.style.background = bg;
     document.documentElement.style.backgroundColor = bg;
+
+    // Скроллбар под тему
+    let styleEl = document.getElementById('scrollbar-theme');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'scrollbar-theme';
+      document.head.appendChild(styleEl);
+    }
+    if (isDark) {
+      styleEl.textContent = `
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1f1f1f; }
+        ::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+      `;
+    } else {
+      styleEl.textContent = '';
+    }
   }, [isDark]);
 
   useEffect(() => {
