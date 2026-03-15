@@ -17,6 +17,7 @@ from ..serializers import (
 )
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
+from .kkt_views import parse_datetime, ofd_request
 
 
 def _get_or_create_task(task_id):
