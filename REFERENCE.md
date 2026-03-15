@@ -172,12 +172,27 @@ support-portal/
 │   └── Dockerfile
 ├── frontend/src/pages/
 │   ├── ClientsPage.jsx
-│   ├── ClientDetailPage.jsx      # Вкладка ККТ: просмотр + Обновить по РНМ
-│   ├── ClientFormPage.jsx        # Вкладка ККТ: поля РНМ, кнопки ИНН/РНМ
+│   ├── ClientDetailPage.jsx      # Просмотр карточки клиента (обёртка с вкладками)
+│   ├── client-detail/
+│   │   ├── ClientDetailInfo.jsx      # Вкладка: Информация + Сеть
+│   │   ├── ClientDetailProviders.jsx # Вкладка: Провайдеры
+│   │   ├── ClientDetailKkt.jsx       # Вкладка: ККТ
+│   │   └── helpers.js                # Общие утилиты (CopyField, PingStatus, форматирование)
+│   ├── ClientFormPage.jsx        # Создание/редактирование клиента (обёртка с вкладками)
+│   ├── client-form/
+│   │   ├── ClientFormInfo.jsx        # Вкладка: Информация + Сеть + Файлы
+│   │   ├── ClientFormProviders.jsx   # Вкладка: Провайдер 1 и 2
+│   │   ├── ClientFormKkt.jsx         # Вкладка: ККТ (создание и редактирование)
+│   │   └── TransferModal.jsx         # Модал передачи провайдера другому клиенту
 │   ├── OfdCompaniesPage.jsx      # Управление компаниями (ИНН, токен ОФД)
 │   ├── FnReplacementPage.jsx     # Замена ФН: вкладки Общий и По месяцам
 │   ├── CalendarPage.jsx          # Календарь дежурств
-│   ├── SettingsPage.jsx          # Настройки (4 вкладки), регл. задания
+│   ├── SettingsPage.jsx          # Настройки (обёртка, 4 вкладки)
+│   ├── settings/
+│   │   ├── SettingsAccounts.jsx      # Вкладка: SSH + SMTP
+│   │   ├── SettingsAutomation.jsx    # Вкладка: Массовая загрузка клиентов
+│   │   ├── SettingsScheduler.jsx     # Вкладка: Регламентные задания
+│   │   └── SettingsDiagnostics.jsx   # Вкладка: Зависимости Python
 │   ├── UsersPage.jsx
 │   └── ProvidersPage.jsx
 ├── nginx/default.conf

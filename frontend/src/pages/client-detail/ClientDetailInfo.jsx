@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Descriptions, Space, Button, Tag, Text, Tooltip, Typography } from 'antd';
+import { Card, Descriptions, Space, Button, Tag, Tooltip, Typography } from 'antd';
 import { GlobalOutlined, SyncOutlined } from '@ant-design/icons';
 import { CopyField, PingStatus, copyToClipboard } from './helpers';
 import { message } from 'antd';
