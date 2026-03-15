@@ -171,15 +171,19 @@ support-portal/
 │   │       │   ├── bulk_views.py     # BulkImportClientsView
 │   │       │   ├── scheduler_views.py # ScheduledTask*, _run_update_rnm, _run_fetch_external_ip
 │   │       │   └── utils.py          # ping_ip, build_change_log, FIELD_LABELS
-│   │       ├── serializers.py
-│   │       ├── settings_views.py # Настройки SSH и SMTP
-│   │       └── migrations/
+│   │       ├── serializers.py    # Сериализаторы моделей
+│   │       ├── settings_views.py # Настройки SSH и SMTP (SystemSettingsView, TestEmailView)
+│   │       ├── urls.py           # Маршруты приложения clients
+│   │       └── migrations/       # Миграции базы данных
 │   ├── config/
-│   ├── requirements.txt
-│   ├── create_admin.py
+│   │   ├── settings.py           # Настройки Django
+│   │   ├── urls.py               # Корневые маршруты
+│   │   └── wsgi.py
+│   ├── requirements.txt          # Python-зависимости
+│   ├── create_admin.py           # Создание администратора и ролей
 │   └── Dockerfile
 ├── frontend/src/pages/
-│   ├── ClientsPage.jsx
+│   ├── ClientsPage.jsx           # Список клиентов с фильтрами, поиском, экспортом
 │   ├── ClientDetailPage.jsx      # Просмотр карточки клиента (обёртка с вкладками)
 │   ├── client-detail/
 │   │   ├── ClientDetailInfo.jsx      # Вкладка: Информация + Сеть
@@ -201,8 +205,8 @@ support-portal/
 │   │   ├── SettingsAutomation.jsx    # Вкладка: Массовая загрузка клиентов
 │   │   ├── SettingsScheduler.jsx     # Вкладка: Регламентные задания
 │   │   └── SettingsDiagnostics.jsx   # Вкладка: Зависимости Python
-│   ├── UsersPage.jsx
-│   └── ProvidersPage.jsx
+│   ├── UsersPage.jsx             # Управление пользователями
+│   └── ProvidersPage.jsx         # Управление провайдерами
 ├── nginx/default.conf
 ├── media/                        # Медиафайлы (не в git)
 ├── ofd_fetch.sh                  # Запросы к lk.ofd.ru (запускается на хосте)
