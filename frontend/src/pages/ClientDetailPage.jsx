@@ -1,121 +1,56 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Typography, Tag, Button, Timeline, Input, Space,
-  Descriptions, message, Spin, Popconfirm, Empty, Tooltip, Upload, List, Image, Badge, Tabs, Divider
+  message, Spin, Popconfirm, Empty, Tooltip, Upload, List, Image, Tabs,
 } from 'antd';
 import {
-  EditOutlined, ArrowLeftOutlined, DeleteOutlined,
-  SendOutlined, ClockCircleOutlined, WifiOutlined, CopyOutlined, GlobalOutlined,
-  CheckCircleFilled, CloseCircleFilled, SyncOutlined, MinusCircleOutlined,
-  UploadOutlined, FileOutlined, FilePdfOutlined, FileImageOutlined, DeleteFilled, DownloadOutlined,
-  CloudDownloadOutlined, ReloadOutlined
+  EditOutlined, ArrowLeftOutlined, DeleteOutlined, SendOutlined,
+  UploadOutlined, DownloadOutlined, DeleteFilled,
 } from '@ant-design/icons';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { clientsAPI } from '../api';
 import api from '../api';
 import useAuthStore from '../store/authStore';
+import ClientDetailInfo      from './client-detail/ClientDetailInfo';
+import ClientDetailProviders from './client-detail/ClientDetailProviders';
+import ClientDetailKkt       from './client-detail/ClientDetailKkt';
+import { ActivityIcon, getFileIcon, formatSize } from './client-detail/helpers';
 
 const { Title, Text } = Typography;
-
-const CONNECTION_LABELS = {
-  fiber: '⚡ Оптоволокно',
-  dsl: '☎️ DSL',
-  cable: '🔌 Кабель',
-  wireless: '📡 Беспроводное',
-  modem: '📶 Модем',
-  mrnet: '↔️ MR-Net',
-};
-const CONNECTION_COLORS = {
-  fiber: 'blue', dsl: 'orange', cable: 'green', wireless: 'purple',
-  modem: 'cyan', mrnet: 'geekblue',
-};
-
-function copyToClipboard(text) {
-  if (navigator.clipboard && window.isSecureContext) {
-    return navigator.clipboard.writeText(text);
-  }
-  // Fallback для HTTP
-  const el = document.createElement('textarea');
-  el.value = text;
-  el.style.position = 'fixed';
-  el.style.opacity = '0';
-  document.body.appendChild(el);
-  el.focus();
-  el.select();
-  document.execCommand('copy');
-  document.body.removeChild(el);
-  return Promise.resolve();
-}
-
-function CopyField({ value, children }) {
-  const handleCopy = () => {
-    if (!value) return;
-    copyToClipboard(value);
-    message.success('Скопировано!', 1);
-  };
-  return (
-    <Space size={6}>
-      <span>{children || value || '—'}</span>
-      {value && (
-        <Tooltip title="Скопировать">
-          <Button type="text" size="small"
-            icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-            onClick={handleCopy} style={{ padding: '0 2px', height: 'auto' }}
-          />
-        </Tooltip>
-      )}
-    </Space>
-  );
-}
-
-function PingStatus({ status, ip }) {
-  if (!ip) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
-  if (status === 'checking') return <SyncOutlined spin style={{ color: '#1677ff' }} />;
-  if (status === true) return (
-    <Tooltip title={`${ip} — доступен`}>
-      <CheckCircleFilled style={{ color: '#52c41a', fontSize: 16 }} />
-    </Tooltip>
-  );
-  if (status === false) return (
-    <Tooltip title={`${ip} — недоступен`}>
-      <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 16 }} />
-    </Tooltip>
-  );
-  return (
-    <Tooltip title="Не проверено">
-      <MinusCircleOutlined style={{ color: '#d9d9d9', fontSize: 16 }} />
-    </Tooltip>
-  );
-}
-
-function ActivityIcon({ action }) {
-  if (action.includes('Удалена ККТ')) return '🗑️';
-  if (action.includes('Добавлена ККТ')) return '🖨️';
-  return '✏️';
-}
 
 export default function ClientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [client, setClient] = useState(null);
-  const [notes, setNotes] = useState([]);
-  const [noteText, setNoteText] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [noteSending, setNoteSending] = useState(false);
-  const [files, setFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [pingResults, setPingResults] = useState({ external_ip: null, mikrotik_ip: null, server_ip: null });
-  const [pinging, setPinging] = useState(false);
-  const [showAllActivity, setShowAllActivity] = useState(false);
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState(location.state?.tab || 'info');
   const permissions = useAuthStore((s) => s.permissions);
 
-  // ККТ
-  const [kktData, setKktData] = useState([]);
-  const [kktFetching, setKktFetching] = useState(false);
+  const [client, setClient]           = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [activeTab, setActiveTab]     = useState(location.state?.tab || 'info');
 
+  // Заметки
+  const [notes, setNotes]             = useState([]);
+  const [noteText, setNoteText]       = useState('');
+  const [noteSending, setNoteSending] = useState(false);
+
+  // Файлы
+  const [files, setFiles]             = useState([]);
+  const [uploading, setUploading]     = useState(false);
+
+  // История
+  const [showAllActivity, setShowAllActivity] = useState(false);
+
+  // Пинг
+  const [pingResults, setPingResults] = useState({ external_ip: null, mikrotik_ip: null, server_ip: null });
+  const [pinging, setPinging]         = useState(false);
+
+  // ККТ
+  const [kktData, setKktData]         = useState([]);
+  const [kktFetching, setKktFetching] = useState(false);
+  const [kktRefreshing, setKktRefreshing] = useState(false);
+
+  // ─── Загрузка ───────────────────────────────────────────
   const fetchClient = useCallback(async () => {
     try {
       const [clientRes, notesRes, filesRes] = await Promise.all([
@@ -138,57 +73,19 @@ export default function ClientDetailPage() {
     try {
       const res = await api.get(`/clients/${id}/ofd_kkt/`);
       setKktData(res.data);
-    } catch {
-      setKktData([]);
-    }
+    } catch { setKktData([]); }
   }, [id]);
 
-  const [kktRefreshing, setKktRefreshing] = useState(false);
+  useEffect(() => {
+    fetchClient();
+    loadKktData();
+  }, [fetchClient, loadKktData]);
 
-  const fetchKktFromOfd = async () => {
-    setKktFetching(true);
-    try {
-      const res = await api.post(`/clients/${id}/ofd_kkt/`);
-      message.success(res.data.message || 'Данные ККТ получены с ОФД');
-      if (res.data.errors && res.data.errors.length > 0) {
-        res.data.errors.forEach(e => message.warning(e, 5));
-      }
-      await loadKktData();
-    } catch (e) {
-      const errMsg = e.response?.data?.error || 'Ошибка при получении данных с ОФД';
-      message.error(errMsg, 6);
-    } finally {
-      setKktFetching(false);
-    }
-  };
+  useEffect(() => {
+    if (client) checkPing();
+  }, [client?.id]); // eslint-disable-line
 
-  const refreshKktByRnm = async () => {
-    setKktRefreshing(true);
-    try {
-      const res = await api.patch(`/clients/${id}/ofd_kkt/`);
-      message.success(res.data.message || 'ККТ обновлены');
-      if (res.data.errors && res.data.errors.length > 0) {
-        res.data.errors.forEach(e => message.warning(e, 5));
-      }
-      await loadKktData();
-    } catch (e) {
-      const errMsg = e.response?.data?.error || 'Ошибка при обновлении ККТ';
-      message.error(errMsg, 6);
-    } finally {
-      setKktRefreshing(false);
-    }
-  };
-
-  const deleteKkt = async (kktId) => {
-    try {
-      await api.delete(`/clients/${id}/ofd_kkt/${kktId}/`);
-      message.success('ККТ удалена');
-      await loadKktData();
-    } catch (e) {
-      message.error('Не удалось удалить ККТ');
-    }
-  };
-
+  // ─── Пинг ───────────────────────────────────────────────
   const checkPing = useCallback(async () => {
     setPinging(true);
     setPingResults({ external_ip: 'checking', mikrotik_ip: 'checking', server_ip: 'checking' });
@@ -197,38 +94,55 @@ export default function ClientDetailPage() {
       setPingResults({
         external_ip: data.external_ip?.alive ?? null,
         mikrotik_ip: data.mikrotik_ip?.alive ?? null,
-        server_ip: data.server_ip?.alive ?? null,
+        server_ip:   data.server_ip?.alive ?? null,
       });
     } catch {
       setPingResults({ external_ip: false, mikrotik_ip: false, server_ip: false });
-    } finally {
-      setPinging(false);
-    }
+    } finally { setPinging(false); }
   }, [id]);
 
-  useEffect(() => {
-    fetchClient();
-    loadKktData();
-  }, [fetchClient, loadKktData]);
+  // ─── ККТ ────────────────────────────────────────────────
+  const fetchKktFromOfd = async () => {
+    setKktFetching(true);
+    try {
+      const res = await api.post(`/clients/${id}/ofd_kkt/`);
+      message.success(res.data.message || 'Данные ККТ получены с ОФД');
+      if (res.data.errors?.length > 0) res.data.errors.forEach(e => message.warning(e, 5));
+      await loadKktData();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка при получении данных с ОФД', 6);
+    } finally { setKktFetching(false); }
+  };
 
-  // Запускаем пинг автоматически после загрузки карточки
-  useEffect(() => {
-    if (client) {
-      checkPing();
-    }
-  }, [client?.id]);
+  const refreshKktByRnm = async () => {
+    setKktRefreshing(true);
+    try {
+      const res = await api.patch(`/clients/${id}/ofd_kkt/`);
+      message.success(res.data.message || 'ККТ обновлены');
+      if (res.data.errors?.length > 0) res.data.errors.forEach(e => message.warning(e, 5));
+      await loadKktData();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка при обновлении ККТ', 6);
+    } finally { setKktRefreshing(false); }
+  };
 
+  const deleteKkt = async (kktId) => {
+    try {
+      await api.delete(`/clients/${id}/ofd_kkt/${kktId}/`);
+      message.success('ККТ удалена');
+      await loadKktData();
+    } catch { message.error('Не удалось удалить ККТ'); }
+  };
+
+  // ─── Файлы ──────────────────────────────────────────────
   const handleUpload = async ({ file }) => {
     setUploading(true);
     try {
       const { data } = await clientsAPI.uploadFile(id, file);
       setFiles((prev) => [data, ...prev]);
       message.success(`Файл «${file.name}» загружен`);
-    } catch {
-      message.error('Ошибка загрузки файла');
-    } finally {
-      setUploading(false);
-    }
+    } catch { message.error('Ошибка загрузки файла'); }
+    finally { setUploading(false); }
     return false;
   };
 
@@ -237,25 +151,10 @@ export default function ClientDetailPage() {
       await clientsAPI.deleteFile(id, fileId);
       setFiles((prev) => prev.filter((f) => f.id !== fileId));
       message.success(`Файл «${fileName}» удалён`);
-    } catch {
-      message.error('Ошибка удаления файла');
-    }
+    } catch { message.error('Ошибка удаления файла'); }
   };
 
-  const getFileIcon = (name) => {
-    const ext = (name || '').split('.').pop().toLowerCase();
-    if (['jpg','jpeg','png','gif','webp'].includes(ext)) return <FileImageOutlined style={{ color: '#1677ff', fontSize: 18 }} />;
-    if (ext === 'pdf') return <FilePdfOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />;
-    return <FileOutlined style={{ color: '#8c8c8c', fontSize: 18 }} />;
-  };
-
-  const formatSize = (bytes) => {
-    if (!bytes) return '0 Б';
-    if (bytes < 1024) return `${bytes} Б`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-    return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
-  };
-
+  // ─── Заметки ────────────────────────────────────────────
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
     setNoteSending(true);
@@ -263,28 +162,66 @@ export default function ClientDetailPage() {
       const { data } = await clientsAPI.addNote(id, noteText.trim());
       setNotes((prev) => [data, ...prev]);
       setNoteText('');
-    } catch {
-      message.error('Ошибка добавления заметки');
-    } finally {
-      setNoteSending(false);
-    }
+    } catch { message.error('Ошибка добавления заметки'); }
+    finally { setNoteSending(false); }
   };
 
+  // ─── Удаление ───────────────────────────────────────────
   const handleDelete = async () => {
     try {
       await clientsAPI.delete(id);
       message.success('Клиент удалён');
       navigate('/clients');
-    } catch {
-      message.error('Ошибка удаления');
-    }
+    } catch { message.error('Ошибка удаления'); }
   };
 
   if (loading) return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>;
   if (!client) return <div>Клиент не найден</div>;
 
-  const provider = client.provider_data;
   const pageTitle = client.address || client.company || `Клиент #${client.id}`;
+
+  const tabItems = [
+    {
+      key: 'info',
+      label: '📋 Информация',
+      children: (
+        <ClientDetailInfo
+          client={client}
+          pingResults={pingResults}
+          pinging={pinging}
+          checkPing={checkPing}
+        />
+      ),
+    },
+    {
+      key: 'providers',
+      label: (
+        <Space size={4}>
+          🌐 Провайдеры
+          {(client.provider_data || client.provider2_data) && (
+            <Tag color="blue" style={{ marginLeft: 2, fontSize: 11 }}>
+              {[client.provider_data, client.provider2_data].filter(Boolean).length}
+            </Tag>
+          )}
+        </Space>
+      ),
+      children: <ClientDetailProviders client={client} />,
+    },
+    {
+      key: 'kkt',
+      label: '🧾 ККТ',
+      children: (
+        <ClientDetailKkt
+          kktData={kktData}
+          kktFetching={kktFetching}
+          kktRefreshing={kktRefreshing}
+          fetchKktFromOfd={fetchKktFromOfd}
+          refreshKktByRnm={refreshKktByRnm}
+          deleteKkt={deleteKkt}
+        />
+      ),
+    },
+  ];
 
   return (
     <div>
@@ -312,360 +249,9 @@ export default function ClientDetailPage() {
 
       <Row gutter={16}>
         <Col span={16}>
-          <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            style={{ marginBottom: 0 }}
-            items={[
-              {
-                key: 'info',
-                label: <span>📋 Информация</span>,
-                children: (
-                  <>
-                    <Card title="Информация о клиенте" style={{ marginBottom: 16 }}>
-                      <Descriptions column={2} bordered size="small">
-                        <Descriptions.Item label="Адрес" span={2}>{client.address || '—'}</Descriptions.Item>
-                        <Descriptions.Item label="Компания">{client.company || '—'}</Descriptions.Item>
-                        <Descriptions.Item label="ИНН"><CopyField value={client.inn} /></Descriptions.Item>
-                        <Descriptions.Item label="Телефон"><CopyField value={client.phone} /></Descriptions.Item>
-                        <Descriptions.Item label="ICCID"><CopyField value={client.iccid} /></Descriptions.Item>
-                        <Descriptions.Item label="Email"><CopyField value={client.email} /></Descriptions.Item>
-                        <Descriptions.Item label="Код аптеки (UT)"><CopyField value={client.pharmacy_code} /></Descriptions.Item>
-                        <Descriptions.Item label="Код склада"><CopyField value={client.warehouse_code} /></Descriptions.Item>
-                      </Descriptions>
-                    </Card>
+          <Tabs activeKey={activeTab} onChange={setActiveTab} style={{ marginBottom: 0 }} items={tabItems} />
 
-                    <Card
-                      title={<Space><GlobalOutlined style={{ color: '#1677ff' }} /><span>Сеть</span></Space>}
-                      extra={
-                        <Tooltip title="Проверить доступность IP">
-                          <Button
-                            size="small" icon={<SyncOutlined spin={pinging} />}
-                            onClick={checkPing} loading={pinging}
-                          >
-                            Проверить доступность
-                          </Button>
-                        </Tooltip>
-                      }
-                      style={{ marginBottom: 16 }}
-                    >
-                      <Descriptions column={2} bordered size="small">
-                        <Descriptions.Item label="Подсеть аптеки">
-                          <CopyField value={client.subnet} />
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Внешний IP">
-                          <Space>
-                            {client.external_ip ? (
-                              <a href={`http://${client.external_ip}`} target="_blank" rel="noreferrer"
-                                style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                                {client.external_ip}
-                              </a>
-                            ) : <Text type="secondary">—</Text>}
-                            {client.external_ip && (
-                              <Tooltip title="Скопировать">
-                                <Button type="text" size="small"
-                                  icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                                  onClick={() => { copyToClipboard(client.external_ip); message.success('Скопировано!', 1); }}
-                                  style={{ padding: '0 2px', height: 'auto' }}
-                                />
-                              </Tooltip>
-                            )}
-                            <PingStatus status={pingResults.external_ip} ip={client.external_ip} />
-                          </Space>
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Микротик IP">
-                          <Space>
-                            <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                              {client.mikrotik_ip
-                                ? <a href={`http://${client.mikrotik_ip}`} target="_blank" rel="noreferrer"
-                                    style={{ color: 'inherit' }}>{client.mikrotik_ip}</a>
-                                : '—'}
-                            </Tag>
-                            {client.mikrotik_ip && (
-                              <Tooltip title="Скопировать">
-                                <Button type="text" size="small"
-                                  icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                                  onClick={() => { copyToClipboard(client.mikrotik_ip); message.success('Скопировано!', 1); }}
-                                  style={{ padding: '0 2px', height: 'auto' }}
-                                />
-                              </Tooltip>
-                            )}
-                            <PingStatus status={pingResults.mikrotik_ip} ip={client.mikrotik_ip} />
-                          </Space>
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Сервер IP">
-                          <Space>
-                            <Tag color="purple" style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                              {client.server_ip || '—'}
-                            </Tag>
-                            {client.server_ip && (
-                              <Tooltip title="Скопировать">
-                                <Button type="text" size="small"
-                                  icon={<CopyOutlined style={{ color: '#1677ff' }} />}
-                                  onClick={() => { copyToClipboard(client.server_ip); message.success('Скопировано!', 1); }}
-                                  style={{ padding: '0 2px', height: 'auto' }}
-                                />
-                              </Tooltip>
-                            )}
-                            <PingStatus status={pingResults.server_ip} ip={client.server_ip} />
-                          </Space>
-                        </Descriptions.Item>
-                      </Descriptions>
-                    </Card>
-                  </>
-                ),
-              },
-              {
-                key: 'providers',
-                label: (
-                  <Space size={4}>
-                    🌐
-                    Провайдеры
-                    {(client.provider_data || client.provider2_data) && (
-                      <Tag color="blue" style={{ marginLeft: 2, fontSize: 11 }}>
-                        {[client.provider_data, client.provider2_data].filter(Boolean).length}
-                      </Tag>
-                    )}
-                  </Space>
-                ),
-                children: (
-                  <>
-                    <Card
-                      title={<Space><WifiOutlined style={{ color: '#1677ff' }} /><span>Провайдер 1</span></Space>}
-                      style={{ marginBottom: 16 }}
-                    >
-                      {provider ? (
-                        <Descriptions column={2} bordered size="small">
-                          <Descriptions.Item label="Название" span={2}>
-                            <Text strong>{provider.name}</Text>
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Тип подключения">
-                            {client.connection_type
-                              ? <Tag color={CONNECTION_COLORS[client.connection_type]}>{CONNECTION_LABELS[client.connection_type]}</Tag>
-                              : '—'}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Тариф">
-                            {client.tariff
-                              ? <><Text strong>{client.tariff}</Text> <Text type="secondary">Мбит/с</Text></>
-                              : '—'}
-                          </Descriptions.Item>
-                          {['modem', 'mrnet'].includes(client.connection_type) && (
-                            <>
-                              <Descriptions.Item label="Номер (модем/SIM)">
-                                {client.modem_number
-                                  ? <CopyField value={client.modem_number} />
-                                  : <Text type="secondary">—</Text>}
-                              </Descriptions.Item>
-                              <Descriptions.Item label="ICCID модема">
-                                {client.modem_iccid
-                                  ? <CopyField value={client.modem_iccid} />
-                                  : <Text type="secondary">—</Text>}
-                              </Descriptions.Item>
-                            </>
-                          )}
-                          <Descriptions.Item label="Лицевой счёт">
-                            <CopyField value={client.personal_account} />
-                          </Descriptions.Item>
-                          <Descriptions.Item label="№ договора">
-                            <CopyField value={client.contract_number} />
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Настройки провайдера" span={2}>
-                            {client.provider_settings
-                              ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings}</pre>
-                              : '—'}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Телефоны техподдержки" span={2}>
-                            <CopyField value={provider.support_phones}>
-                              {provider.support_phones
-                                ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{provider.support_phones}</pre>
-                                : null}
-                            </CopyField>
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Оборудование провайдера" span={2}>
-                            {client.provider_equipment
-                              ? <Tag color="green" style={{ fontSize: 13 }}>✓ Присутствует</Tag>
-                              : <Tag color="red" style={{ fontSize: 13 }}>✗ Отсутствует</Tag>}
-                          </Descriptions.Item>
-                        </Descriptions>
-                      ) : (
-                        <Empty description="Провайдер не указан" image={Empty.PRESENTED_IMAGE_SIMPLE}>
-                          <Button type="link" onClick={() => navigate(`/clients/${id}/edit`, { state: { tab: 'providers' } })}>Указать провайдера</Button>
-                        </Empty>
-                      )}
-                    </Card>
-
-                    {client.provider2_data && (
-                      <Card
-                        title={<Space><WifiOutlined style={{ color: '#4096ff' }} /><span>Провайдер 2</span></Space>}
-                        style={{ marginBottom: 16, borderColor: '#91caff' }}
-                      >
-                        <Descriptions column={2} bordered size="small">
-                          <Descriptions.Item label="Название" span={2}>
-                            <Text strong>{client.provider2_data.name}</Text>
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Тип подключения">
-                            {client.connection_type2
-                              ? <Tag color={CONNECTION_COLORS[client.connection_type2]}>{CONNECTION_LABELS[client.connection_type2]}</Tag>
-                              : '—'}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Тариф">
-                            {client.tariff2
-                              ? <><Text strong>{client.tariff2}</Text> <Text type="secondary">Мбит/с</Text></>
-                              : '—'}
-                          </Descriptions.Item>
-                          {['modem', 'mrnet'].includes(client.connection_type2) && (
-                            <>
-                              <Descriptions.Item label="Номер (модем/SIM)">
-                                {client.modem_number2 ? <CopyField value={client.modem_number2} /> : <Text type="secondary">—</Text>}
-                              </Descriptions.Item>
-                              <Descriptions.Item label="ICCID модема">
-                                {client.modem_iccid2 ? <CopyField value={client.modem_iccid2} /> : <Text type="secondary">—</Text>}
-                              </Descriptions.Item>
-                            </>
-                          )}
-                          <Descriptions.Item label="Лицевой счёт">
-                            <CopyField value={client.personal_account2} />
-                          </Descriptions.Item>
-                          <Descriptions.Item label="№ договора">
-                            <CopyField value={client.contract_number2} />
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Настройки провайдера" span={2}>
-                            {client.provider_settings2
-                              ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider_settings2}</pre>
-                              : '—'}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Телефоны техподдержки" span={2}>
-                            <CopyField value={client.provider2_data.support_phones}>
-                              {client.provider2_data.support_phones
-                                ? <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{client.provider2_data.support_phones}</pre>
-                                : null}
-                            </CopyField>
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Оборудование провайдера" span={2}>
-                            {client.provider_equipment2
-                              ? <Tag color="green" style={{ fontSize: 13 }}>✓ Присутствует</Tag>
-                              : <Tag color="red" style={{ fontSize: 13 }}>✗ Отсутствует</Tag>}
-                          </Descriptions.Item>
-                        </Descriptions>
-                      </Card>
-                    )}
-                  </>
-                ),
-              },
-              {
-                key: 'kkt',
-                label: '🧾 ККТ',
-                children: (
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                      <Text strong style={{ fontSize: 16 }}>🧾 Кассовая техника</Text>
-                      <Space>
-                        <Button
-                          icon={<ReloadOutlined />}
-                          onClick={refreshKktByRnm}
-                          loading={kktRefreshing}
-                          disabled={kktData.length === 0}
-                        >
-                          Обновить по РНМ
-                        </Button>
-                        <Button
-                          type="primary"
-                          icon={<SyncOutlined />}
-                          onClick={fetchKktFromOfd}
-                          loading={kktFetching}
-                        >
-                          Получить данные с ОФД
-                        </Button>
-                      </Space>
-                    </div>
-
-                    {kktData.length === 0 ? (
-                      <Empty
-                        description={
-                          <span>
-                            Нет данных ККТ.<br />
-                            Для загрузки откройте карточку клиента и нажмите «Получить данные с ОФД».
-                          </span>
-                        }
-                        style={{ padding: '40px 0' }}
-                      />
-                    ) : (
-                      kktData.map((kkt) => (
-                        <Card
-                          key={kkt.id}
-                          style={{ marginBottom: 16 }}
-                          title={
-                            <Space>
-                              <span>🖨️ {kkt.kkt_model || 'ККТ'}</span>
-                              <Tag color="blue">РНМ: {kkt.kkt_reg_id}</Tag>
-                            </Space>
-                          }
-                          extra={
-                            <Space>
-                              {kkt.fetched_at && (
-                                <Text type="secondary" style={{ fontSize: 12 }}>
-                                  Обновлено: {dayjs(kkt.fetched_at).format('DD.MM.YYYY HH:mm')}
-                                </Text>
-                              )}
-                              <Popconfirm
-                                title="Удалить ККТ?"
-                                description="Данные этой ККТ будут удалены из системы."
-                                onConfirm={() => deleteKkt(kkt.id)}
-                                okText="Удалить"
-                                cancelText="Отмена"
-                                okButtonProps={{ danger: true }}
-                              >
-                                <Button icon={<DeleteOutlined />} size="small" danger type="text" />
-                              </Popconfirm>
-                            </Space>
-                          }
-                        >
-                          <Descriptions
-                            bordered
-                            size="small"
-                            column={{ xs: 1, sm: 2, md: 2, lg: 3 }}
-                          >
-                            <Descriptions.Item label="Модель ККТ">
-                              <Text strong>{kkt.kkt_model || '—'}</Text>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="РНМ">
-                              <CopyField value={kkt.kkt_reg_id}>{kkt.kkt_reg_id || '—'}</CopyField>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Серийный номер">
-                              <CopyField value={kkt.serial_number}>{kkt.serial_number || '—'}</CopyField>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Номер ФН">
-                              <CopyField value={kkt.fn_number}>{kkt.fn_number || '—'}</CopyField>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Конец срока ФН">
-                              {kkt.fn_end_date ? (
-                                <Tag color={dayjs(kkt.fn_end_date).isBefore(dayjs().add(90, 'day')) ? 'red' : 'green'}>
-                                  {dayjs(kkt.fn_end_date).format('DD.MM.YYYY')}
-                                </Tag>
-                              ) : '—'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Конец договора ОФД">
-                              {kkt.contract_end_date ? (
-                                <Tag color={dayjs(kkt.contract_end_date).isBefore(dayjs().add(30, 'day')) ? 'red' : 'green'}>
-                                  {dayjs(kkt.contract_end_date).format('DD.MM.YYYY')}
-                                </Tag>
-                              ) : '—'}
-                            </Descriptions.Item>
-                            {kkt.fiscal_address && (
-                              <Descriptions.Item label="Адрес установки" span={3}>
-                                {kkt.fiscal_address}
-                              </Descriptions.Item>
-                            )}
-                          </Descriptions>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                ),
-              },
-]}
-          />
-
+          {/* Заметки */}
           <Card title="Заметки" style={{ marginTop: 16 }}>
             <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
               <Input.TextArea
@@ -682,7 +268,7 @@ export default function ClientDetailPage() {
               <Empty description="Заметок пока нет" image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
               notes.map((note) => (
-                <Card key={note.id} size="small" style={{ marginBottom: 8, background: '#fafafa' }}>
+                <Card key={note.id} size="small" style={{ marginBottom: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                     <Text strong>{note.author_name}</Text>
                     <Text type="secondary" style={{ fontSize: 12 }}>
@@ -694,10 +280,10 @@ export default function ClientDetailPage() {
               ))
             )}
           </Card>
-
         </Col>
 
         <Col span={8}>
+          {/* История */}
           <Card
             title={<Space>История изменений <Tag>{client.activities?.length || 0}</Tag></Space>}
             style={{ marginBottom: 16 }}
@@ -707,10 +293,7 @@ export default function ClientDetailPage() {
             ) : (
               <>
                 <Timeline
-                  items={(showAllActivity
-                    ? client.activities
-                    : client.activities.slice(0, 2)
-                  ).map((a) => ({
+                  items={(showAllActivity ? client.activities : client.activities.slice(0, 2)).map((a) => ({
                     dot: <span style={{ fontSize: 14 }}><ActivityIcon action={a.action} /></span>,
                     children: (
                       <div style={{ marginBottom: 4 }}>
@@ -718,16 +301,14 @@ export default function ClientDetailPage() {
                           ? <>
                               <Text style={{ fontSize: 12, fontWeight: 600 }}>Изменено:</Text>
                               {a.action.replace('Изменено: ', '').split(' | ').map((item, i) => (
-                                <div key={i} style={{ fontSize: 12, paddingLeft: 8, color: '#333' }}>• {item}</div>
+                                <div key={i} style={{ fontSize: 12, paddingLeft: 8 }}>• {item}</div>
                               ))}
                             </>
                           : (a.action.includes('\n')
                             ? <div>
-                                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>
-                                  {a.action.split('\n')[0]}
-                                </div>
+                                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{a.action.split('\n')[0]}</div>
                                 {a.action.split('\n').slice(1).map((line, i) => (
-                                  <div key={i} style={{ fontSize: 12, paddingLeft: 8, color: '#333', lineHeight: '1.6' }}>• {line}</div>
+                                  <div key={i} style={{ fontSize: 12, paddingLeft: 8, lineHeight: '1.6' }}>• {line}</div>
                                 ))}
                               </div>
                             : <Text style={{ fontSize: 13 }}>{a.action}</Text>
@@ -743,33 +324,22 @@ export default function ClientDetailPage() {
                   }))}
                 />
                 {client.activities.length > 2 && (
-                  <Button
-                    type="link" size="small"
-                    onClick={() => setShowAllActivity(!showAllActivity)}
-                    style={{ padding: 0 }}
-                  >
-                    {showAllActivity
-                      ? '▲ Свернуть'
-                      : `▼ Показать ещё ${client.activities.length - 2}`}
+                  <Button type="link" size="small" onClick={() => setShowAllActivity(!showAllActivity)} style={{ padding: 0 }}>
+                    {showAllActivity ? '▲ Свернуть' : `▼ Показать ещё ${client.activities.length - 2}`}
                   </Button>
                 )}
               </>
             )}
           </Card>
 
+          {/* Файлы */}
           <Card
             title={<Space><UploadOutlined />Файлы<Tag>{files.length}</Tag></Space>}
             extra={
               permissions.can_edit_client && (
-                <Upload
-                  showUploadList={false}
-                  beforeUpload={() => false}
-                  onChange={handleUpload}
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                >
-                  <Button size="small" icon={<UploadOutlined />} loading={uploading}>
-                    Загрузить
-                  </Button>
+                <Upload showUploadList={false} beforeUpload={() => false} onChange={handleUpload}
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+                  <Button size="small" icon={<UploadOutlined />} loading={uploading}>Загрузить</Button>
                 </Upload>
               )
             }
@@ -787,17 +357,13 @@ export default function ClientDetailPage() {
                       <List.Item
                         actions={[
                           <Tooltip title="Скачать">
-                            <Button type="link" size="small" icon={<DownloadOutlined />}
-                              href={file.url} download={file.name} />
+                            <Button type="link" size="small" icon={<DownloadOutlined />} href={file.url} download={file.name} />
                           </Tooltip>,
                           permissions.can_edit_client && (
                             <Popconfirm
-                              title="Удалить файл?"
-                              description={file.name}
+                              title="Удалить файл?" description={file.name}
                               onConfirm={() => handleDeleteFile(file.id, file.name)}
-                              okText="Удалить"
-                              cancelText="Отмена"
-                              okType="danger"
+                              okText="Удалить" cancelText="Отмена" okType="danger"
                             >
                               <Tooltip title="Удалить">
                                 <Button type="link" size="small" danger icon={<DeleteOutlined />} />
@@ -809,10 +375,7 @@ export default function ClientDetailPage() {
                         <List.Item.Meta
                           avatar={
                             isImage ? (
-                              <Image
-                                src={file.url}
-                                width={40}
-                                height={40}
+                              <Image src={file.url} width={40} height={40}
                                 style={{ objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
                                 preview={{ mask: false }}
                               />
