@@ -97,46 +97,37 @@ export default function SettingsRnmSync({ companies }) {
     }
   };
 
+  // clientsByCompany: { company_id: [{id, address, company}] }
+  const [clientsByCompany, setClientsByCompany] = useState({});
+  // selectedClientForRnm: { rnm: client_id }
+  const [selectedClientForRnm, setSelectedClientForRnm] = useState({});
+
+  const loadClientsForCompany = async (companyId) => {
+    if (clientsByCompany[companyId]) return;
+    try {
+      const { data } = await api.get(`/clients/?page_size=1000&ofd_company=${companyId}`);
+      const clients = data.results || data;
+      setClientsByCompany(prev => ({ ...prev, [companyId]: clients }));
+    } catch {}
+  };
+
   const handleAddRnm = async (item) => {
+    const clientId = selectedClientForRnm[item.rnm];
+    if (!clientId) {
+      message.warning('Выберите клиента');
+      return;
+    }
     setAddingRnm(item.rnm);
     try {
-      // Находим клиента этой компании по адресу из ОФД
-      // Используем endpoint добавления по РНМ — ищем подходящего клиента
-      const clientsRes = await api.get(`/clients/?page_size=1000&ofd_company=${item.company_id}`);
-      const clients = clientsRes.data.results || clientsRes.data;
-
-      if (clients.length === 0) {
-        message.error('Нет клиентов для этой компании');
-        return;
-      }
-
-      // Пробуем найти клиента по адресу из ОФД
-      let targetClient = null;
-      if (item.address) {
-        const addrLower = item.address.toLowerCase();
-        targetClient = clients.find(c =>
-          c.address && c.address.toLowerCase().includes(addrLower.substring(0, 15))
-        );
-      }
-
-      if (!targetClient) {
-        message.warning(`Не удалось автоматически определить клиента для РНМ ${item.rnm}. Добавьте вручную через карточку клиента.`);
-        return;
-      }
-
-      // Добавляем ККТ через endpoint
-      const res = await api.patch(`/clients/${targetClient.id}/ofd_kkt/`, {
+      const res = await api.patch(`/clients/${clientId}/ofd_kkt/`, {
         rnm_override: item.rnm,
       });
       message.success(res.data.message || `РНМ ${item.rnm} добавлен`);
-
-      // Обновляем результат — убираем добавленный РНМ из списка
-      if (result) {
-        setResult(prev => ({
-          ...prev,
-          missing_in_us: prev.missing_in_us.filter(r => r.rnm !== item.rnm),
-        }));
-      }
+      setResult(prev => ({
+        ...prev,
+        missing_in_us: prev.missing_in_us.filter(r => r.rnm !== item.rnm),
+      }));
+      setSelectedClientForRnm(prev => { const n = {...prev}; delete n[item.rnm]; return n; });
     } catch (e) {
       message.error(e.response?.data?.error || 'Ошибка добавления');
     } finally {
@@ -259,7 +250,9 @@ export default function SettingsRnmSync({ companies }) {
         open={resultModal}
         onCancel={() => setResultModal(false)}
         footer={<Button onClick={() => setResultModal(false)}>Закрыть</Button>}
-        width={860}
+        width="80vw"
+        style={{ maxWidth: 1400, top: 40 }}
+        styles={{ body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' } }}
       >
         {result && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -286,18 +279,43 @@ export default function SettingsRnmSync({ companies }) {
                         dataSource={missingInUs.map((r, i) => ({ ...r, key: i }))}
                         columns={[
                           { title: 'РНМ', dataIndex: 'rnm', width: 170, render: v => <code>{v}</code> },
-                          { title: 'Компания', dataIndex: 'company_name', ellipsis: true, width: 180 },
+                          { title: 'Компания', dataIndex: 'company_name', ellipsis: true, width: 150 },
                           { title: 'Адрес в ОФД', dataIndex: 'address', ellipsis: true },
-                          { title: 'Модель', dataIndex: 'model', width: 100, ellipsis: true },
+                          {
+                            title: 'Клиент',
+                            width: 220,
+                            render: (_, row) => {
+                              const clients = clientsByCompany[row.company_id];
+                              return (
+                                <Select
+                                  size="small"
+                                  style={{ width: 210 }}
+                                  placeholder="Выберите клиента"
+                                  showSearch
+                                  optionFilterProp="label"
+                                  value={selectedClientForRnm[row.rnm] || undefined}
+                                  onFocus={() => loadClientsForCompany(row.company_id)}
+                                  onChange={val => setSelectedClientForRnm(prev => ({ ...prev, [row.rnm]: val }))}
+                                  options={(clients || []).map(c => ({
+                                    value: c.id,
+                                    label: c.address || c.company || `#${c.id}`,
+                                  }))}
+                                  loading={!clients}
+                                  notFoundContent={clients ? 'Нет клиентов' : 'Загрузка...'}
+                                />
+                              );
+                            },
+                          },
                           {
                             title: '',
-                            width: 100,
+                            width: 90,
                             render: (_, row) => (
                               <Button
                                 size="small"
                                 type="primary"
                                 icon={<PlusOutlined />}
                                 loading={addingRnm === row.rnm}
+                                disabled={!selectedClientForRnm[row.rnm]}
                                 onClick={() => handleAddRnm(row)}
                               >
                                 Добавить
@@ -325,7 +343,6 @@ export default function SettingsRnmSync({ companies }) {
                           { title: 'РНМ', dataIndex: 'rnm', width: 170, render: v => <code>{v}</code> },
                           { title: 'Компания', dataIndex: 'company_name', ellipsis: true, width: 180 },
                           { title: 'Клиент', dataIndex: 'client_name', ellipsis: true },
-                          { title: 'Модель', dataIndex: 'model', width: 100, ellipsis: true },
                           {
                             title: '',
                             width: 90,
