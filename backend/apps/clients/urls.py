@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView
 from .settings_views import SystemSettingsView, TestEmailView, CheckPackagesView
 
 router = DefaultRouter()
@@ -11,6 +11,7 @@ router.register('ofd-companies', OfdCompanyViewSet, basename='ofd-companies')
 router.register('', ClientViewSet, basename='client')
 
 urlpatterns = [
+    path('rnm-sync/', RnmSyncView.as_view(), name='rnm-sync'),
     path('search/', GlobalSearchView.as_view(), name='global-search'),
     path('dashboard/', DashboardStatsView.as_view(), name='dashboard'),
     path('system-settings/', SystemSettingsView.as_view(), name='system-settings'),

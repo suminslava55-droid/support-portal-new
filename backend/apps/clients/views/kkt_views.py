@@ -50,6 +50,36 @@ def ofd_request(inn, token, search=''):
         raise Exception(f'Скрипт {script} не найден в контейнере')
 
 
+def ofd_get_all_rnm(inn, token, timeout=30):
+    """
+    Прямой запрос к ОФД — возвращает ТОЛЬКО список РНМ без детализации.
+    Один запрос на всю компанию — используется для сверки.
+    """
+    import urllib.request
+    import gzip as _gzip
+    url = f"https://lk.ofd.ru/api/integration/v2/inn/{inn}/kkts?AuthToken={token}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json, */*",
+        "Accept-Encoding": "gzip, deflate",
+        "Referer": "https://lk.ofd.ru/",
+        "Origin": "https://lk.ofd.ru",
+    }
+    try:
+        url.encode("ascii")
+    except UnicodeEncodeError:
+        raise Exception("Токен содержит недопустимые символы")
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read()
+        if r.headers.get("Content-Encoding") == "gzip":
+            raw = _gzip.decompress(raw)
+        data = json.loads(raw.decode("utf-8"))
+    if data.get("Status") != "Success":
+        raise Exception(f'ОФД вернул ошибку: {data}')
+    return data.get("Data", [])
+
+
 class OfdKktView(APIView):
     """
     GET   /api/clients/{id}/ofd_kkt/  — получить сохранённые ККТ из БД

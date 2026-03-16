@@ -9,6 +9,7 @@ import SettingsAccounts    from './settings/SettingsAccounts';
 import SettingsAutomation  from './settings/SettingsAutomation';
 import SettingsScheduler   from './settings/SettingsScheduler';
 import SettingsDiagnostics from './settings/SettingsDiagnostics';
+import SettingsRnmSync     from './settings/SettingsRnmSync';
 import { Form } from 'antd';
 
 const { Title } = Typography;
@@ -86,7 +87,14 @@ export default function SettingsPage() {
     loadPackages();
   }, [sshForm, smtpForm]); // eslint-disable-line
 
-  useEffect(() => { loadTasks(); }, []); // eslint-disable-line
+  useEffect(() => { loadTasks(); loadCompanies(); }, []); // eslint-disable-line
+
+  const loadCompanies = async () => {
+    try {
+      const { data } = await api.get('/clients/ofd-companies/');
+      setCompanies(Array.isArray(data) ? data : (data.results || []));
+    } catch { setCompanies([]); }
+  };
 
   // ─── Диагностика ────────────────────────────────────────
   const loadPackages = async () => {
@@ -310,10 +318,6 @@ export default function SettingsPage() {
   };
 
   const openRunModal = async () => {
-    try {
-      const { data } = await api.get('/clients/ofd-companies/');
-      setCompanies(Array.isArray(data) ? data : (data.results || []));
-    } catch { setCompanies([]); }
     setRunScope(null); setSelectedCompany(null); setRunModal(true);
   };
 
@@ -354,18 +358,21 @@ export default function SettingsPage() {
       key: 'automation',
       label: <Space><RobotOutlined />Автоматизация</Space>,
       children: (
-        <SettingsAutomation
-          importModal={importModal} setImportModal={setImportModal}
-          importFile={importFile} setImportFile={setImportFile}
-          importFileName={importFileName} setImportFileName={setImportFileName}
-          importing={importing}
-          importProgress={importProgress}
-          importProgressText={importProgressText}
-          importReport={importReport}
-          reportModal={reportModal} setReportModal={setReportModal}
-          handleFileSelect={handleFileSelect}
-          handleImport={handleImport}
-        />
+        <>
+          <SettingsAutomation
+            importModal={importModal} setImportModal={setImportModal}
+            importFile={importFile} setImportFile={setImportFile}
+            importFileName={importFileName} setImportFileName={setImportFileName}
+            importing={importing}
+            importProgress={importProgress}
+            importProgressText={importProgressText}
+            importReport={importReport}
+            reportModal={reportModal} setReportModal={setReportModal}
+            handleFileSelect={handleFileSelect}
+            handleImport={handleImport}
+          />
+          <SettingsRnmSync companies={companies} />
+        </>
       ),
     },
     {

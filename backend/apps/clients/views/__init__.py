@@ -32,6 +32,7 @@ from .scheduler_views import (
     ScheduledTaskRunView,
     ScheduledTaskProgressView,
     ScheduledTaskCronView,
+    RnmSyncView,
 )
 
 from .search_views import GlobalSearchView

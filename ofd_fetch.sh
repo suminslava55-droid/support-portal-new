@@ -37,7 +37,7 @@ def ofd_get(url):
     except UnicodeEncodeError:
         raise ValueError("Токен содержит недопустимые символы (кириллица или спецсимволы). Обновите токен в разделе «Компании».")
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.urlopen(req, timeout=60) as r:
         raw = r.read()
         encoding = r.headers.get("Content-Encoding", "")
         if encoding == "gzip":
@@ -111,17 +111,6 @@ if search:
 else:
     filtered = all_kkts
 
-result = []
-for kkt in filtered:
-    rnm = kkt.get("KktRegId")
-    if not rnm:
-        continue
-    detail_url = f"https://lk.ofd.ru/api/integration/v2/inn/{inn}/kkts?KKTRegNumber={rnm}&AuthToken={token}"
-    try:
-        detail = ofd_get(detail_url)
-        if detail.get("Status") == "Success":
-            result.extend(detail.get("Data", []))
-    except Exception:
-        pass
+result = [k for k in filtered if k.get("KktRegId")]
 
 print(json.dumps({"Status": "Success", "Data": result}))

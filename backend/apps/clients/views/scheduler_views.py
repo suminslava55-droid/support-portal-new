@@ -17,7 +17,7 @@ from ..serializers import (
 )
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
-from .kkt_views import parse_datetime, ofd_request
+from .kkt_views import parse_datetime, ofd_request, ofd_get_all_rnm
 
 
 def _get_or_create_task(task_id):
@@ -317,9 +317,7 @@ def _run_update_rnm(task_id, company_id, user_id, only_expiring=False):
             f'Время выполнения: {elapsed_str}.'
         )
         if error_log:
-            summary += '\n\nОшибки:\n' + '\n'.join(error_log[:20])
-            if len(error_log) > 20:
-                summary += f'\n...и ещё {len(error_log)-20} ошибок'
+            summary += '\n\nОшибки:\n' + '\n'.join(error_log)
 
         _set(status='success' if errors_total == 0 else 'error',
              progress=100,
@@ -433,9 +431,7 @@ def _run_fetch_external_ip(task_id, user_id):
             f'Время выполнения: {elapsed_str}.'
         )
         if error_log:
-            summary += '\n\nОшибки:\n' + '\n'.join(error_log[:30])
-            if len(error_log) > 30:
-                summary += f'\n...и ещё {len(error_log)-30}'
+            summary += '\n\nОшибки:\n' + '\n'.join(error_log)
 
         _set(status='success' if errors == 0 else 'error',
              progress=100,
@@ -535,8 +531,11 @@ class ScheduledTaskCronView(APIView):
         t.enabled = bool(enabled)
         if schedule_time:
             t.schedule_time = schedule_time
-        if schedule_days:
-            t.schedule_days = ','.join(str(d) for d in days_list) if isinstance(schedule_days, list) else str(schedule_days)
+        if schedule_days is not None:
+            if isinstance(schedule_days, list):
+                t.schedule_days = ','.join(str(d) for d in schedule_days)
+            else:
+                t.schedule_days = str(schedule_days)
         t.save()
 
         return Response({'ok': True, 'message': action, 'cron_line': cron_line or 'удалено'})
@@ -550,3 +549,208 @@ class ScheduledTaskCronView(APIView):
             return Response({'error': stderr or 'Ошибка чтения crontab'}, status=500)
         return Response({'cron_line': stdout or None})
 
+
+# ─────────────────────────────────────────────────────────────
+#  Сверка РНМ с ОФД
+# ─────────────────────────────────────────────────────────────
+
+SYNC_TASK_ID = 'rnm_sync'
+
+
+class RnmSyncView(APIView):
+    """Запуск сверки РНМ с ОФД и получение результата."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        import threading
+        from ..models import ScheduledTask
+        company_id = request.data.get('company_id')  # None = все компании
+
+        t, _ = ScheduledTask.objects.get_or_create(
+            task_id=SYNC_TASK_ID,
+            defaults={'name': 'Сверка РНМ с ОФД'}
+        )
+        if t.status == 'running':
+            return Response({'error': 'Сверка уже выполняется'}, status=400)
+
+        thread = threading.Thread(
+            target=_run_rnm_sync,
+            args=(company_id, request.user.id),
+            daemon=True,
+        )
+        thread.start()
+        return Response({'ok': True, 'message': 'Сверка запущена'})
+
+    def delete(self, request):
+        """Удалить ККТ по РНМ с записью в историю изменений."""
+        from ..models import KktData, ClientActivity
+        rnm = request.data.get('rnm', '').strip()
+        client_id = request.data.get('client_id')
+        if not rnm or not client_id:
+            return Response({'error': 'rnm и client_id обязательны'}, status=400)
+        try:
+            kkt = KktData.objects.get(kkt_reg_id=rnm, client_id=client_id)
+        except KktData.DoesNotExist:
+            return Response({'error': 'ККТ не найдена'}, status=404)
+
+        model = kkt.kkt_model or '—'
+        fn = kkt.fn_number or '—'
+        kkt.delete()
+
+        ClientActivity.objects.create(
+            client_id=client_id,
+            user=request.user,
+            action=f'Удалена ККТ (сверка РНМ): РНМ {rnm}, модель {model}, ФН {fn}'
+        )
+        return Response({'ok': True})
+
+    def get(self, request):
+        """Прогресс и результат сверки."""
+        from ..models import ScheduledTask
+        t, _ = ScheduledTask.objects.get_or_create(
+            task_id=SYNC_TASK_ID,
+            defaults={'name': 'Сверка РНМ с ОФД'}
+        )
+        result = None
+        if t.last_run_result:
+            try:
+                result = json.loads(t.last_run_result)
+            except Exception:
+                result = None
+        return Response({
+            'status':        t.status,
+            'progress':      t.progress,
+            'progress_text': t.progress_text,
+            'last_run_at':   t.last_run_at.isoformat() if t.last_run_at else None,
+            'result':        result,
+        })
+
+
+def _run_rnm_sync(company_id, user_id):
+    """Фоновая сверка РНМ с ОФД."""
+    from ..models import ScheduledTask, KktData, OfdCompany, Client
+    from django.utils import timezone
+
+    def _set(**kwargs):
+        ScheduledTask.objects.filter(task_id=SYNC_TASK_ID).update(**kwargs)
+
+    _set(status='running', progress=0, progress_text='Инициализация...', last_run_at=timezone.now())
+
+    try:
+        # Выбираем компании
+        if company_id:
+            companies = list(OfdCompany.objects.filter(pk=company_id))
+        else:
+            companies = list(OfdCompany.objects.all())
+
+        if not companies:
+            _set(status='error', progress=0, progress_text='Нет компаний',
+                 last_run_result=json.dumps({'error': 'Нет компаний для сверки'}))
+            return
+
+        total_missing_ofd = []   # есть у нас, нет в ОФД
+        total_missing_us  = []   # есть в ОФД, нет у нас
+        errors = []
+
+        for idx, company in enumerate(companies):
+            pct = int((idx / len(companies)) * 90)
+            _set(progress=pct, progress_text=f'Компания {idx+1}/{len(companies)}: {company.name}')
+
+            if not company.ofd_token:
+                errors.append(f'{company.name}: нет токена ОФД')
+                continue
+
+            # Получаем все РНМ из ОФД по ИНН — один запрос, без детализации
+            try:
+                ofd_items = ofd_get_all_rnm(company.inn, company.ofd_token, timeout=60)
+            except Exception as e:
+                errors.append(f'{company.name}: ошибка запроса к ОФД — {str(e)[:100]}')
+                continue
+
+            if not ofd_items:
+                errors.append(f'{company.name}: пустой ответ от ОФД')
+                continue
+
+            # РНМ из ОФД
+            ofd_rnms = {}
+            for item in ofd_items:
+                rnm = str(item.get('KktRegId', '') or '').strip()
+                if rnm:
+                    ofd_rnms[rnm] = {
+                        'address': item.get('FiscalAddress', '') or '',
+                        'model':   item.get('Model', '') or '',
+                        'fn':      item.get('FnNumber', '') or '',
+                    }
+
+            # РНМ из нашей базы для клиентов этой компании
+            our_rnms = {}
+            kkt_qs = KktData.objects.filter(
+                client__ofd_company=company,
+                client__is_draft=False,
+                kkt_reg_id__isnull=False,
+            ).exclude(kkt_reg_id='').select_related('client')
+
+            for kkt in kkt_qs:
+                rnm = str(kkt.kkt_reg_id).strip()
+                if rnm:
+                    our_rnms[rnm] = {
+                        'client_id':   kkt.client_id,
+                        'client_name': kkt.client.address or kkt.client.company or f'#{kkt.client_id}',
+                        'model':       kkt.kkt_model or '',
+                        'fn':          kkt.fn_number or '',
+                    }
+
+            ofd_set = set(ofd_rnms.keys())
+            our_set = set(our_rnms.keys())
+
+            # Есть в ОФД, нет у нас
+            for rnm in sorted(ofd_set - our_set):
+                info = ofd_rnms[rnm]
+                total_missing_us.append({
+                    'company_id':   company.id,
+                    'company_name': company.name,
+                    'rnm':          rnm,
+                    'address':      info['address'],
+                    'model':        info['model'],
+                    'fn':           info['fn'],
+                })
+
+            # Есть у нас, нет в ОФД
+            for rnm in sorted(our_set - ofd_set):
+                info = our_rnms[rnm]
+                total_missing_ofd.append({
+                    'company_id':   company.id,
+                    'company_name': company.name,
+                    'rnm':          rnm,
+                    'client_id':    info['client_id'],
+                    'client_name':  info['client_name'],
+                    'model':        info['model'],
+                    'fn':           info['fn'],
+                })
+
+        result = {
+            'companies_checked': len(companies),
+            'missing_in_us':     total_missing_us,    # есть в ОФД, нет у нас
+            'missing_in_ofd':    total_missing_ofd,   # есть у нас, нет в ОФД
+            'errors':            errors,
+        }
+
+        summary = (
+            f'Проверено компаний: {len(companies)}. '
+            f'Есть в ОФД, нет у нас: {len(total_missing_us)}. '
+            f'Есть у нас, нет в ОФД: {len(total_missing_ofd)}. '
+            f'Ошибок: {len(errors)}.'
+        )
+
+        _set(
+            status='success' if not errors else 'error',
+            progress=100,
+            progress_text=summary,
+            last_run_result=json.dumps(result, ensure_ascii=False),
+        )
+
+    except Exception as e:
+        import traceback
+        _set(status='error', progress=0,
+             progress_text='Критическая ошибка',
+             last_run_result=json.dumps({'error': str(e), 'traceback': traceback.format_exc()[:500]}))
