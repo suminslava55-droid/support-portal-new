@@ -250,9 +250,14 @@ function KktTable({ rows, loading, total, pagination, onPageChange, onSortChange
       scroll={{ x: 'max-content' }}
       rowClassName={() => 'fn-row'}
       onRow={row => ({ onClick: () => onNavigate(row.client_id), style: { cursor: 'pointer' } })}
-      onChange={(_, __, sorter) => {
-        const bf = SORT_MAP[sorter.field] || 'fn_end_date';
-        onSortChange(sorter.order ? (sorter.order === 'descend' ? `-${bf}` : bf) : 'fn_end_date');
+      onChange={(pag, _, sorter) => {
+        if (sorter && sorter.field) {
+          const bf = SORT_MAP[sorter.field] || 'fn_end_date';
+          onSortChange(sorter.order ? (sorter.order === 'descend' ? `-${bf}` : bf) : 'fn_end_date');
+        }
+        if (pag && pag.current !== undefined) {
+          onPageChange(pag.current);
+        }
       }}
       pagination={{
         current: pagination.page,
@@ -260,7 +265,6 @@ function KktTable({ rows, loading, total, pagination, onPageChange, onSortChange
         total,
         showSizeChanger: false,
         showTotal: t => `Всего: ${t}`,
-        onChange: onPageChange,
       }}
     />
   );

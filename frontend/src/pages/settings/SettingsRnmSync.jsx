@@ -6,7 +6,7 @@ import {
 import {
   SyncOutlined, FileTextOutlined, PlusOutlined,
   CheckCircleOutlined, CloseCircleOutlined, MinusCircleOutlined,
-  DeleteOutlined,
+  DeleteOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import api from '../../api/axios';
 
@@ -151,6 +151,34 @@ export default function SettingsRnmSync({ companies }) {
   const missingInOfd = result?.missing_in_ofd || [];
   const errors       = result?.errors         || [];
 
+  const exportToExcel = () => {
+    if (!result) return;
+    const rows = [];
+    rows.push(['Есть в ОФД, нет у нас']);
+    rows.push(['РНМ', 'Компания', 'Адрес в ОФД']);
+    missingInUs.forEach(r => rows.push([r.rnm, r.company_name, r.address || '']));
+    rows.push([]);
+    rows.push(['Есть у нас, нет в ОФД']);
+    rows.push(['РНМ', 'Компания', 'Клиент']);
+    missingInOfd.forEach(r => rows.push([r.rnm, r.company_name, r.client_name || '']));
+    if (errors.length > 0) {
+      rows.push([]);
+      rows.push(['Ошибки']);
+      errors.forEach(e => rows.push([e]));
+    }
+    const bom = '\uFEFF';
+    const csv = rows.map(row =>
+      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';')
+    ).join('\n');
+    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rnm_sync_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <Card
@@ -249,7 +277,14 @@ export default function SettingsRnmSync({ companies }) {
         title={<Space><FileTextOutlined />Результат сверки РНМ</Space>}
         open={resultModal}
         onCancel={() => setResultModal(false)}
-        footer={<Button onClick={() => setResultModal(false)}>Закрыть</Button>}
+        footer={
+          <Space>
+            <Button icon={<DownloadOutlined />} onClick={exportToExcel} disabled={!result}>
+              Скачать CSV
+            </Button>
+            <Button onClick={() => setResultModal(false)}>Закрыть</Button>
+          </Space>
+        }
         width="80vw"
         style={{ maxWidth: 1400, top: 40 }}
         styles={{ body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' } }}
@@ -280,7 +315,7 @@ export default function SettingsRnmSync({ companies }) {
                         columns={[
                           { title: 'РНМ', dataIndex: 'rnm', width: 170, render: v => <code>{v}</code> },
                           { title: 'Компания', dataIndex: 'company_name', ellipsis: true, width: 150 },
-                          { title: 'Адрес в ОФД', dataIndex: 'address', ellipsis: true },
+                          { title: 'Адрес в ОФД', dataIndex: 'address', ellipsis: true, width: '22%' },
                           {
                             title: 'Клиент',
                             width: 220,
