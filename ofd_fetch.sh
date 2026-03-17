@@ -37,7 +37,7 @@ def ofd_get(url):
     except UnicodeEncodeError:
         raise ValueError("Токен содержит недопустимые символы (кириллица или спецсимволы). Обновите токен в разделе «Компании».")
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.urlopen(req, timeout=60) as r:
         raw = r.read()
         encoding = r.headers.get("Content-Encoding", "")
         if encoding == "gzip":
