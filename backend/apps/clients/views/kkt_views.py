@@ -149,7 +149,7 @@ class OfdKktView(APIView):
 
         all_items = result_data.get('Data', [])
         if not all_items:
-            return Response({'error': 'ОФД не вернул ни одной ККТ для данного ИНН и адреса'}, status=404)
+            return Response({'error': f'ККТ по адресу «{address}» не найдены в ОФД. Проверьте адрес клиента — он должен совпадать с адресом установки кассы в ОФД.'}, status=404)
 
         fetched = []
         errors = []

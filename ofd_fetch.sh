@@ -37,7 +37,7 @@ def ofd_get(url):
     except UnicodeEncodeError:
         raise ValueError("Токен содержит недопустимые символы (кириллица или спецсимволы). Обновите токен в разделе «Компании».")
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.urlopen(req, timeout=30) as r:
         raw = r.read()
         encoding = r.headers.get("Content-Encoding", "")
         if encoding == "gzip":
@@ -75,8 +75,32 @@ if search:
                   "область", "край", "республика", "город"}
 
     # Извлекаем слова из адреса
-    words = [w.strip('.,()-').lower() for w in re.split(r'[\s,]+', search)]
-    words = [w for w in words if w and len(w) > 1 and w not in stop_words]
+    raw_words = [w.strip('.,()-').lower() for w in re.split(r'[\s,]+', search)]
+    raw_words = [w for w in raw_words if w and len(w) > 1 and w not in stop_words]
+
+    # Для дробей типа 47/5 создаём группы: совпадает если нашли саму дробь ИЛИ оба числа
+    word_groups = []
+    for w in raw_words:
+        if re.match(r'^\d+/\d+$', w):
+            parts = w.split('/')
+            word_groups.append([w] + parts)  # группа: 47/5 ИЛИ (47 И 5)
+        else:
+            word_groups.append([w])
+
+    def group_matches(fiscal_addr, groups):
+        addr_lower = fiscal_addr.lower()
+        for group in groups:
+            if len(group) == 1:
+                if group[0] not in addr_lower:
+                    return False
+            else:
+                # дробь: ищем саму дробь ИЛИ все части отдельно
+                fraction = group[0]
+                parts = group[1:]
+                if fraction not in addr_lower:
+                    if not all(p in addr_lower for p in parts):
+                        return False
+        return True
 
     # Отдельно извлекаем номер дома
     house_match = re.search(r'(?:д\.?\s*|дом\s*)(\d+)', search, re.IGNORECASE)
@@ -87,9 +111,7 @@ if search:
         house_num = house_match.group(1)
 
     def matches(fiscal_addr):
-        addr_lower = fiscal_addr.lower()
-        word_match = all(w in addr_lower for w in words)
-        if not word_match:
+        if not group_matches(fiscal_addr, word_groups):
             return False
         if house_num:
             addr_numbers = re.findall(r'\b(\d+)\b', fiscal_addr)
@@ -100,14 +122,13 @@ if search:
     filtered = [k for k in all_kkts if matches(k.get("FiscalAddress", ""))]
 
     if not filtered:
+        # Частичное совпадение — хотя бы 3 слова из групп
+        simple_words = [g[0] for g in word_groups]
         def matches_partial(fiscal_addr):
             addr_lower = fiscal_addr.lower()
-            matched = sum(1 for w in words if w in addr_lower)
-            return matched >= min(3, len(words))
+            matched = sum(1 for w in simple_words if w in addr_lower)
+            return matched >= min(3, len(simple_words))
         filtered = [k for k in all_kkts if matches_partial(k.get("FiscalAddress", ""))]
-
-    if not filtered:
-        filtered = all_kkts
 else:
     filtered = all_kkts
 
