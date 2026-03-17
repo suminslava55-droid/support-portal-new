@@ -10,4 +10,4 @@ __pycache__/
 *.log
 node_modules/
 .DS_Store
-frontend/build/
+frontend/build/*.bak
