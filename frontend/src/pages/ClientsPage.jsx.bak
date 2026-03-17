@@ -223,20 +223,20 @@ export default function ClientsPage() {
     try {
       const { data } = await clientsAPI.list({
         page,
-        page_size: pagination.pageSize,
+        page_size: pageSize,
         search: search || undefined,
         status: status || undefined,
         provider: providerFilter.length ? providerFilter.join(',') : undefined,
         ordering,
       });
       setClients(data.results);
-      setPagination(p => ({ ...p, current: page, total: data.count }));
+      setPagination({ current: page, pageSize, total: data.count });
     } catch {
       message.error('Ошибка загрузки клиентов');
     } finally {
       setLoading(false);
     }
-  }, [search, status, providerFilter, sortField, sortOrder, pagination.pageSize]);
+  }, [search, status, providerFilter, sortField, sortOrder, pageSize]);
 
   useEffect(() => { fetchClients(1); }, [fetchClients]);
 

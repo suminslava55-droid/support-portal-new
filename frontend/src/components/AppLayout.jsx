@@ -133,7 +133,7 @@ export default function AppLayout({ children }) {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme={isDark ? 'dark' : 'light'} width={220} style={{ boxShadow: '2px 0 8px rgba(0,0,0,0.06)' }}>
+      <Sider theme={isDark ? 'dark' : 'light'} width={220} style={{ boxShadow: '2px 0 8px rgba(0,0,0,0.06)', position: 'sticky', top: 0, height: '100vh', overflow: 'auto' }}>
         <div style={{
           padding: '16px 16px 12px',
           borderBottom: isDark ? '1px solid #303030' : '1px solid #f0f0f0',
