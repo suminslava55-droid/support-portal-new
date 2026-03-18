@@ -221,7 +221,7 @@ function KktTable({ rows, loading, total, pagination, onPageChange, onSortChange
     show('address') && {
       title: 'Адрес', dataIndex: 'address', key: 'address', sorter: true, ellipsis: true,
       render: (val, row) => (
-        <a style={{ color: '#1677ff' }} onClick={e => { e.stopPropagation(); onNavigate(row.client_id); }}>
+        <a style={{ color: '#1677ff', cursor: 'pointer' }} onClick={() => onNavigate(row.client_id)}>
           {val}
         </a>
       ),
@@ -249,7 +249,6 @@ function KktTable({ rows, loading, total, pagination, onPageChange, onSortChange
       size="small"
       scroll={{ x: 'max-content' }}
       rowClassName={() => 'fn-row'}
-      onRow={row => ({ onClick: () => onNavigate(row.client_id), style: { cursor: 'pointer' } })}
       onChange={(pag, _, sorter) => {
         if (sorter && sorter.field) {
           const bf = SORT_MAP[sorter.field] || 'fn_end_date';
@@ -486,7 +485,7 @@ export default function FnReplacementPage() {
           },
         ]}
       />
-      <style>{`.fn-row:hover td { background: #e6f4ff !important; }`}</style>
+      <style>{`.fn-row td a { text-decoration: none; } .fn-row td a:hover { text-decoration: underline; }`}</style>
     </div>
   );
 }
