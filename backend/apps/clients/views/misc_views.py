@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from ..models import Client, KktData, Provider, OfdCompany, ClientActivity, SystemSettings
 from ..serializers import ProviderSerializer, OfdCompanySerializer, OfdCompanyWriteSerializer
 from apps.accounts.permissions import CanEditClient
+from .utils import ping_ip
 
 
 
