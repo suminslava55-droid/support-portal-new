@@ -868,3 +868,194 @@ def _run_backup_system(task_id, user_id):
         _set(status='error', progress=0,
              progress_text='Ошибка резервного копирования',
              last_run_result=f'Критическая ошибка:\n{str(e)}\n{traceback.format_exc()[:800]}')
+
+
+# ─────────────────────────────────────────────────────────────
+#  Список бэкапов и восстановление
+# ─────────────────────────────────────────────────────────────
+
+BACKUP_DIR = '/opt/support-portal/backups'
+
+
+class BackupListView(APIView):
+    """Список доступных резервных копий."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.accounts.permissions import IsAdmin
+        if not IsAdmin().has_permission(request, self):
+            return Response({'error': 'Только для администраторов'}, status=403)
+
+        if not os.path.exists(BACKUP_DIR):
+            return Response([])
+
+        backups = []
+        for fname in sorted(os.listdir(BACKUP_DIR), reverse=True):
+            if fname.startswith('backup_') and fname.endswith('.tar.gz'):
+                fpath = os.path.join(BACKUP_DIR, fname)
+                stat = os.stat(fpath)
+                size = stat.st_size
+                if size >= 1024 ** 2:
+                    size_str = f'{size / 1024 ** 2:.1f} МБ'
+                elif size >= 1024:
+                    size_str = f'{size / 1024:.1f} КБ'
+                else:
+                    size_str = f'{size} Б'
+                import datetime
+                mtime = datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%d.%m.%Y %H:%M:%S')
+                backups.append({
+                    'filename': fname,
+                    'size': size,
+                    'size_str': size_str,
+                    'created_at': mtime,
+                })
+        return Response(backups)
+
+
+class BackupRestoreView(APIView):
+    """Восстановление из резервной копии."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        import threading
+        from apps.accounts.permissions import IsAdmin
+        if not IsAdmin().has_permission(request, self):
+            return Response({'error': 'Только для администраторов'}, status=403)
+
+        filename = request.data.get('filename', '').strip()
+        if not filename:
+            return Response({'error': 'Имя файла не указано'}, status=400)
+
+        # Защита от path traversal
+        if '/' in filename or '..' in filename:
+            return Response({'error': 'Недопустимое имя файла'}, status=400)
+
+        filepath = os.path.join(BACKUP_DIR, filename)
+        if not os.path.exists(filepath):
+            return Response({'error': f'Файл не найден: {filename}'}, status=404)
+
+        from ..models import ScheduledTask
+        RESTORE_TASK_ID = 'restore_backup'
+        t, _ = ScheduledTask.objects.get_or_create(
+            task_id=RESTORE_TASK_ID,
+            defaults={'name': 'Восстановление из бэкапа'}
+        )
+        if t.status == 'running':
+            return Response({'error': 'Восстановление уже выполняется'}, status=400)
+
+        thread = threading.Thread(
+            target=_run_restore_backup,
+            args=(RESTORE_TASK_ID, filepath, request.user.id),
+            daemon=True,
+        )
+        thread.start()
+        return Response({'ok': True, 'message': f'Восстановление запущено из {filename}'})
+
+    def get(self, request):
+        """Прогресс восстановления."""
+        from ..models import ScheduledTask
+        RESTORE_TASK_ID = 'restore_backup'
+        t, _ = ScheduledTask.objects.get_or_create(
+            task_id=RESTORE_TASK_ID,
+            defaults={'name': 'Восстановление из бэкапа'}
+        )
+        return Response({
+            'status':        t.status,
+            'progress':      t.progress,
+            'progress_text': t.progress_text,
+            'last_run_at':   t.last_run_at.isoformat() if t.last_run_at else None,
+            'last_run_result': t.last_run_result,
+        })
+
+
+def _run_restore_backup(task_id, filepath, user_id):
+    """Фоновое восстановление: распаковка архива → flush → loaddata → копирование медиа."""
+    import shutil
+    import traceback
+    import tempfile
+    from django.utils import timezone
+    from ..models import ScheduledTask
+
+    def _set(**kwargs):
+        ScheduledTask.objects.filter(task_id=task_id).update(**kwargs)
+
+    _set(status='running', progress=0, progress_text='Инициализация...', last_run_at=timezone.now())
+    started_at = timezone.now()
+    tmp_dir = None
+
+    try:
+        # ── 1. Распаковка архива ─────────────────────────────
+        _set(progress=10, progress_text='Распаковка архива...')
+        tmp_dir = tempfile.mkdtemp(prefix='restore_')
+        shutil.unpack_archive(filepath, tmp_dir, 'gztar')
+
+        # Найти папку внутри архива
+        entries = os.listdir(tmp_dir)
+        if len(entries) == 1 and os.path.isdir(os.path.join(tmp_dir, entries[0])):
+            restore_root = os.path.join(tmp_dir, entries[0])
+        else:
+            restore_root = tmp_dir
+
+        db_file    = os.path.join(restore_root, 'db.json')
+        media_src  = os.path.join(restore_root, 'media')
+
+        if not os.path.exists(db_file):
+            _set(status='error', progress=0,
+                 progress_text='Ошибка: db.json не найден в архиве',
+                 last_run_result='Архив повреждён или имеет неверную структуру')
+            return
+
+        # ── 2. Очистка БД (только пользовательские таблицы) ─
+        _set(progress=30, progress_text='Очистка базы данных...')
+        from django.db import connection
+        # Таблицы которые не трогаем — системные Django
+        SKIP_TABLES = {
+            'django_migrations',
+            'django_content_type',
+            'auth_permission',
+            'auth_group',
+            'auth_group_permissions',
+        }
+        with connection.cursor() as cursor:
+            cursor.execute("SET session_replication_role = 'replica';")
+            tables = connection.introspection.table_names(cursor)
+            for table in tables:
+                if table in SKIP_TABLES or table.startswith('django_'):
+                    continue
+                cursor.execute(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE;')
+            cursor.execute("SET session_replication_role = 'origin';")
+
+        # ── 3. Загрузка дампа ────────────────────────────────
+        _set(progress=55, progress_text='Восстановление данных из дампа...')
+        from django.core.management import call_command
+        # Копируем db.json в /tmp внутри контейнера чтобы loaddata нашёл файл
+        internal_db = '/tmp/restore_db.json'
+        shutil.copy2(db_file, internal_db)
+        try:
+            call_command('loaddata', internal_db, format='json', verbosity=0)
+        finally:
+            if os.path.exists(internal_db):
+                os.remove(internal_db)
+
+        # ── 4. Восстановление медиафайлов ────────────────────
+        _set(progress=80, progress_text='Восстановление медиафайлов...')
+        media_dst = '/app/media'
+        if os.path.exists(media_src):
+            if os.path.exists(media_dst):
+                shutil.rmtree(media_dst)
+            shutil.copytree(media_src, media_dst)
+
+        elapsed = timezone.now() - started_at
+        elapsed_str = f'{int(elapsed.total_seconds() // 60)} мин {int(elapsed.total_seconds() % 60)} сек'
+
+        _set(status='success', progress=100,
+             progress_text=f'Готово. Время: {elapsed_str}',
+             last_run_result=f'Восстановление выполнено из: {os.path.basename(filepath)}\nВремя: {elapsed_str}')
+
+    except Exception as e:
+        _set(status='error', progress=0,
+             progress_text='Ошибка восстановления',
+             last_run_result=f'Критическая ошибка:\n{str(e)}\n{traceback.format_exc()[:800]}')
+    finally:
+        if tmp_dir and os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir, ignore_errors=True)
