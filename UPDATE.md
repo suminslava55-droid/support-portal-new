@@ -63,6 +63,7 @@ python3 /opt/support-portal/setup_scheduler.py
 |---------|----------|---------------|
 | Обновление данных по ККТ | Обходит клиентов, обновляет данные через lk.ofd.ru | Все клиенты или отдельная компания |
 | Обновление внешнего IP | Подключается к каждому Микротику по SSH, получает внешний IP | Все клиенты |
+| Резервное копирование | Дамп БД + медиафайлы → архив `.tar.gz` в `/opt/support-portal/backups/` | Один клик |
 
 При запуске **по расписанию** задание «Обновление данных по ККТ» работает в режиме **только истекающие ФН (≤30 дней)** — это быстрее и щадит лимиты ОФД. При ручном запуске — всегда все ККТ выбранной области.
 
@@ -137,6 +138,54 @@ bash /opt/support-portal/scheduler_run.sh fetch_external_ip
 
 ---
 
+## Резервное копирование
+
+### Автоматическое
+
+Настройте задание **«Резервное копирование»** в **Настройки → Регламентные задания**. Рекомендуется запускать ежедневно ночью. Хранит последние 7 копий автоматически.
+
+Бэкапы создаются в `/opt/support-portal/backups/` — папка смонтирована на хост через volume.
+
+### Ручной запуск
+
+```bash
+# Только БД
+docker compose exec backend python manage.py dumpdata \
+  --natural-foreign --natural-primary \
+  --exclude=contenttypes --exclude=auth.permission \
+  --indent=2 > /opt/support-portal/backups/db_manual_$(date +%Y%m%d).json
+
+# Только медиафайлы
+tar -czf /opt/support-portal/backups/media_$(date +%Y%m%d).tar.gz \
+  -C /opt/support-portal media/
+```
+
+### Восстановление из бэкапа
+
+> ⚠️ Убедитесь что `.env` содержит тот же `ENCRYPTION_KEY` что был при создании бэкапа.
+
+```bash
+# 1. Распаковать архив
+tar -xzf /opt/support-portal/backups/backup_YYYY-MM-DD_HH-MM-SS.tar.gz \
+  -C /tmp/restore/
+
+# 2. Очистить БД и загрузить бэкап
+docker compose exec backend python manage.py flush --no-input
+docker compose exec backend python manage.py loaddata \
+  /tmp/restore/backup_YYYY-MM-DD_HH-MM-SS/db.json
+
+# 3. Восстановить медиафайлы
+cp -r /tmp/restore/backup_YYYY-MM-DD_HH-MM-SS/media/. \
+  /opt/support-portal/media/
+
+# 4. Перезапустить
+cd /opt/support-portal && docker compose restart backend
+```
+
+> ⚠️ Файл `.env` в бэкап **не входит** — храните его отдельно. Без `ENCRYPTION_KEY` токены ОФД, SSH и SMTP пароли не расшифруются.
+
+---
+
 ## Полезные команды
 
 ```bash
@@ -186,19 +235,4 @@ for t in ScheduledTask.objects.all():
 
 ---
 
-## Резервное копирование
-
-Регулярно делайте резервные копии:
-
-```bash
-# База данных
-docker compose exec db pg_dump -U postgres support_portal > /backup/db_$(date +%Y%m%d).sql
-
-# Медиафайлы (вложения клиентов)
-tar -czf /backup/media_$(date +%Y%m%d).tar.gz /opt/support-portal/media/
-
-# Файл окружения (содержит ключи шифрования!)
-cp /opt/support-portal/.env /backup/.env.$(date +%Y%m%d)
-```
-
-> ⚠️ Файл `.env` содержит `ENCRYPTION_KEY` — без него зашифрованные пароли и токены нечитаемы. Храните резервную копию в надёжном месте.
+> ⚠️ Файл `.env` содержит `ENCRYPTION_KEY` — без него зашифрованные пароли и токены нечитаемы. Храните резервную копию `.env` в надёжном месте отдельно от сервера.

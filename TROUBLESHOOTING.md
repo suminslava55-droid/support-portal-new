@@ -262,7 +262,55 @@ systemctl restart cron-watch
 
 ---
 
-## Проблемы с ОФД
+## Проблемы с резервным копированием
+
+### Бэкап создаётся но файл не появляется в `/opt/support-portal/backups/`
+
+Папка не смонтирована в контейнер. Проверьте `docker-compose.yml`:
+
+```bash
+grep "backups" /opt/support-portal/docker-compose.yml
+# Должно быть:
+#   - ./backups:/opt/support-portal/backups
+```
+
+Если строки нет — добавьте и пересоздайте контейнер:
+```bash
+mkdir -p /opt/support-portal/backups
+# Добавьте в docker-compose.yml в секцию volumes backend:
+#   - ./backups:/opt/support-portal/backups
+docker compose up -d backend
+```
+
+### Ошибка `pg_dump: command not found`
+
+`pg_dump` не установлен в контейнере бэкенда. Задание использует Django `dumpdata` — убедитесь что установлена актуальная версия `scheduler_views.py`.
+
+### Ошибка при восстановлении `loaddata`: `DeserializationError` / `IntegrityError`
+
+Вероятная причина — в БД уже есть данные. Очистите перед восстановлением:
+```bash
+docker compose exec backend python manage.py flush --no-input
+docker compose exec backend python manage.py loaddata /tmp/restore/.../db.json
+```
+
+### После восстановления токены ОФД / SSH пароль не работают
+
+`ENCRYPTION_KEY` в `.env` отличается от того что был при создании бэкапа. Восстановите `.env` из резервной копии и перезапустите:
+```bash
+docker compose restart backend
+```
+
+### Задание «Резервное копирование» висит в статусе «running»
+
+```bash
+docker compose exec backend python manage.py shell -c "
+from apps.clients.models import ScheduledTask
+t = ScheduledTask.objects.get(task_id='backup_system')
+t.status = 'idle'; t.progress = 0; t.progress_text = ''; t.save()
+print('Сброшено')
+"
+```
 
 ### Проверка сети до lk.ofd.ru
 ```bash

@@ -27,6 +27,7 @@ services:
       - ./backend:/app
       - static_volume:/app/staticfiles
       - ./media:/app/media
+      - ./backups:/opt/support-portal/backups
       - ./ofd_fetch.sh:/usr/local/bin/ofd_fetch.sh:ro
       - ./cron_manager.sh:/usr/local/bin/cron_manager.sh:ro
     env_file: .env

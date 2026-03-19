@@ -7,6 +7,7 @@ import {
   CalendarOutlined, ClockCircleOutlined, PlayCircleOutlined,
   FileTextOutlined, SyncOutlined, SettingOutlined,
   CheckCircleOutlined, CloseCircleOutlined, MinusCircleOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import useThemeStore from '../../store/themeStore';
 
@@ -241,6 +242,13 @@ export default function SettingsScheduler({
         title="Обновление внешнего IP"
         icon={<SettingOutlined style={{ color: '#52c41a' }} />}
         onRun={() => handleRunTaskDirect('fetch_external_ip')}
+      />
+      <TaskCard
+        {...taskCardProps}
+        taskId="backup_system"
+        title="Резервное копирование"
+        icon={<DatabaseOutlined style={{ color: '#722ed1' }} />}
+        onRun={() => handleRunTaskDirect('backup_system')}
       />
 
       {/* Модал: результат */}

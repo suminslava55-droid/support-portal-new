@@ -186,10 +186,11 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 
 ---
 
-## 4. Хранилище медиафайлов
+## 4. Хранилище медиафайлов и бэкапов
 
 ```bash
 mkdir -p /opt/support-portal/media
+mkdir -p /opt/support-portal/backups
 ```
 
 ---
@@ -395,6 +396,7 @@ systemctl is-active cron-watch   # должно быть: active
 - `.env` — ключи и пароли
 - `.scheduler_token` — JWT-токен планировщика
 - `media/` — загруженные файлы
+- `backups/` — резервные копии
 
 При компрометации ключей:
 ```bash
@@ -404,3 +406,5 @@ docker compose restart backend
 # После — заново введите SSH/SMTP пароли и токены ОФД
 python3 /opt/support-portal/setup_scheduler.py  # обновить токен планировщика
 ```
+
+> ⚠️ **Потеря ENCRYPTION_KEY = потеря всех зашифрованных паролей и токенов ОФД.** Храните резервную копию `.env` отдельно от сервера.

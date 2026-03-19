@@ -26,7 +26,7 @@
 - **Вкладка Общий** — полный список всех ККТ
 - **Вкладка По месяцам** — фильтр по месяцу и году окончания срока ФН
 - Подсветка: красная (просрочен), оранжевая (≤30 дней), жёлтая (≤90 дней)
-- Клик по строке — переход в карточку клиента на вкладку ККТ
+- Клик по **адресу** — переход в карточку клиента на вкладку ККТ
 
 ### 📅 Календарь дежурств
 - Типы дежурств: Телефон, Работа днём, Телефон + день, Отпуск, Занят
@@ -49,7 +49,7 @@
 |---------|------------|
 | Учётные записи | SSH (Микротик), SMTP (Email) |
 | Автоматизация | Массовая загрузка клиентов из JSON |
-| Регламентные задания | Часовой пояс + два задания с расписанием |
+| Регламентные задания | Часовой пояс + три задания с расписанием |
 | Диагностика | Проверка Python-зависимостей |
 
 ---
@@ -95,6 +95,7 @@ privileged: true
 |---------|----------|----------|
 | `update_rnm` | Обновление данных по ККТ | Обходит клиентов с ККТ, обновляет данные через lk.ofd.ru (1 запрос/сек) |
 | `fetch_external_ip` | Обновление внешнего IP | Подключается к каждому Микротику по SSH, получает внешний IP через ipify.org, сохраняет в карточку клиента |
+| `backup_system` | Резервное копирование | Создаёт дамп БД (Django dumpdata) + копирует медиафайлы, архивирует в `.tar.gz`, хранит последние 7 копий |
 
 ### Файлы планировщика
 
@@ -179,7 +180,7 @@ support-portal/
 │   │       │   ├── calendar_views.py # DutyScheduleViewSet (календарь дежурств)
 │   │       │   ├── kkt_views.py      # OfdKktView, KktListView, KktExportView
 │   │       │   ├── bulk_views.py     # BulkImportClientsView
-│   │       │   ├── scheduler_views.py # ScheduledTask*, _run_update_rnm, _run_fetch_external_ip
+│   │       │   ├── scheduler_views.py # ScheduledTask*, _run_update_rnm, _run_fetch_external_ip, _run_backup_system
 │   │       │   ├── search_views.py    # GlobalSearchView — глобальный поиск
 │   │       │   └── utils.py          # ping_ip, build_change_log, FIELD_LABELS
 │   │       ├── serializers.py    # Сериализаторы моделей
@@ -221,6 +222,7 @@ support-portal/
 │   └── ProvidersPage.jsx         # Управление провайдерами
 ├── nginx/default.conf
 ├── media/                        # Медиафайлы (не в git)
+├── backups/                      # Резервные копии (не в git)
 ├── ofd_fetch.sh                  # Запросы к lk.ofd.ru (запускается на хосте)
 ├── cron_manager.sh               # Управляет crontab хоста через nsenter
 ├── setup_scheduler.py            # Первичная настройка планировщика
@@ -234,6 +236,78 @@ support-portal/
 ├── .scheduler_token              # Не в git!
 └── .env.example
 ```
+
+---
+
+## Резервное копирование
+
+### Автоматическое (через регламентное задание)
+
+Задание `backup_system` доступно в **Настройки → Регламентные задания**. Создаёт полный бэкап системы и хранит последние 7 копий.
+
+Что входит в бэкап:
+- **БД** — дамп через Django `dumpdata` (все клиенты, ККТ, провайдеры, компании с токенами, пользователи, настройки, история изменений)
+- **Медиафайлы** — вложения клиентов из `/app/media`
+
+Бэкапы хранятся в `/opt/support-portal/backups/` на хосте (смонтировано через volume).
+
+### Ручное создание бэкапа
+
+```bash
+# Только БД
+docker compose exec backend python manage.py dumpdata \
+  --natural-foreign --natural-primary \
+  --exclude=contenttypes --exclude=auth.permission \
+  --indent=2 > /opt/support-portal/backups/db_manual_$(date +%Y%m%d).json
+
+# Только медиафайлы
+tar -czf /opt/support-portal/backups/media_$(date +%Y%m%d).tar.gz \
+  -C /opt/support-portal media/
+```
+
+### Восстановление из бэкапа
+
+> ⚠️ Перед восстановлением убедитесь что `.env` содержит тот же `ENCRYPTION_KEY`, что был при создании бэкапа — иначе токены ОФД, SSH и SMTP пароли не расшифруются.
+
+**1. Распаковать архив:**
+```bash
+tar -xzf /opt/support-portal/backups/backup_YYYY-MM-DD_HH-MM-SS.tar.gz \
+  -C /tmp/restore/
+ls /tmp/restore/
+# backup_YYYY-MM-DD_HH-MM-SS/
+#   db.json
+#   media/
+```
+
+**2. Восстановить базу данных:**
+```bash
+# Очистить текущие данные (осторожно!)
+docker compose exec backend python manage.py flush --no-input
+
+# Загрузить бэкап
+docker compose exec backend python manage.py loaddata \
+  /tmp/restore/backup_YYYY-MM-DD_HH-MM-SS/db.json
+```
+
+**3. Восстановить медиафайлы:**
+```bash
+cp -r /tmp/restore/backup_YYYY-MM-DD_HH-MM-SS/media/. \
+  /opt/support-portal/media/
+```
+
+**4. Перезапустить бэкенд:**
+```bash
+cd /opt/support-portal && docker compose restart backend
+```
+
+### Важные файлы которые НЕ входят в бэкап задания
+
+Храните отдельно в надёжном месте:
+
+| Файл | Зачем |
+|------|-------|
+| `/opt/support-portal/.env` | `ENCRYPTION_KEY`, `SECRET_KEY`, пароль БД — без них бэкап бесполезен |
+| `/opt/support-portal/.scheduler_token` | JWT-токен планировщика (восстанавливается через `setup_scheduler.py`) |
 
 ---
 

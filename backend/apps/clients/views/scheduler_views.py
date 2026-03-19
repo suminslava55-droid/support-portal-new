@@ -25,6 +25,7 @@ def _get_or_create_task(task_id):
     TASKS = {
         'update_rnm':        'Обновление данных по РНМ',
         'fetch_external_ip': 'Получение внешнего IP',
+        'backup_system':     'Резервное копирование',
     }
     obj, _ = ScheduledTask.objects.get_or_create(
         task_id=task_id,
@@ -40,6 +41,7 @@ class ScheduledTaskListView(APIView):
         from ..models import ScheduledTask
         _get_or_create_task('update_rnm')
         _get_or_create_task('fetch_external_ip')
+        _get_or_create_task('backup_system')
         tasks = ScheduledTask.objects.all().order_by('task_id')
         result = []
         for t in tasks:
@@ -105,6 +107,14 @@ class ScheduledTaskRunView(APIView):
             )
             thread.start()
             return Response({'ok': True, 'message': 'Задание запущено (внешний IP)'})
+        elif task_id == 'backup_system':
+            thread = threading.Thread(
+                target=_run_backup_system,
+                args=(task_id, request.user.id),
+                daemon=True,
+            )
+            thread.start()
+            return Response({'ok': True, 'message': 'Задание запущено (резервное копирование)'})
         else:
             thread = threading.Thread(
                 target=_run_update_rnm,
@@ -754,3 +764,107 @@ def _run_rnm_sync(company_id, user_id):
         _set(status='error', progress=0,
              progress_text='Критическая ошибка',
              last_run_result=json.dumps({'error': str(e), 'traceback': traceback.format_exc()[:500]}))
+
+
+# ─────────────────────────────────────────────────────────────
+#  Резервное копирование
+# ─────────────────────────────────────────────────────────────
+
+def _run_backup_system(task_id, user_id):
+    """Полный бэкап: дамп БД + медиафайлы. Хранит последние 7 копий."""
+    import traceback
+    import shutil
+    from django.utils import timezone
+    from ..models import ScheduledTask
+
+    def _set(**kwargs):
+        ScheduledTask.objects.filter(task_id=task_id).update(**kwargs)
+
+    _set(status='running', progress=0, progress_text='Инициализация...', last_run_at=timezone.now())
+    started_at = timezone.now()
+
+    BACKUP_DIR = '/opt/support-portal/backups'
+    MEDIA_DIR  = '/app/media'
+    KEEP_DAYS  = 7
+
+    try:
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        stamp = timezone.now().strftime('%Y-%m-%d_%H-%M-%S')
+        backup_folder = os.path.join(BACKUP_DIR, f'backup_{stamp}')
+        os.makedirs(backup_folder, exist_ok=True)
+
+        # ── 1. Дамп базы данных через Django dumpdata ────────
+        _set(progress=10, progress_text='Создание дампа базы данных...')
+        db_file = os.path.join(backup_folder, 'db.json')
+        from django.core.management import call_command
+        import io
+        buf = io.StringIO()
+        call_command(
+            'dumpdata',
+            '--natural-foreign',
+            '--natural-primary',
+            '--exclude=contenttypes',
+            '--exclude=auth.permission',
+            '--indent=2',
+            stdout=buf,
+        )
+        db_data = buf.getvalue()
+        with open(db_file, 'w', encoding='utf-8') as f:
+            f.write(db_data)
+        db_size = os.path.getsize(db_file)
+
+        # ── 2. Копирование медиафайлов ───────────────────────
+        _set(progress=40, progress_text='Копирование медиафайлов...')
+        media_dst = os.path.join(backup_folder, 'media')
+        if os.path.exists(MEDIA_DIR):
+            shutil.copytree(MEDIA_DIR, media_dst)
+            media_size = sum(
+                os.path.getsize(os.path.join(dp, f))
+                for dp, dn, fn in os.walk(media_dst) for f in fn
+            )
+        else:
+            os.makedirs(media_dst, exist_ok=True)
+            media_size = 0
+
+        # ── 3. Архивируем папку бэкапа ───────────────────────
+        _set(progress=70, progress_text='Архивирование...')
+        archive_path = os.path.join(BACKUP_DIR, f'backup_{stamp}')
+        shutil.make_archive(archive_path, 'gztar', BACKUP_DIR, f'backup_{stamp}')
+        shutil.rmtree(backup_folder)
+        archive_file = archive_path + '.tar.gz'
+        archive_size = os.path.getsize(archive_file)
+
+        # ── 4. Удаляем старые бэкапы (старше KEEP_DAYS дней) ─
+        _set(progress=90, progress_text='Очистка старых резервных копий...')
+        import time
+        cutoff = time.time() - KEEP_DAYS * 86400
+        removed = 0
+        for fname in os.listdir(BACKUP_DIR):
+            if fname.startswith('backup_') and fname.endswith('.tar.gz'):
+                fpath = os.path.join(BACKUP_DIR, fname)
+                if os.path.getmtime(fpath) < cutoff and fpath != archive_file:
+                    os.remove(fpath)
+                    removed += 1
+
+        elapsed = timezone.now() - started_at
+        elapsed_str = f'{int(elapsed.total_seconds() // 60)} мин {int(elapsed.total_seconds() % 60)} сек'
+
+        def _fmt(b):
+            if b >= 1024 ** 2: return f'{b / 1024 ** 2:.1f} МБ'
+            if b >= 1024:      return f'{b / 1024:.1f} КБ'
+            return f'{b} Б'
+
+        summary = (
+            f'Бэкап создан: {archive_file}\n'
+            f'БД: {_fmt(db_size)}, медиа: {_fmt(media_size)}, архив: {_fmt(archive_size)}\n'
+            f'Удалено старых копий: {removed}\n'
+            f'Время выполнения: {elapsed_str}'
+        )
+        _set(status='success', progress=100,
+             progress_text=f'Готово. Архив: {_fmt(archive_size)}, время: {elapsed_str}',
+             last_run_result=summary)
+
+    except Exception as e:
+        _set(status='error', progress=0,
+             progress_text='Ошибка резервного копирования',
+             last_run_result=f'Критическая ошибка:\n{str(e)}\n{traceback.format_exc()[:800]}')
