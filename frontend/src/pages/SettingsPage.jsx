@@ -57,6 +57,13 @@ export default function SettingsPage() {
   const [timezoneOffset, setTimezoneOffset] = useState(0);
   const [savingTimezone, setSavingTimezone] = useState(false);
 
+  // Бэкапы
+  const [backups, setBackups]               = useState([]);
+  const [backupsLoading, setBackupsLoading] = useState(false);
+  const [restoring, setRestoring]           = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(null);
+  const restorePollRef                      = useRef(null);
+
   // ─── Загрузка ───────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
@@ -332,6 +339,45 @@ export default function SettingsPage() {
     } finally { setSavingTimezone(false); }
   };
 
+  const loadBackups = async () => {
+    setBackupsLoading(true);
+    try {
+      const { data } = await api.get('/clients/backups/');
+      setBackups(data);
+    } catch {
+      message.error('Ошибка загрузки списка бэкапов');
+    } finally { setBackupsLoading(false); }
+  };
+
+  const handleRestore = async (filename) => {
+    try {
+      await api.post('/clients/backups/restore/', { filename });
+      setRestoring(true);
+      setRestoreProgress({ status: 'running', progress: 0, progress_text: 'Запуск...' });
+      // Поллинг прогресса восстановления
+      restorePollRef.current = setInterval(async () => {
+        try {
+          const { data } = await api.get('/clients/backups/restore/');
+          setRestoreProgress(data);
+          if (data.status === 'success' || data.status === 'error') {
+            clearInterval(restorePollRef.current);
+            setRestoring(false);
+            if (data.status === 'success') {
+              message.success('Восстановление завершено успешно');
+            } else {
+              message.error('Ошибка восстановления');
+            }
+          }
+        } catch {
+          clearInterval(restorePollRef.current);
+          setRestoring(false);
+        }
+      }, 2000);
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка запуска восстановления');
+    }
+  };
+
   if (loading) return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>;
 
   const tabItems = [
@@ -391,6 +437,8 @@ export default function SettingsPage() {
           runScope={runScope} setRunScope={setRunScope}
           companies={companies} selectedCompany={selectedCompany} setSelectedCompany={setSelectedCompany}
           handleRunTask={handleRunTask}
+          backups={backups} backupsLoading={backupsLoading} loadBackups={loadBackups}
+          handleRestore={handleRestore} restoring={restoring} restoreProgress={restoreProgress}
         />
       ),
     },

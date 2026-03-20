@@ -33,6 +33,8 @@ from .scheduler_views import (
     ScheduledTaskProgressView,
     ScheduledTaskCronView,
     RnmSyncView,
+    BackupListView,
+    BackupRestoreView,
 )
 
 from .search_views import GlobalSearchView

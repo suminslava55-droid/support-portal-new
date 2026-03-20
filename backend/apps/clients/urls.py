@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView
 from .settings_views import SystemSettingsView, TestEmailView, CheckPackagesView
 
 router = DefaultRouter()
@@ -25,6 +25,8 @@ urlpatterns = [
     path('scheduled-tasks/run/', ScheduledTaskRunView.as_view(), name='scheduled-tasks-run'),
     path('scheduled-tasks/cron/', ScheduledTaskCronView.as_view(), name='scheduled-tasks-cron'),
     path('scheduled-tasks/<str:task_id>/progress/', ScheduledTaskProgressView.as_view(), name='scheduled-tasks-progress'),
+    path('backups/', BackupListView.as_view(), name='backup-list'),
+    path('backups/restore/', BackupRestoreView.as_view(), name='backup-restore'),
     path('<int:pk>/ofd_kkt/', OfdKktView.as_view(), name='ofd-kkt'),
     path('<int:pk>/ofd_kkt/<int:kkt_id>/', OfdKktView.as_view(), name='ofd-kkt-detail'),
     path('', include(router.urls)),

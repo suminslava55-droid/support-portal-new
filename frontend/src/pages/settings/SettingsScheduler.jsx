@@ -1,13 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Card, Button, Space, Switch, Select, Progress, Badge,
-  Tooltip, Divider, Modal, Checkbox, Typography,
+  Tooltip, Divider, Modal, Checkbox, Typography, Table, Popconfirm, Alert,
 } from 'antd';
 import {
   CalendarOutlined, ClockCircleOutlined, PlayCircleOutlined,
   FileTextOutlined, SyncOutlined, SettingOutlined,
   CheckCircleOutlined, CloseCircleOutlined, MinusCircleOutlined,
-  DatabaseOutlined,
+  DatabaseOutlined, ReloadOutlined, RollbackOutlined,
 } from '@ant-design/icons';
 import useThemeStore from '../../store/themeStore';
 
@@ -198,8 +198,14 @@ export default function SettingsScheduler({
   runScope, setRunScope,
   companies, selectedCompany, setSelectedCompany,
   handleRunTask,
+  backups, backupsLoading, loadBackups,
+  handleRestore, restoring, restoreProgress,
 }) {
   const isDark = useThemeStore((s) => s.isDark);
+
+  useEffect(() => {
+    loadBackups();
+  }, []);  // eslint-disable-line
 
   const taskCardProps = {
     tasks, tasksLoading, polling,
@@ -250,6 +256,92 @@ export default function SettingsScheduler({
         icon={<DatabaseOutlined style={{ color: '#722ed1' }} />}
         onRun={() => handleRunTaskDirect('backup_system')}
       />
+
+      {/* ── Список бэкапов и восстановление ── */}
+      <Card
+        title={<Space><RollbackOutlined style={{ color: '#722ed1' }} />Восстановление из бэкапа</Space>}
+        style={{ marginBottom: 16 }}
+        extra={
+          <Tooltip title="Обновить список">
+            <Button icon={<ReloadOutlined />} size="small" loading={backupsLoading} onClick={loadBackups} />
+          </Tooltip>
+        }
+      >
+        {restoreProgress && (restoring || restoreProgress.status === 'running') && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>{restoreProgress.progress_text}</div>
+            <Progress percent={restoreProgress.progress} status="active" strokeColor={{ '0%': '#722ed1', '100%': '#52c41a' }} />
+          </div>
+        )}
+        {restoreProgress && !restoring && restoreProgress.status === 'success' && (
+          <Alert type="success" message="Восстановление завершено успешно" style={{ marginBottom: 12 }} showIcon />
+        )}
+        {restoreProgress && !restoring && restoreProgress.status === 'error' && (
+          <Alert type="error" message="Ошибка восстановления" description={restoreProgress.last_run_result} style={{ marginBottom: 12 }} showIcon />
+        )}
+
+        {backups.length === 0 && !backupsLoading ? (
+          <div style={{ color: '#888', fontSize: 13 }}>Резервных копий не найдено. Запустите задание «Резервное копирование».</div>
+        ) : (
+          <Table
+            dataSource={backups}
+            rowKey="filename"
+            size="small"
+            loading={backupsLoading}
+            pagination={false}
+            columns={[
+              {
+                title: 'Дата создания',
+                dataIndex: 'created_at',
+                key: 'created_at',
+                width: 180,
+              },
+              {
+                title: 'Файл',
+                dataIndex: 'filename',
+                key: 'filename',
+                ellipsis: true,
+              },
+              {
+                title: 'Размер',
+                dataIndex: 'size_str',
+                key: 'size_str',
+                width: 100,
+              },
+              {
+                title: '',
+                key: 'action',
+                width: 130,
+                render: (_, record) => (
+                  <Popconfirm
+                    title="Восстановить из этого бэкапа?"
+                    description={
+                      <div>
+                        <div>Все текущие данные будут заменены.</div>
+                        <div style={{ color: '#ff4d4f', marginTop: 4 }}>Это действие необратимо.</div>
+                      </div>
+                    }
+                    okText="Восстановить"
+                    cancelText="Отмена"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => handleRestore(record.filename)}
+                    disabled={restoring}
+                  >
+                    <Button
+                      danger
+                      size="small"
+                      icon={<RollbackOutlined />}
+                      disabled={restoring}
+                    >
+                      Восстановить
+                    </Button>
+                  </Popconfirm>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Card>
 
       {/* Модал: результат */}
       <Modal
