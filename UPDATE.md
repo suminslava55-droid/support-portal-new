@@ -37,7 +37,11 @@ docker compose exec backend python -c "import cryptography, paramiko, openpyxl; 
 
 ## Быстрый деплой фронтенда
 
+> ⚠️ **Важно:** всегда выполняй `git pull` перед деплоем фронтенда. Без этого фронтенд собирается из старых файлов на диске и новые изменения из репозитория не применяются.
+
 ```bash
+cd /opt/support-portal
+git pull
 bash /opt/support-portal/deploy-frontend.sh
 ```
 
