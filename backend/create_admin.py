@@ -25,19 +25,8 @@ admin_role, _ = Role.objects.get_or_create(
     }
 )
 
-senior_role, _ = Role.objects.get_or_create(
-    name='senior',
-    defaults={
-        'description': 'Просмотр и редактирование клиентов',
-        'can_view_all_clients': True,
-        'can_create_client': True,
-        'can_edit_client': True,
-        'can_delete_client': False,
-        'can_manage_users': False,
-        'can_manage_roles': False,
-        'can_manage_custom_fields': False,
-    }
-)
+# Удаляем устаревшую роль senior если есть
+Role.objects.filter(name='senior').delete()
 
 sysadmin_role, _ = Role.objects.update_or_create(
     name='sysadmin',
@@ -83,4 +72,4 @@ user.role = admin_role
 user.save()
 
 print(f'\n✅ Администратор создан: {user.full_name} ({user.email})')
-print(f'✅ Роли созданы/обновлены: Администратор, Старший специалист, Системный администратор, Связист')
+print(f'✅ Роли созданы/обновлены: Администратор, Системный администратор, Связист')
