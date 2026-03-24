@@ -22,6 +22,7 @@ from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
 class DutyScheduleViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = DutyScheduleSerializer
+    pagination_class = None  # Отключаем пагинацию — нужны все записи месяца
 
     def get_queryset(self):
         qs = DutySchedule.objects.select_related('user')
