@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   SyncOutlined, TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
   WifiOutlined, LockOutlined, BulbOutlined, BulbFilled, CalendarOutlined, BankOutlined,
-  SearchOutlined,
+  SearchOutlined, DashboardOutlined,
 } from '@ant-design/icons';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
@@ -44,6 +44,7 @@ export default function AppLayout({ children }) {
   const isCommunications = user?.role_data?.name === 'communications';
 
   const menuItems = [
+    { key: '/dashboard', icon: <DashboardOutlined />, label: 'Дашборд' },
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
     { key: '/fn-replacement', icon: <SyncOutlined />, label: 'Замена ФН' },
     { key: '/search', icon: <SearchOutlined />, label: 'Поиск' },

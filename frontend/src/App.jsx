@@ -9,6 +9,7 @@ import useThemeStore from './store/themeStore';
 import { authAPI } from './api';
 import AppLayout from './components/AppLayout';
 import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
 import CalendarPage from './pages/CalendarPage';
 import ClientsPage from './pages/ClientsPage';
 import ClientDetailPage from './pages/ClientDetailPage';
@@ -31,14 +32,14 @@ function RequireAuth({ children }) {
 function RequireAdmin({ children }) {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role_data?.name === 'admin' || user?.is_superuser;
-  if (!isAdmin) return <Navigate to="/clients" replace />;
+  if (!isAdmin) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
 function RequireCalendar({ children }) {
   const user = useAuthStore((s) => s.user);
   const isCommunications = user?.role_data?.name === 'communications';
-  if (isCommunications) return <Navigate to="/clients" replace />;
+  if (isCommunications) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
@@ -118,7 +119,8 @@ export default function App() {
     >
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={isAuthenticated ? <Navigate to="/clients" /> : <LoginPage />} />
+          <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" /> : <LoginPage />} />
+          <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
           <Route path="/search" element={<RequireAuth><SearchPage /></RequireAuth>} />
           <Route path="/calendar" element={<RequireAuth><RequireCalendar><CalendarPage /></RequireCalendar></RequireAuth>} />
           <Route path="/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
@@ -130,7 +132,7 @@ export default function App() {
           <Route path="/ofd-companies" element={<RequireAuth><OfdCompaniesPage /></RequireAuth>} />
           <Route path="/fn-replacement" element={<RequireAuth><FnReplacementPage /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><RequireAdmin><SettingsPage /></RequireAdmin></RequireAuth>} />
-          <Route path="*" element={<Navigate to="/clients" />} />
+          <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </BrowserRouter>
     </ConfigProvider>
