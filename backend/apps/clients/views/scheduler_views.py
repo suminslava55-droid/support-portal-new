@@ -407,6 +407,13 @@ def _run_fetch_external_ip(task_id, user_id):
                     error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): пустой ответ')
                     continue
 
+                # Проверяем что получили валидный IP, а не строку ошибки от Микротика
+                import re as _re
+                if not _re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', new_ip):
+                    errors += 1
+                    error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): неверный ответ от Микротика: {new_ip[:50]}')
+                    continue
+
                 old_ip = client.external_ip or ''
                 if new_ip != old_ip:
                     changed += 1

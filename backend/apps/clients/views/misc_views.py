@@ -46,6 +46,11 @@ class FetchExternalIPView(APIView):
             if not new_ip:
                 return Response({'error': 'Не удалось получить внешний IP с Микротика'}, status=400)
 
+            # Проверяем что получили валидный IP, а не строку ошибки от Микротика
+            import re
+            if not re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', new_ip):
+                return Response({'error': f'Микротик вернул неверный ответ: {new_ip}'}, status=400)
+
             return Response({
                 'new_ip': new_ip,
                 'old_ip': old_external_ip,
