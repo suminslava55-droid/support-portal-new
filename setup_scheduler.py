@@ -130,9 +130,9 @@ fi
 TOKEN=$(cat "$TOKEN_FILE")
 
 if [ -n "$COMPANY_ID" ]; then
-    BODY=$(printf '{{"task_id":"%s","company_id":%s}}' "$TASK_ID" "$COMPANY_ID")
+    BODY=$(printf '{{"task_id":"%s","company_id":%s,"scheduled":true}}' "$TASK_ID" "$COMPANY_ID")
 else
-    BODY=$(printf '{{"task_id":"%s"}}' "$TASK_ID")
+    BODY=$(printf '{{"task_id":"%s","scheduled":true}}' "$TASK_ID")
 fi
 
 RESPONSE=$(curl -s -w "\\nHTTP_STATUS:%{{http_code}}" -X POST "$API_URL" \\
