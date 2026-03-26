@@ -9,3 +9,6 @@ django-filter==23.5
 cryptography
 paramiko
 openpyxl
+python-docx
+pdfminer.six
+PyMuPDF

@@ -2,13 +2,22 @@
 
 ## Модули системы
 
+### 📊 Дашборд
+- Заглавная страница после входа (`/dashboard`)
+- **Метрики:** всего клиентов, активных, ФН просрочен, замена ФН в этом месяце, замена ФН в следующем месяце
+- **Клиенты по провайдерам** — горизонтальные бары с количеством
+- **Ближайшие замены ФН** — список ближайших 5 с датами
+- **Регламентные задания** — статус последнего запуска каждого задания + информация о бэкапах
+- **Дежурства сегодня и завтра** — сотрудники с типом дежурства (Телефон, Работа днём, Телефон + день)
+- **Последние изменения** — лента активности по клиентам
+
 ### 📋 Клиенты
 - Карточка клиента: адрес, компания, ИНН, телефон, email, код аптеки (UT), код склада, ICCID
 - Три вкладки: **📋 Информация**, **🌐 Провайдеры**, **🧾 ККТ**
 - Блок **Сеть**: подсеть, внешний IP, Микротик IP (авто: .1), Сервер IP (авто: .2), проверка доступности
 - Провайдер 1 и 2: название, тип подключения, тариф, лицевой счёт, № договора, настройки, оборудование
 - Передача провайдера между клиентами с выбором слота и логированием
-- Получение внешнего IP с Микротика по SSH (paramiko)
+- Получение внешнего IP с Микротика по SSH (paramiko) — строки ошибок от Микротика не сохраняются
 - Заметки и история изменений
 - Вложенные файлы до 5 МБ
 - Система черновиков (старше 2 часов удаляются автоматически)
@@ -31,7 +40,34 @@
 ### 📅 Календарь дежурств
 - Типы дежурств: Телефон, Работа днём, Телефон + день, Отпуск, Занят
 - Мультивыделение: Ctrl+клик, затем «Применить тип…»
+- Пагинация отключена — отображаются все записи месяца (исправлено: ранее показывались только первые 20)
 - Кнопка **Отчёт за месяц**
+- График отпусков с выгрузкой в Excel или на Email
+
+### 📚 База знаний (FAQ)
+- Раздел доступен всем сотрудникам портала
+- Структура: **Категории** (левая панель) → **Список статей** → **Просмотр статьи**
+- **Редактор статей** — WYSIWYG с тулбаром:
+  - Форматирование: Жирный, Курсив, Подчёркнутый
+  - Заголовки H1, H2, абзац
+  - Маркированный и нумерованный списки
+  - Ссылки, очистка форматирования
+  - Блок кода `<>` — тёмный фон, кнопка копирования в режиме просмотра
+  - Вставка изображения (кнопка + Ctrl+V из буфера)
+  - Изменение размера картинки (кнопка «Размер» + drag-ручка)
+  - Импорт из `.docx` и `.pdf` (текст + картинки включая VML-формат)
+- **Прикреплённые файлы** — до 10 МБ, любой тип
+- **Черновик** — при открытии нового редактора сразу создаётся черновик (кнопки изображений и файлов доступны немедленно)
+- **Удаление**: свою статью может удалить автор, чужую — только администратор
+- **Поиск** по заголовку и содержимому статей
+- Категории создаёт и удаляет только администратор
+
+#### Хранение данных базы знаний
+| Данные | Где хранится |
+|--------|-------------|
+| Текст статей (HTML) | PostgreSQL, таблица `clients_faqarticle` (~8 КБ на статью) |
+| Картинки в тексте | Файлы на диске `/app/media/faq/images/` |
+| Прикреплённые файлы | Файлы на диске `/app/media/faq/` |
 
 ### 🔍 Поиск
 - Раздел доступен всем пользователям из левого меню
@@ -50,7 +86,7 @@
 | Учётные записи | SSH (Микротик), SMTP (Email) |
 | Автоматизация | Массовая загрузка клиентов из JSON |
 | Регламентные задания | Часовой пояс + три задания с расписанием |
-| Диагностика | Проверка Python-зависимостей |
+| Диагностика | Проверка Python-зависимостей (6 пакетов) |
 
 ---
 
@@ -94,7 +130,7 @@ privileged: true
 | task_id | Название | Описание |
 |---------|----------|----------|
 | `update_rnm` | Обновление данных по ККТ | Обходит клиентов с ККТ, обновляет данные через lk.ofd.ru (1 запрос/сек) |
-| `fetch_external_ip` | Обновление внешнего IP | Подключается к каждому Микротику по SSH, получает внешний IP через ipify.org, сохраняет в карточку клиента |
+| `fetch_external_ip` | Обновление внешнего IP | Подключается к каждому Микротику по SSH, получает внешний IP через ipify.org. Строки ошибок от Микротика (`failure: connection timeout`) не сохраняются |
 | `backup_system` | Резервное копирование | Создаёт дамп БД (Django dumpdata) + копирует медиафайлы, архивирует в `.tar.gz`, хранит последние 7 копий |
 
 ### Файлы планировщика
@@ -103,7 +139,7 @@ privileged: true
 |------|----------|
 | `/opt/support-portal/setup_scheduler.py` | Создаёт пользователя и токен, запускать один раз |
 | `/opt/support-portal/.scheduler_token` | JWT-токен (365 дней). **Не в git!** |
-| `/opt/support-portal/scheduler_run.sh` | Скрипт для cron (создаётся `setup_scheduler.py`) |
+| `/opt/support-portal/scheduler_run.sh` | Скрипт для cron (создаётся `setup_scheduler.py`). **Не в git!** Содержит `"scheduled":true` — включает режим only_expiring |
 | `/opt/support-portal/cron_manager.sh` | Управляет crontab хоста из контейнера через nsenter |
 | `/usr/local/bin/cron-watch.sh` | Скрипт службы-наблюдателя |
 | `/etc/systemd/system/cron-watch.service` | Служба-наблюдатель: перезагружает cron при изменении crontab |
@@ -118,8 +154,20 @@ privileged: true
 | POST | `/api/clients/scheduled-tasks/run/` | Ручной запуск |
 | GET | `/api/clients/scheduled-tasks/{task_id}/progress/` | Статус выполнения |
 | GET | `/api/clients/scheduled-tasks/cron/` | Текущая cron-строка |
-| GET | `/api/clients/search/?q=` | Глобальный поиск |
 | POST | `/api/clients/scheduled-tasks/cron/` | Применить расписание в crontab |
+| GET | `/api/clients/search/?q=` | Глобальный поиск |
+
+### Endpoints API базы знаний
+
+| Метод | URL | Описание |
+|-------|-----|----------|
+| GET/POST | `/api/clients/faq-categories/` | Список / создание категорий |
+| GET/POST | `/api/clients/faq-articles/?category=ID&search=Q` | Список / создание статей |
+| PUT/DELETE | `/api/clients/faq-articles/{id}/` | Обновление / удаление статьи |
+| GET/POST | `/api/clients/faq-articles/{id}/files/` | Файлы статьи |
+| DELETE | `/api/clients/faq-files/{id}/` | Удаление файла |
+| POST | `/api/clients/faq-articles/{id}/images/` | Загрузка изображения в текст |
+| POST | `/api/clients/faq-articles/{id}/import/` | Импорт из .docx/.pdf |
 
 ### Формат расписания
 
@@ -172,19 +220,22 @@ support-portal/
 │   ├── apps/
 │   │   ├── accounts/             # Пользователи, роли, JWT
 │   │   └── clients/
-│   │       ├── models.py         # Client, Provider, OfdCompany, KktData, ScheduledTask
+│   │       ├── models.py         # Client, Provider, OfdCompany, KktData, ScheduledTask,
+│   │       │                     # FaqCategory, FaqArticle, FaqFile, DutySchedule
 │   │       ├── views/            # API разбит по модулям
 │   │       │   ├── __init__.py       # Re-export всего для urls.py
 │   │       │   ├── client_views.py   # ClientViewSet, CustomFieldDefinitionViewSet
 │   │       │   ├── misc_views.py     # FetchExternalIPView, OfdCompanyViewSet, ProviderViewSet, DashboardStatsView
-│   │       │   ├── calendar_views.py # DutyScheduleViewSet (календарь дежурств)
+│   │       │   ├── calendar_views.py # DutyScheduleViewSet (пагинация отключена)
 │   │       │   ├── kkt_views.py      # OfdKktView, KktListView, KktExportView
 │   │       │   ├── bulk_views.py     # BulkImportClientsView
 │   │       │   ├── scheduler_views.py # ScheduledTask*, _run_update_rnm, _run_fetch_external_ip, _run_backup_system
 │   │       │   ├── search_views.py    # GlobalSearchView — глобальный поиск
+│   │       │   ├── faq_views.py       # FaqCategoryViewSet, FaqArticleViewSet, FaqFileView,
+│   │       │   │                      # FaqFileDeleteView, FaqImageUploadView, FaqImportView
 │   │       │   └── utils.py          # ping_ip, build_change_log, FIELD_LABELS
 │   │       ├── serializers.py    # Сериализаторы моделей
-│   │       ├── settings_views.py # Настройки SSH и SMTP (SystemSettingsView, TestEmailView)
+│   │       ├── settings_views.py # Настройки SSH и SMTP (SystemSettingsView, TestEmailView, CheckPackagesView)
 │   │       ├── urls.py           # Маршруты приложения clients
 │   │       └── migrations/       # Миграции базы данных
 │   ├── config/
@@ -195,6 +246,7 @@ support-portal/
 │   ├── create_admin.py           # Создание администратора и ролей
 │   └── Dockerfile
 ├── frontend/src/pages/
+│   ├── DashboardPage.jsx         # Заглавная страница (дашборд с метриками)
 │   ├── ClientsPage.jsx           # Список клиентов с фильтрами, поиском, экспортом
 │   ├── ClientDetailPage.jsx      # Просмотр карточки клиента (обёртка с вкладками)
 │   ├── client-detail/
@@ -208,6 +260,7 @@ support-portal/
 │   │   ├── ClientFormProviders.jsx   # Вкладка: Провайдер 1 и 2
 │   │   ├── ClientFormKkt.jsx         # Вкладка: ККТ (создание и редактирование)
 │   │   └── TransferModal.jsx         # Модал передачи провайдера другому клиенту
+│   ├── FaqPage.jsx               # База знаний (категории, статьи, WYSIWYG редактор)
 │   ├── OfdCompaniesPage.jsx      # Управление компаниями (ИНН, токен ОФД)
 │   ├── FnReplacementPage.jsx     # Замена ФН: вкладки Общий и По месяцам
 │   ├── CalendarPage.jsx          # Календарь дежурств
@@ -216,17 +269,19 @@ support-portal/
 │   │   ├── SettingsAccounts.jsx      # Вкладка: SSH + SMTP
 │   │   ├── SettingsAutomation.jsx    # Вкладка: Массовая загрузка клиентов
 │   │   ├── SettingsScheduler.jsx     # Вкладка: Регламентные задания
-│   │   └── SettingsDiagnostics.jsx   # Вкладка: Зависимости Python
+│   │   └── SettingsDiagnostics.jsx   # Вкладка: Зависимости Python (6 пакетов)
 │   ├── SearchPage.jsx            # Глобальный поиск по клиентам, ККТ, истории, заметкам
 │   ├── UsersPage.jsx             # Управление пользователями
 │   └── ProvidersPage.jsx         # Управление провайдерами
-├── nginx/default.conf
+├── nginx/default.conf            # Не в git (специфичен для каждого сервера)
 ├── media/                        # Медиафайлы (не в git)
+│   └── faq/                      # Картинки и файлы базы знаний
+│       └── images/               # Картинки вставленные в статьи
 ├── backups/                      # Резервные копии (не в git)
 ├── ofd_fetch.sh                  # Запросы к lk.ofd.ru (запускается на хосте)
 ├── cron_manager.sh               # Управляет crontab хоста через nsenter
 ├── setup_scheduler.py            # Первичная настройка планировщика
-├── scheduler_run.sh              # Скрипт для cron (создаётся setup_scheduler.py)
+├── scheduler_run.sh              # Скрипт для cron (не в git, создаётся setup_scheduler.py)
 ├── check_ofd_network.sh          # Диагностика сети до lk.ofd.ru
 ├── check_ofd_tokens.sh           # Проверка валидности токенов компаний
 ├── diagnose.sh                   # Универсальная диагностика
@@ -246,8 +301,8 @@ support-portal/
 Задание `backup_system` доступно в **Настройки → Регламентные задания**. Создаёт полный бэкап системы и хранит последние 7 копий.
 
 Что входит в бэкап:
-- **БД** — дамп через Django `dumpdata` (все клиенты, ККТ, провайдеры, компании с токенами, пользователи, настройки, история изменений)
-- **Медиафайлы** — вложения клиентов из `/app/media`
+- **БД** — дамп через Django `dumpdata` (все клиенты, ККТ, провайдеры, компании с токенами, пользователи, настройки, история изменений, **статьи базы знаний**)
+- **Медиафайлы** — вложения клиентов и базы знаний из `/app/media`
 
 Бэкапы хранятся в `/opt/support-portal/backups/` на хосте (смонтировано через volume).
 
@@ -260,7 +315,7 @@ docker compose exec backend python manage.py dumpdata \
   --exclude=contenttypes --exclude=auth.permission \
   --indent=2 > /opt/support-portal/backups/db_manual_$(date +%Y%m%d).json
 
-# Только медиафайлы
+# Только медиафайлы (включая картинки базы знаний)
 tar -czf /opt/support-portal/backups/media_$(date +%Y%m%d).tar.gz \
   -C /opt/support-portal media/
 ```
@@ -273,18 +328,11 @@ tar -czf /opt/support-portal/backups/media_$(date +%Y%m%d).tar.gz \
 ```bash
 tar -xzf /opt/support-portal/backups/backup_YYYY-MM-DD_HH-MM-SS.tar.gz \
   -C /tmp/restore/
-ls /tmp/restore/
-# backup_YYYY-MM-DD_HH-MM-SS/
-#   db.json
-#   media/
 ```
 
 **2. Восстановить базу данных:**
 ```bash
-# Очистить текущие данные (осторожно!)
 docker compose exec backend python manage.py flush --no-input
-
-# Загрузить бэкап
 docker compose exec backend python manage.py loaddata \
   /tmp/restore/backup_YYYY-MM-DD_HH-MM-SS/db.json
 ```
@@ -301,8 +349,6 @@ cd /opt/support-portal && docker compose restart backend
 ```
 
 ### Важные файлы которые НЕ входят в бэкап задания
-
-Храните отдельно в надёжном месте:
 
 | Файл | Зачем |
 |------|-------|
@@ -325,6 +371,9 @@ cd /opt/support-portal && docker compose restart backend
 | cryptography | Шифрование паролей и токенов (Fernet) |
 | paramiko | SSH-подключение к Микротику |
 | openpyxl | Генерация Excel файлов |
+| python-docx | Импорт из Word (.docx) в базу знаний |
+| pdfminer.six | Извлечение текста из PDF в базу знаний |
+| PyMuPDF | Извлечение картинок из PDF в базу знаний |
 | gunicorn | WSGI-сервер |
 | Pillow | Обработка изображений |
 
@@ -332,8 +381,8 @@ cd /opt/support-portal && docker compose restart backend
 
 ## Роли и доступ
 
-| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | Пользователи | Настройки |
-|------|---------|-----------|---------|----------|----------|-------------|----------|
-| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Связист | Полный | ✅ | 👁 | ✅ | ❌ | ❌ | ❌ |
+| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | База знаний | Пользователи | Настройки |
+|------|---------|-----------|---------|----------|----------|------------|-------------|----------|
+| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ (+ удаление любых) | ✅ | ✅ |
+| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Связист | Полный | ✅ | 👁 | ✅ | ❌ | ✅ | ❌ | ❌ |

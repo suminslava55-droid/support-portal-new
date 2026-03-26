@@ -427,3 +427,59 @@ class ScheduledTask(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class FaqCategory(models.Model):
+    """Категория FAQ"""
+    name       = models.CharField('Название', max_length=200)
+    order      = models.PositiveIntegerField('Порядок', default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Категория FAQ'
+        verbose_name_plural = 'Категории FAQ'
+        ordering = ['order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+class FaqArticle(models.Model):
+    """Статья FAQ"""
+    category   = models.ForeignKey(FaqCategory, on_delete=models.CASCADE, related_name='articles', verbose_name='Категория')
+    title      = models.CharField('Заголовок', max_length=500)
+    content    = models.TextField('Содержимое (Markdown)', blank=True)
+    author     = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='faq_articles', verbose_name='Автор')
+    order      = models.PositiveIntegerField('Порядок', default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Статья FAQ'
+        verbose_name_plural = 'Статьи FAQ'
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return self.title
+
+
+def faq_file_path(instance, filename):
+    return f'faq/{instance.article.id}/{filename}'
+
+
+class FaqFile(models.Model):
+    """Файл прикреплённый к статье FAQ"""
+    article    = models.ForeignKey(FaqArticle, on_delete=models.CASCADE, related_name='files')
+    file       = models.FileField('Файл', upload_to=faq_file_path)
+    name       = models.CharField('Имя файла', max_length=255)
+    size       = models.PositiveIntegerField('Размер', default=0)
+    uploaded_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Файл FAQ'
+        verbose_name_plural = 'Файлы FAQ'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return self.name

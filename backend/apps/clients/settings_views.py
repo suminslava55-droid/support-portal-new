@@ -9,7 +9,7 @@ class CheckPackagesView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
-        packages = ['cryptography', 'paramiko', 'openpyxl']
+        packages = ['cryptography', 'paramiko', 'openpyxl', 'docx', 'pdfminer', 'fitz']
         result = {}
         for pkg in packages:
             try:

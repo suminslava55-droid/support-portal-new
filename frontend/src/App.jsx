@@ -20,6 +20,7 @@ import ProvidersPage from './pages/ProvidersPage';
 import OfdCompaniesPage from './pages/OfdCompaniesPage';
 import FnReplacementPage from './pages/FnReplacementPage';
 import SearchPage from './pages/SearchPage';
+import FaqPage from './pages/FaqPage';
 
 dayjs.locale('ru');
 
@@ -131,6 +132,7 @@ export default function App() {
           <Route path="/providers" element={<RequireAuth><ProvidersPage /></RequireAuth>} />
           <Route path="/ofd-companies" element={<RequireAuth><OfdCompaniesPage /></RequireAuth>} />
           <Route path="/fn-replacement" element={<RequireAuth><FnReplacementPage /></RequireAuth>} />
+          <Route path="/faq" element={<RequireAuth><FaqPage /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><RequireAdmin><SettingsPage /></RequireAdmin></RequireAuth>} />
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>

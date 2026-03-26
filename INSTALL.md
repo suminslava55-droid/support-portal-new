@@ -1,8 +1,8 @@
 # Support Portal — Инструкция по установке
 
-## ⚠️ Известные проблемы
+## ⚠️ Известные особенности
 
-- **Пакеты `paramiko`/`openpyxl` слетают** при пересборке контейнера — устанавливать вручную после `docker compose up --build`
+- **Пакеты слетают при пересборке контейнера** — `python-docx`, `pdfminer.six`, `PyMuPDF` устанавливаются из `requirements.txt` автоматически при `docker compose up --build`
 - **Обновление ККТ зависает** — `lk.ofd.ru` лимит 1 запрос/сек, при 700 кассах ~13 мин, это нормально (gunicorn `--timeout 1000`)
 - **Токен ОФД не сохраняется** — проверьте наличие `OfdCompanyWriteSerializer` в `views.py` и что класс `OfdCompanyViewSet` один
 
@@ -10,7 +10,7 @@
 
 ## Описание системы
 
-**Support Portal** — веб-приложение для управления клиентами (аптеками), провайдерами, сетевой инфраструктурой и кассовой техникой (ККТ) с интеграцией ОФД.
+**Support Portal** — веб-приложение для управления клиентами (аптеками), провайдерами, сетевой инфраструктурой и кассовой техникой (ККТ) с интеграцией ОФД. Включает базу знаний с WYSIWYG редактором и импортом из Word/PDF.
 
 ### Стек технологий
 
@@ -108,7 +108,7 @@ systemctl enable cron
 systemctl start cron
 ```
 
-`inotify-tools` нужен для службы `cron-watch` — она следит за изменением crontab и автоматически перезагружает cron:
+`inotify-tools` нужен для службы `cron-watch`:
 
 ```bash
 apt install inotify-tools -y
@@ -189,7 +189,7 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 ## 4. Хранилище медиафайлов и бэкапов
 
 ```bash
-mkdir -p /opt/support-portal/media
+mkdir -p /opt/support-portal/media/faq/images
 mkdir -p /opt/support-portal/backups
 ```
 
@@ -197,15 +197,10 @@ mkdir -p /opt/support-portal/backups
 
 ## 5. Скрипты для работы на хосте
 
-В `docker-compose.yml` пробрасываются скрипты с хоста в контейнер:
-
 ```bash
 chmod +x /opt/support-portal/ofd_fetch.sh
 chmod +x /opt/support-portal/cron_manager.sh
 ```
-
-- **`ofd_fetch.sh`** — запросы к API lk.ofd.ru (у контейнера нет доступа к интернету)
-- **`cron_manager.sh`** — управление crontab хоста из Django-контейнера через `nsenter`
 
 В `docker-compose.yml` у бэкенда должны быть:
 ```yaml
@@ -213,9 +208,10 @@ pid: host
 privileged: true
 volumes:
   - ./cron_manager.sh:/usr/local/bin/cron_manager.sh:ro
+  - ./backups:/opt/support-portal/backups
 ```
 
-У nginx должен быть volume для фронтенда — чтобы после `docker compose down/up` не слетала сборка:
+У nginx должен быть volume для фронтенда:
 ```yaml
 volumes:
   - ./frontend/build:/usr/share/nginx/html
@@ -230,7 +226,7 @@ cd /opt/support-portal
 docker compose up -d --build
 ```
 
-Первый запуск занимает 5–10 минут. Следим:
+Первый запуск занимает 5–10 минут (включая установку python-docx, pdfminer.six, PyMuPDF из requirements.txt). Следим:
 
 ```bash
 docker compose logs -f
@@ -261,62 +257,47 @@ npm install
 
 ```bash
 docker compose exec backend python -c "
-import cryptography, paramiko, openpyxl
-print('cryptography OK')
-print('paramiko OK')
-print('openpyxl OK')
+import cryptography, paramiko, openpyxl, docx, pdfminer, fitz
+print('Все пакеты OK')
 "
 ```
 
 Если какой-то пакет отсутствует:
 
 ```bash
-docker compose exec backend pip install cryptography paramiko openpyxl --break-system-packages
+docker compose exec backend pip install cryptography paramiko openpyxl python-docx pdfminer.six PyMuPDF --break-system-packages
 docker compose restart backend
 ```
 
 ---
 
-## 9. Создаём администратора и роли
+## 9. Применяем миграции и создаём администратора
 
 ```bash
+docker compose exec backend python manage.py migrate
 docker compose exec backend python create_admin.py
 ```
 
-| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | Пользователи | Настройки |
-|------|---------|-----------|---------|----------|----------|-------------|----------|
-| Администратор | Полный доступ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Системный администратор | Полный доступ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Связист | Полный доступ | ✅ | 👁 | ✅ | ❌ | ❌ | ❌ |
+| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | База знаний | Пользователи | Настройки |
+|------|---------|-----------|---------|----------|----------|------------|-------------|----------|
+| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Связист | Полный | ✅ | 👁 | ✅ | ❌ | ✅ | ❌ | ❌ |
 
 ---
 
 ## 10. Настройка планировщика заданий ⚡
-
-> Выполняется **один раз** после первого запуска контейнеров.
 
 ```bash
 cd /opt/support-portal
 python3 setup_scheduler.py
 ```
 
-Скрипт автоматически:
-- Создаёт системного пользователя `scheduler@system.local` внутри Django (вход по паролю заблокирован)
-- Генерирует JWT-токен на 365 дней → сохраняет в `/opt/support-portal/.scheduler_token` (права 600)
-- Создаёт `/opt/support-portal/scheduler_run.sh` — скрипт вызова API для cron
-
-После этого в **Настройки → Регламентные задания** можно:
-- Запускать задания вручную
-- Настроить расписание (время через два выпадающих списка Час/Минуты + дни недели) и нажать **«Применить расписание»** — crontab обновится автоматически
-- Видеть прогресс в реальном времени и результат последнего запуска
-
-> ⚠️ Токен действителен 365 дней. Повторный запуск `setup_scheduler.py` безопасен — обновит токен и скрипт.
+Скрипт создаёт `scheduler_run.sh` с параметром `"scheduled":true` — при запуске по cron задание обновления ККТ работает только по истекающим ФН (≤30 дней).
 
 ---
 
 ## 11. Установка службы cron-watch ⚡
-
-Служба следит за изменениями crontab и автоматически перезагружает cron при нажатии «Применить расписание» в интерфейсе. **Без неё расписание не будет срабатывать.**
 
 ```bash
 cat > /usr/local/bin/cron-watch.sh << 'EOF'
@@ -354,31 +335,33 @@ systemctl enable --now cron-watch
 systemctl status cron-watch
 ```
 
-> ⚠️ **Важно:** не применяйте расписание менее чем за 5 секунд до времени срабатывания — cron-watch успеет перезагрузить cron, но cron уже мог зафиксировать очередь заданий. Лучший вариант — устанавливать расписание заранее (хотя бы за 1–2 минуты).
+---
 
-Проверяем что служба запущена:
+## 12. Деплой фронтенда
 
 ```bash
-systemctl is-active cron-watch   # должно быть: active
+cd /opt/support-portal
+./deploy-frontend.sh
 ```
 
+После этого портал доступен по адресу `http://ВАШ_IP`. Заглавная страница — **Дашборд**.
+
 ---
 
-## 12. Первоначальная настройка в интерфейсе
+## 13. Первоначальная настройка в интерфейсе
 
-1. Откройте `http://ВАШ_IP` в браузере
-2. Войдите под учётными данными администратора
-3. Перейдите в **Настройки**:
+1. Откройте `http://ВАШ_IP` — попадёте на дашборд
+2. Перейдите в **Настройки**:
    - SSH пользователь и пароль для Микротиков
-   - SMTP настройки (сервер, порт, логин, пароль, адрес отправителя) + кнопка «Тест отправки»
-4. **Компании** → добавьте компании с ИНН и токеном ОФД (lk.ofd.ru → Настройки → API)
-5. **Провайдеры** → добавьте провайдеров
-6. **Пользователи** → заполните дни рождения сотрудников
-7. Создавайте карточки клиентов
+   - SMTP настройки + кнопка «Тест отправки»
+3. **Компании** → добавьте компании с ИНН и токеном ОФД
+4. **Провайдеры** → добавьте провайдеров
+5. **Регламентные задания** → настройте расписание и нажмите «Применить расписание»
+6. **Диагностика** → нажмите «Проверить» — все 6 пакетов должны быть зелёными
 
 ---
 
-## 13. Когда что использовать
+## 14. Когда что использовать
 
 | Изменение | Команда |
 |-----------|---------|
@@ -395,16 +378,10 @@ systemctl is-active cron-watch   # должно быть: active
 Файлы **не попадают в git** (добавлены в `.gitignore`):
 - `.env` — ключи и пароли
 - `.scheduler_token` — JWT-токен планировщика
+- `scheduler_run.sh` — скрипт с токеном
+- `nginx/default.conf` — специфичен для каждого сервера
 - `media/` — загруженные файлы
 - `backups/` — резервные копии
-
-При компрометации ключей:
-```bash
-openssl rand -hex 50                                                                         # новый SECRET_KEY
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # новый ENCRYPTION_KEY
-docker compose restart backend
-# После — заново введите SSH/SMTP пароли и токены ОФД
-python3 /opt/support-portal/setup_scheduler.py  # обновить токен планировщика
-```
+- `frontend/package-lock.json`
 
 > ⚠️ **Потеря ENCRYPTION_KEY = потеря всех зашифрованных паролей и токенов ОФД.** Храните резервную копию `.env` отдельно от сервера.

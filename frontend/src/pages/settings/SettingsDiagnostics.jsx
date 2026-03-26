@@ -19,9 +19,12 @@ export default function SettingsDiagnostics({ packages, packagesLoading, loadPac
       ) : packages ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {[
-            { key: 'cryptography', label: 'cryptography', desc: 'Шифрование паролей' },
-            { key: 'paramiko',     label: 'paramiko',     desc: 'SSH-подключение к Микротику' },
-            { key: 'openpyxl',    label: 'openpyxl',     desc: 'Экспорт в Excel (.xlsx)' },
+            { key: 'cryptography', label: 'cryptography',  desc: 'Шифрование паролей' },
+            { key: 'paramiko',     label: 'paramiko',      desc: 'SSH-подключение к Микротику' },
+            { key: 'openpyxl',    label: 'openpyxl',      desc: 'Экспорт в Excel (.xlsx)' },
+            { key: 'docx',        label: 'python-docx',   desc: 'Импорт из Word (.docx) в базу знаний' },
+            { key: 'pdfminer',    label: 'pdfminer.six',  desc: 'Импорт текста из PDF в базу знаний' },
+            { key: 'fitz',        label: 'PyMuPDF',       desc: 'Импорт картинок из PDF в базу знаний' },
           ].map(({ key, label, desc }) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {packages[key]

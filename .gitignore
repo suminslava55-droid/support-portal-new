@@ -17,5 +17,3 @@ backups/
 *.pyo
 scheduler_run.sh
 frontend/package-lock.json
-scheduler_run.sh
-frontend/package-lock.json

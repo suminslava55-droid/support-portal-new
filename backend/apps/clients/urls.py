@@ -1,9 +1,11 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView, FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView
 from .settings_views import SystemSettingsView, TestEmailView, CheckPackagesView
 
 router = DefaultRouter()
+router.register('faq-categories', FaqCategoryViewSet, basename='faq-categories')
+router.register('faq-articles', FaqArticleViewSet, basename='faq-articles')
 router.register('events', DutyScheduleViewSet, basename='events')
 router.register('custom-fields', CustomFieldDefinitionViewSet, basename='custom-fields')
 router.register('providers', ProviderViewSet, basename='providers')
@@ -27,6 +29,10 @@ urlpatterns = [
     path('scheduled-tasks/<str:task_id>/progress/', ScheduledTaskProgressView.as_view(), name='scheduled-tasks-progress'),
     path('backups/', BackupListView.as_view(), name='backup-list'),
     path('backups/restore/', BackupRestoreView.as_view(), name='backup-restore'),
+    path('faq-articles/<int:article_id>/files/', FaqFileView.as_view(), name='faq-files'),
+    path('faq-articles/<int:article_id>/images/', FaqImageUploadView.as_view(), name='faq-image-upload'),
+    path('faq-articles/<int:article_id>/import/', FaqImportView.as_view(), name='faq-import'),
+    path('faq-files/<int:file_id>/', FaqFileDeleteView.as_view(), name='faq-file-delete'),
     path('<int:pk>/ofd_kkt/', OfdKktView.as_view(), name='ofd-kkt'),
     path('<int:pk>/ofd_kkt/<int:kkt_id>/', OfdKktView.as_view(), name='ofd-kkt-detail'),
     path('', include(router.urls)),
