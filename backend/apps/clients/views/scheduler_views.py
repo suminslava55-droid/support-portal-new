@@ -841,17 +841,21 @@ def _run_backup_system(task_id, user_id):
         archive_file = archive_path + '.tar.gz'
         archive_size = os.path.getsize(archive_file)
 
-        # ── 4. Удаляем старые бэкапы (старше KEEP_DAYS дней) ─
+        # ── 4. Удаляем старые бэкапы — оставляем последние KEEP_DAYS копий ─
         _set(progress=90, progress_text='Очистка старых резервных копий...')
-        import time
-        cutoff = time.time() - KEEP_DAYS * 86400
+        all_backups = sorted(
+            [f for f in os.listdir(BACKUP_DIR) if f.startswith('backup_') and f.endswith('.tar.gz')],
+            reverse=True  # новые первые
+        )
         removed = 0
-        for fname in os.listdir(BACKUP_DIR):
-            if fname.startswith('backup_') and fname.endswith('.tar.gz'):
-                fpath = os.path.join(BACKUP_DIR, fname)
-                if os.path.getmtime(fpath) < cutoff and fpath != archive_file:
-                    os.remove(fpath)
-                    removed += 1
+        remove_errors = []
+        for fname in all_backups[KEEP_DAYS:]:  # всё что после 7-го
+            fpath = os.path.join(BACKUP_DIR, fname)
+            try:
+                os.remove(fpath)
+                removed += 1
+            except Exception as e:
+                remove_errors.append(f'{fname}: {e}')
 
         elapsed = timezone.now() - started_at
         elapsed_str = f'{int(elapsed.total_seconds() // 60)} мин {int(elapsed.total_seconds() % 60)} сек'
@@ -867,6 +871,8 @@ def _run_backup_system(task_id, user_id):
             f'Удалено старых копий: {removed}\n'
             f'Время выполнения: {elapsed_str}'
         )
+        if remove_errors:
+            summary += '\nОшибки удаления:\n' + '\n'.join(remove_errors)
         _set(status='success', progress=100,
              progress_text=f'Готово. Архив: {_fmt(archive_size)}, время: {elapsed_str}',
              last_run_result=summary)
