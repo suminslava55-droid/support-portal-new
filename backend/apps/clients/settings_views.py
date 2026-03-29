@@ -25,8 +25,10 @@ class SystemSettingsView(APIView):
 
     def get(self, request):
         s = SystemSettings.get()
-        # Все данные доступны авторизованным пользователям (нужны для SSH и SMTP функций)
-        # Редактировать настройки могут только администраторы (проверка в POST/DELETE)
+        # Не-администраторам возвращаем только timezone_offset — он нужен фронтенду
+        if not IsAdmin().has_permission(request, self):
+            return Response({'timezone_offset': s.timezone_offset})
+        # Администраторам — полные данные
         return Response({
             'ssh_user': s.ssh_user,
             'has_ssh_password': bool(s.ssh_password_encrypted),

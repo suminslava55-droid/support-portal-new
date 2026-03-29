@@ -7,6 +7,40 @@ from ..serializers import ProviderSerializer, OfdCompanySerializer, OfdCompanyWr
 from apps.accounts.permissions import CanEditClient
 from .utils import ping_ip
 
+KNOWN_HOSTS_FILE = '/opt/support-portal/known_hosts'
+
+
+def _make_ssh_client(host):
+    """
+    Создаёт SSHClient с проверкой host key через known_hosts.
+    При первом подключении — запоминает ключ (как ssh-keyscan).
+    При повторных — проверяет что ключ не изменился (защита от MITM).
+    """
+    import paramiko, os
+    ssh = paramiko.SSHClient()
+
+    # Загружаем known_hosts если файл существует
+    if os.path.exists(KNOWN_HOSTS_FILE):
+        ssh.load_host_keys(KNOWN_HOSTS_FILE)
+
+    # При первом подключении к хосту — запоминаем ключ
+    # При повторном — RejectPolicy отклонит если ключ изменился
+    known_hosts = ssh.get_host_keys()
+    if host not in known_hosts:
+        # Хост новый — доверяем первому подключению и сохраняем ключ
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    else:
+        # Хост уже знаком — отклоняем если ключ изменился
+        ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+
+    return ssh
+
+
+def _save_known_hosts(ssh):
+    """Сохраняет known_hosts после подключения."""
+    import os
+    os.makedirs(os.path.dirname(KNOWN_HOSTS_FILE), exist_ok=True)
+    ssh.save_host_keys(KNOWN_HOSTS_FILE)
 
 
 class FetchExternalIPView(APIView):
@@ -30,14 +64,14 @@ class FetchExternalIPView(APIView):
             return Response({'error': f'Микротик {mikrotik_ip} недоступен'}, status=400)
 
         try:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh = _make_ssh_client(mikrotik_ip)
             ssh.connect(
                 mikrotik_ip,
                 username=settings_obj.ssh_user,
                 password=settings_obj.ssh_password,
                 timeout=10, port=22
             )
+            _save_known_hosts(ssh)
             cmd = ':put ([/tool fetch url="https://api.ipify.org" http-method=get output=user as-value]->"data")'
             stdin, stdout, stderr = ssh.exec_command(cmd, timeout=15)
             new_ip = stdout.read().decode().strip()
@@ -46,7 +80,6 @@ class FetchExternalIPView(APIView):
             if not new_ip:
                 return Response({'error': 'Не удалось получить внешний IP с Микротика'}, status=400)
 
-            # Проверяем что получили валидный IP, а не строку ошибки от Микротика
             import re
             if not re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', new_ip):
                 return Response({'error': f'Микротик вернул неверный ответ: {new_ip}'}, status=400)
@@ -58,6 +91,14 @@ class FetchExternalIPView(APIView):
             })
         except paramiko.AuthenticationException:
             return Response({'error': f'Ошибка аутентификации SSH на {mikrotik_ip}'}, status=400)
+        except paramiko.SSHException as e:
+            err_str = str(e)
+            if 'not found in known_hosts' in err_str or 'changed' in err_str.lower():
+                return Response({'error': (
+                    f'SSH ключ Микротика {mikrotik_ip} изменился — возможно Микротик был заменён. '
+                    f'Удалите старую запись из /opt/support-portal/known_hosts и повторите попытку.'
+                )}, status=400)
+            return Response({'error': f'SSH ошибка {mikrotik_ip}: {err_str}'}, status=400)
         except Exception as e:
             return Response({'error': f'Ошибка подключения к {mikrotik_ip}: {str(e)}'}, status=400)
 

@@ -42,7 +42,7 @@ def _get_or_create_task(task_id):
 
 
 class ScheduledTaskListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
         from ..models import ScheduledTask
@@ -91,15 +91,21 @@ class ScheduledTaskRunView(APIView):
     Параметр scheduled=true (от cron) включает режим only_expiring (только ФН ≤30 дней).
     Ручной запуск через интерфейс — всегда все ККТ.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    # Разрешённые task_id — защита от запуска произвольных задач
+    ALLOWED_TASKS = {'update_rnm', 'fetch_external_ip', 'backup_system'}
 
     def post(self, request):
         import threading
         from ..models import ScheduledTask
         task_id      = request.data.get('task_id', 'update_rnm')
-        company_id   = request.data.get('company_id')   # None = все компании
-        # scheduled=true передаётся из scheduler_run.sh (cron) — обновляем только истекающие ФН
+        company_id   = request.data.get('company_id')
         only_expiring = str(request.data.get('scheduled', '')).lower() == 'true'
+
+        # Проверяем что task_id из разрешённого списка
+        if task_id not in self.ALLOWED_TASKS:
+            return Response({'error': f'Недопустимый task_id. Разрешены: {", ".join(self.ALLOWED_TASKS)}'}, status=400)
 
         t = _get_or_create_task(task_id)
         if t.status == 'running':
@@ -136,7 +142,7 @@ class ScheduledTaskRunView(APIView):
 
 class ScheduledTaskProgressView(APIView):
     """Polling прогресса — фронтенд опрашивает каждые 2 сек"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request, task_id):
         from ..models import ScheduledTask
@@ -402,9 +408,10 @@ def _run_fetch_external_ip(task_id, user_id):
             _set(progress=pct,
                  progress_text=f'Клиент {i+1}/{total}: {client.address or client.pharmacy_code} ({mikrotik_ip})')
             try:
-                ssh = paramiko.SSHClient()
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                from .misc_views import _make_ssh_client, _save_known_hosts
+                ssh = _make_ssh_client(mikrotik_ip)
                 ssh.connect(mikrotik_ip, username=ssh_user, password=ssh_password, timeout=10, port=22)
+                _save_known_hosts(ssh)
                 stdin, stdout, stderr = ssh.exec_command(cmd, timeout=15)
                 new_ip = stdout.read().decode().strip()
                 ssh.close()
@@ -436,6 +443,17 @@ def _run_fetch_external_ip(task_id, user_id):
             except paramiko.AuthenticationException:
                 errors += 1
                 error_log.append(f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)}): ошибка аутентификации SSH')
+            except paramiko.SSHException as e:
+                errors += 1
+                err_str = str(e)
+                if 'not found in known_hosts' in err_str or 'changed' in err_str.lower():
+                    error_log.append(
+                        f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)}): '
+                        f'⚠️ SSH ключ хоста изменился (замена Микротика?). '
+                        f'Удалите запись из known_hosts: /opt/support-portal/known_hosts'
+                    )
+                else:
+                    error_log.append(f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)}): SSH ошибка: {_safe_log(err_str[:120])}')
             except Exception as e:
                 errors += 1
                 err_str = str(e)
@@ -471,7 +489,7 @@ def _run_fetch_external_ip(task_id, user_id):
 
 class ScheduledTaskCronView(APIView):
     """Применить расписание — управляет crontab через cron_manager.sh на хосте"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     CRON_MANAGER = '/usr/local/bin/cron_manager.sh'
     SCHEDULER_SCRIPT = '/opt/support-portal/scheduler_run.sh'
@@ -485,10 +503,6 @@ class ScheduledTaskCronView(APIView):
         return result.stdout.strip(), result.stderr.strip(), result.returncode
 
     def post(self, request):
-        from apps.accounts.permissions import IsAdmin
-        if not IsAdmin().has_permission(request, self):
-            return Response({'error': 'Только для администраторов'}, status=403)
-
         task_id       = request.data.get('task_id', 'update_rnm')
         enabled       = request.data.get('enabled', False)
         schedule_time = (request.data.get('schedule_time') or '').strip()
@@ -899,13 +913,9 @@ BACKUP_DIR = '/opt/support-portal/backups'
 
 class BackupListView(APIView):
     """Список доступных резервных копий."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
-        from apps.accounts.permissions import IsAdmin
-        if not IsAdmin().has_permission(request, self):
-            return Response({'error': 'Только для администраторов'}, status=403)
-
         if not os.path.exists(BACKUP_DIR):
             return Response([])
 
@@ -934,14 +944,10 @@ class BackupListView(APIView):
 
 class BackupRestoreView(APIView):
     """Восстановление из резервной копии."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def post(self, request):
         import threading
-        from apps.accounts.permissions import IsAdmin
-        if not IsAdmin().has_permission(request, self):
-            return Response({'error': 'Только для администраторов'}, status=403)
-
         filename = request.data.get('filename', '').strip()
         if not filename:
             return Response({'error': 'Имя файла не указано'}, status=400)

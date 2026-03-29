@@ -15,6 +15,17 @@ ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 if not DEBUG and SECRET_KEY == 'change-me-in-production':
     raise ImproperlyConfigured('SECRET_KEY must be set in production environment')
 
+
+def _require_env(name, default=None):
+    """Возвращает переменную окружения. В production падает если не задана."""
+    value = os.getenv(name, default)
+    if not DEBUG and not value:
+        raise ImproperlyConfigured(
+            f'Переменная окружения {name} обязательна в production. '
+            f'Проверьте файл .env'
+        )
+    return value or default
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -64,11 +75,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'support_portal'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
-        'HOST': os.getenv('DB_HOST', 'db'),
-        'PORT': os.getenv('DB_PORT', '5432'),
+        'NAME':     _require_env('DB_NAME',     'support_portal'),
+        'USER':     _require_env('DB_USER',     'postgres'),
+        'PASSWORD': _require_env('DB_PASSWORD', ''),
+        'HOST':     _require_env('DB_HOST',     'db'),
+        'PORT':     _require_env('DB_PORT',     '5432'),
     }
 }
 
@@ -98,9 +109,19 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),
+    'ACCESS_TOKEN_LIFETIME':  timedelta(hours=8),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
+    'ROTATE_REFRESH_TOKENS':  True,
+    # Явный алгоритм — защита от atk alg:none
+    'ALGORITHM': 'HS256',
+    # Ключ подписи — берём из SECRET_KEY
+    'SIGNING_KEY': SECRET_KEY,
+    # ISSUER и AUDIENCE — защита от cross-service token reuse
+    'ISSUER': 'support-portal',
+    'AUDIENCE': 'support-portal-api',
+    # Не раскрывать детали ошибки валидации токена
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
@@ -124,4 +145,4 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = '/app/media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', '')
+ENCRYPTION_KEY = _require_env('ENCRYPTION_KEY', '')
