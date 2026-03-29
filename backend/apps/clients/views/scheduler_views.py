@@ -20,6 +20,13 @@ from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
 from .kkt_views import parse_datetime, ofd_request, ofd_get_all_rnm
 
 
+def _safe_log(value):
+    """Убирает переносы строк из данных перед записью в лог (защита от Log Injection)."""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+
+
 def _get_or_create_task(task_id):
     from ..models import ScheduledTask
     TASKS = {
@@ -249,34 +256,34 @@ def _run_update_rnm(task_id, company_id, user_id, only_expiring=False):
                         errors_total += 1
                         stderr_info = result.stderr.strip()[:200] if result.stderr else ''
                         error_log.append(
-                            f'РНМ {rnm} | {client.address or client.pharmacy_code}: '
-                            f'пустой ответ скрипта' + (f' | stderr: {stderr_info}' if stderr_info else '')
+                            f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: '
+                            f'пустой ответ скрипта' + (f' | stderr: {_safe_log(stderr_info)}' if stderr_info else '')
                         )
                         done_kkts += 1
                         continue
                     detail_data = json.loads(result.stdout)
                 except subprocess.TimeoutExpired:
                     errors_total += 1
-                    error_log.append(f'РНМ {rnm} | {client.address or client.pharmacy_code}: таймаут (20 сек)')
+                    error_log.append(f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: таймаут (20 сек)')
                     done_kkts += 1
                     continue
                 except Exception as e:
                     errors_total += 1
-                    error_log.append(f'РНМ {rnm} | {client.address or client.pharmacy_code}: {str(e)}')
+                    error_log.append(f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: {_safe_log(e)}')
                     done_kkts += 1
                     continue
 
                 if detail_data.get('Status') != 'Success':
                     errors_total += 1
                     ofd_msg = detail_data.get('Message') or detail_data.get('Error') or 'нет описания'
-                    error_log.append(f'РНМ {rnm} | {client.address or client.pharmacy_code}: ОФД ошибка — {ofd_msg}')
+                    error_log.append(f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: ОФД ошибка — {_safe_log(ofd_msg)}')
                     done_kkts += 1
                     continue
 
                 data_items = detail_data.get('Data', [])
                 if not data_items:
                     errors_total += 1
-                    error_log.append(f'РНМ {rnm} | {client.address or client.pharmacy_code}: ОФД вернул пустой Data (касса не найдена по РНМ)')
+                    error_log.append(f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: ОФД вернул пустой Data (касса не найдена по РНМ)')
                     done_kkts += 1
                     continue
 
@@ -411,7 +418,7 @@ def _run_fetch_external_ip(task_id, user_id):
                 import re as _re
                 if not _re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', new_ip):
                     errors += 1
-                    error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): неверный ответ от Микротика: {new_ip[:50]}')
+                    error_log.append(f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)}): неверный ответ от Микротика: {_safe_log(new_ip[:50])}')
                     continue
 
                 old_ip = client.external_ip or ''
@@ -428,14 +435,14 @@ def _run_fetch_external_ip(task_id, user_id):
 
             except paramiko.AuthenticationException:
                 errors += 1
-                error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): ошибка аутентификации SSH')
+                error_log.append(f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)}): ошибка аутентификации SSH')
             except Exception as e:
                 errors += 1
                 err_str = str(e)
                 if 'timed out' in err_str.lower() or 'timeout' in err_str.lower():
-                    error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): таймаут подключения')
+                    error_log.append(f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)}): таймаут подключения')
                 else:
-                    error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): {err_str[:120]}')
+                    error_log.append(f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)}): {_safe_log(err_str[:120])}')
 
         elapsed = timezone.now() - started_at
         elapsed_str = f'{int(elapsed.total_seconds() // 60)} мин {int(elapsed.total_seconds() % 60)} сек'

@@ -101,6 +101,26 @@ class FaqFileSerializer(serializers.ModelSerializer):
         return obj.file.url
 
 
+def _is_admin(user):
+    return user.is_superuser or (hasattr(user, 'role') and user.role and user.role.name == 'admin')
+
+def _can_edit_article(user, article):
+    """Редактировать статью может автор или администратор."""
+    return _is_admin(user) or article.author_id == user.id
+
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 МБ
+
+def _check_real_size(file, max_bytes=MAX_FILE_SIZE):
+    """Считает реальный размер файла по содержимому, не по Content-Length."""
+    size = 0
+    for chunk in file.chunks():
+        size += len(chunk)
+        if size > max_bytes:
+            return None  # превышен лимит
+    file.seek(0)
+    return size
+
+
 class FaqFileView(APIView):
     """GET /api/clients/faq-articles/{id}/files/ — список файлов
        POST — загрузить файл
@@ -121,16 +141,19 @@ class FaqFileView(APIView):
             article = FaqArticle.objects.get(pk=article_id)
         except FaqArticle.DoesNotExist:
             return Response({'error': 'Статья не найдена'}, status=404)
+        if not _can_edit_article(request.user, article):
+            return Response({'error': 'Нет прав для загрузки файлов в эту статью'}, status=403)
         file = request.FILES.get('file')
         if not file:
             return Response({'error': 'Файл не передан'}, status=400)
-        if file.size > 10 * 1024 * 1024:
+        real_size = _check_real_size(file)
+        if real_size is None:
             return Response({'error': 'Файл слишком большой (максимум 10 МБ)'}, status=400)
         faq_file = FaqFile.objects.create(
             article=article,
             file=file,
-            name=file.name,
-            size=file.size,
+            name=_safe_filename(file.name),
+            size=real_size,
             uploaded_by=request.user,
         )
         return Response(FaqFileSerializer(faq_file, context={'request': request}).data, status=201)
@@ -144,18 +167,32 @@ class FaqFileDeleteView(APIView):
             faq_file = FaqFile.objects.get(pk=file_id)
         except FaqFile.DoesNotExist:
             return Response({'error': 'Файл не найден'}, status=404)
-        user = request.user
-        is_admin = user.is_superuser or (hasattr(user, 'role') and user.role and user.role.name == 'admin')
-        if not is_admin and faq_file.uploaded_by_id != user.id:
+        if not _is_admin(request.user) and faq_file.uploaded_by_id != request.user.id:
             return Response({'error': 'Нет прав для удаления'}, status=403)
         faq_file.file.delete(save=False)
         faq_file.delete()
         return Response({'ok': True})
 
 
+def _safe_filename(filename):
+    """Убирает path traversal и null-bytes, оставляет только безопасное имя файла."""
+    import os, re
+    # Убираем null-bytes и path separators
+    filename = filename.replace('\x00', '').replace('\r', '').replace('\n', '')
+    # Берём только базовое имя без пути
+    filename = os.path.basename(filename)
+    # Оставляем только безопасные символы
+    filename = re.sub(r'[^\w\s\-_\.]', '', filename).strip()
+    return filename or 'file'
+
+
 def faq_image_path(filename):
     import uuid, os
-    ext = os.path.splitext(filename)[1]
+    safe = _safe_filename(filename)
+    ext = os.path.splitext(safe)[1].lower()
+    # Разрешаем только известные расширения изображений
+    if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.webp'}:
+        ext = '.bin'
     return f'faq/images/{uuid.uuid4().hex}{ext}'
 
 
@@ -164,19 +201,48 @@ class FaqImageUploadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, article_id):
+        try:
+            article = FaqArticle.objects.get(pk=article_id)
+        except FaqArticle.DoesNotExist:
+            return Response({'error': 'Статья не найдена'}, status=404)
+        if not _can_edit_article(request.user, article):
+            return Response({'error': 'Нет прав для загрузки изображений в эту статью'}, status=403)
         file = request.FILES.get('image')
         if not file:
             return Response({'error': 'Файл не передан'}, status=400)
-        if file.size > 10 * 1024 * 1024:
+        real_size = _check_real_size(file)
+        if real_size is None:
             return Response({'error': 'Файл слишком большой (максимум 10 МБ)'}, status=400)
-        allowed = {'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'}
-        if file.content_type not in allowed:
-            return Response({'error': 'Разрешены только изображения (jpg, png, gif, webp, svg)'}, status=400)
 
+        # Проверяем по magic bytes — реальное содержимое, не заголовок
+        header = file.read(16)
+        file.seek(0)
+
+        MAGIC = {
+            b'\xff\xd8\xff':    ('jpg', 'image/jpeg'),
+            b'\x89PNG\r\n':     ('png', 'image/png'),
+            b'GIF87a':          ('gif', 'image/gif'),
+            b'GIF89a':          ('gif', 'image/gif'),
+            b'RIFF':            ('webp', 'image/webp'),  # webp начинается с RIFF
+        }
+        detected = None
+        for magic, (ext, mime) in MAGIC.items():
+            if header.startswith(magic):
+                detected = (ext, mime)
+                break
+        # WEBP дополнительная проверка (RIFF....WEBP)
+        if header[:4] == b'RIFF' and header[8:12] != b'WEBP':
+            detected = None
+
+        if not detected:
+            return Response({'error': 'Разрешены только изображения (jpg, png, gif, webp)'}, status=400)
+
+        real_ext, _ = detected
         import os
         from django.core.files.storage import default_storage
-        path = faq_image_path(file.name)
-        saved = default_storage.save(path, file)
+        import uuid as _uuid
+        fname = f'faq/images/{_uuid.uuid4().hex}.{real_ext}'
+        saved = default_storage.save(fname, file)
         url = request.build_absolute_uri(f'/media/{saved}')
         return Response({'url': url}, status=201)
 
@@ -186,6 +252,12 @@ class FaqImportView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, article_id):
+        try:
+            article = FaqArticle.objects.get(pk=article_id)
+        except FaqArticle.DoesNotExist:
+            return Response({'error': 'Статья не найдена'}, status=404)
+        if not _can_edit_article(request.user, article):
+            return Response({'error': 'Нет прав для импорта в эту статью'}, status=403)
         file = request.FILES.get('file')
         if not file:
             return Response({'error': 'Файл не передан'}, status=400)
@@ -244,10 +316,11 @@ class FaqImportView(APIView):
             return urls
 
         html_parts = []
+        import html as html_lib
 
         for para in doc.paragraphs:
             imgs = get_para_images(para._element)
-            text = para.text.strip()
+            text = html_lib.escape(para.text.strip())
             style = para.style.name if para.style else ''
 
             for url in imgs:
@@ -261,7 +334,7 @@ class FaqImportView(APIView):
                 else:
                     inner = ''
                     for run in para.runs:
-                        t = run.text
+                        t = html_lib.escape(run.text)
                         if not t:
                             continue
                         if run.bold and run.italic:
@@ -287,7 +360,8 @@ class FaqImportView(APIView):
         pdf_bytes = file.read()
         doc = fitz.open(stream=pdf_bytes, filetype='pdf')
         html_parts = []
-        global_seen_xrefs = set()  # дедупликация шапок/логотипов повторяющихся на каждой странице
+        global_seen_xrefs = set()
+        import html as html_lib
 
         for page_num in range(len(doc)):
             page = doc[page_num]
@@ -347,7 +421,7 @@ class FaqImportView(APIView):
 
             for item in items:
                 if item['type'] == 'text':
-                    text = item['text']
+                    text = html_lib.escape(item['text'])
                     if item['size'] >= 16:
                         html_parts.append(f'<h2>{text}</h2>')
                     elif item['size'] >= 13:

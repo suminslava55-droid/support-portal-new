@@ -15,6 +15,55 @@ import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
 import dayjs from 'dayjs';
 
+// Санитизация HTML — разрешаем только безопасные теги и атрибуты
+const ALLOWED_TAGS = new Set([
+  'p','h1','h2','h3','h4','strong','em','u','s','ul','ol','li',
+  'a','img','pre','code','br','hr','div','span','table','thead',
+  'tbody','tr','th','td','blockquote',
+]);
+const ALLOWED_ATTRS = {
+  'a':   ['href','target','rel'],
+  'img': ['src','alt','style','width','height'],
+  '*':   ['style','class'],
+};
+
+function sanitizeHTML(dirty) {
+  const doc = new DOMParser().parseFromString(dirty, 'text/html');
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return;
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = node.tagName.toLowerCase();
+      if (!ALLOWED_TAGS.has(tag)) {
+        // Заменяем запрещённый элемент его текстовым содержимым
+        node.replaceWith(document.createTextNode(node.textContent));
+        return;
+      }
+      // Убираем запрещённые атрибуты
+      const allowed = new Set([...(ALLOWED_ATTRS[tag] || []), ...(ALLOWED_ATTRS['*'] || [])]);
+      [...node.attributes].forEach(attr => {
+        if (!allowed.has(attr.name)) {
+          node.removeAttribute(attr.name);
+          return;
+        }
+        // Блокируем javascript: в href/src
+        if (['href','src'].includes(attr.name)) {
+          const val = attr.value.trim().toLowerCase().replace(/\s/g, '');
+          if (val.startsWith('javascript:') || val.startsWith('data:text')) {
+            node.removeAttribute(attr.name);
+          }
+        }
+        // Блокируем обработчики событий в style
+        if (attr.name === 'style' && /expression\s*\(|javascript:/i.test(attr.value)) {
+          node.removeAttribute('style');
+        }
+      });
+    }
+    [...node.childNodes].forEach(walk);
+  };
+  [...doc.body.childNodes].forEach(walk);
+  return doc.body.innerHTML;
+}
+
 const { Title, Text } = Typography;
 
 // ── WYSIWYG редактор ──────────────────────────────────────
@@ -106,7 +155,7 @@ function WysiwygEditor({ value, onChange, isDark, articleId }) {
       });
       // Добавляем к существующему содержимому
       const current = editorRef.current?.innerHTML || '';
-      const newContent = current ? current + data.html : data.html;
+      const newContent = current ? current + sanitizeHTML(data.html) : sanitizeHTML(data.html);
       editorRef.current.innerHTML = newContent;
       skipUpdate.current = true;
       onChange(newContent);
@@ -694,7 +743,7 @@ export default function FaqPage() {
                   className="faq-content"
                   ref={el => {
                     if (!el) return;
-                    el.innerHTML = selectedArticle.content;
+                    el.innerHTML = sanitizeHTML(selectedArticle.content);
                     // Добавляем кнопки копирования к блокам кода
                     el.querySelectorAll('pre').forEach(pre => {
                       if (pre.querySelector('.copy-btn')) return;
