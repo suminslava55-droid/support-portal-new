@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Typography, Input, Button, Modal, Form, Select, Space,
   Popconfirm, message, Spin, Empty, Tag, Tooltip, Upload,
@@ -642,6 +643,7 @@ export default function FaqPage() {
   const [catModal, setCatModal]         = useState(false);
   const [catForm]                       = Form.useForm();
   const searchTimer = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const loadCategories = async () => {
     const { data } = await api.get('/clients/faq-categories/');
@@ -662,9 +664,23 @@ export default function FaqPage() {
   };
 
   useEffect(() => {
+    const articleId = searchParams.get('article');
     loadCategories().then(cats => {
-      if (cats.length > 0) { setSelectedCategory(cats[0].id); loadArticles(cats[0].id, ''); }
-      else setLoading(false);
+      if (articleId) {
+        // Открываем конкретную статью из поиска
+        api.get(`/clients/faq-articles/${articleId}/`).then(({ data }) => {
+          setSelectedArticle(data);
+          setSelectedCategory(data.category);
+          loadArticles(data.category, '');
+          setSearchParams({});
+        }).catch(() => {
+          if (cats.length > 0) { setSelectedCategory(cats[0].id); loadArticles(cats[0].id, ''); }
+          else setLoading(false);
+        });
+      } else {
+        if (cats.length > 0) { setSelectedCategory(cats[0].id); loadArticles(cats[0].id, ''); }
+        else setLoading(false);
+      }
     });
   }, []);
 

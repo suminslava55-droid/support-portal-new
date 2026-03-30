@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
-from ..models import Client, KktData, ClientActivity, ClientNote
+from ..models import Client, KktData, ClientActivity, ClientNote, FaqArticle
 
 
 class GlobalSearchView(APIView):
@@ -76,6 +76,31 @@ class GlobalSearchView(APIView):
                 'snippet': _truncate(note.text, q),
                 'date': note.created_at.strftime('%d.%m.%Y %H:%M'),
                 'user': note.author.full_name if note.author else '—',
+            })
+
+        # Поиск по базе знаний
+        faq_qs = FaqArticle.objects.filter(
+            Q(title__icontains=q) | Q(content__icontains=q)
+        ).select_related('category', 'author').distinct()[:10]
+
+        for article in faq_qs:
+            if q.lower() in article.title.lower():
+                snippet = article.title
+            else:
+                # Извлекаем текст из HTML для сниппета
+                import re
+                text = re.sub(r'<[^>]+>', ' ', article.content)
+                text = re.sub(r'\s+', ' ', text).strip()
+                snippet = _truncate(text, q)
+            results.append({
+                'type': 'faq',
+                'source': f'База знаний — {article.category.name}',
+                'article_id': article.id,
+                'client_name': article.title,
+                'company': article.category.name,
+                'snippet': snippet,
+                'date': article.updated_at.strftime('%d.%m.%Y %H:%M'),
+                'user': article.author.full_name if article.author else '—',
             })
 
         return Response({'results': results, 'total': len(results), 'query': q})

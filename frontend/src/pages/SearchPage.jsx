@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Input, Spin, Empty, Tag, Typography, Space, Card, Divider } from 'antd';
-import { SearchOutlined, UserOutlined, PrinterOutlined, HistoryOutlined, FileTextOutlined } from '@ant-design/icons';
+import { SearchOutlined, UserOutlined, PrinterOutlined, HistoryOutlined, FileTextOutlined, BookOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 
@@ -11,6 +11,7 @@ const TYPE_CONFIG = {
   kkt:      { icon: <PrinterOutlined />,   color: 'purple',  label: 'ККТ' },
   activity: { icon: <HistoryOutlined />,   color: 'orange',  label: 'История' },
   note:     { icon: <FileTextOutlined />,  color: 'green',   label: 'Заметка' },
+  faq:      { icon: <BookOutlined />,      color: 'cyan',    label: 'База знаний' },
 };
 
 function highlight(text, query) {
@@ -59,8 +60,12 @@ export default function SearchPage() {
     timerRef.current = setTimeout(() => doSearch(val), 400);
   };
 
-  const handleClick = (clientId) => {
-    navigate(`/clients/${clientId}`);
+  const handleClick = (r) => {
+    if (r.type === 'faq') {
+      navigate(`/faq?article=${r.article_id}`);
+    } else {
+      navigate(`/clients/${r.client_id}`);
+    }
   };
 
   return (
@@ -112,7 +117,7 @@ export default function SearchPage() {
                     key={i}
                     size="small"
                     hoverable
-                    onClick={() => handleClick(r.client_id)}
+                    onClick={() => handleClick(r)}
                     style={{ cursor: 'pointer' }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
