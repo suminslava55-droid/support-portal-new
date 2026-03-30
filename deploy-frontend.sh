@@ -1,10 +1,15 @@
 #!/bin/bash
+set -e
+cd /opt/support-portal
+
 echo "Сборка фронтенда..."
-cd /opt/support-portal/frontend
+cd frontend
 npm run build
+cd /opt/support-portal
 
 echo "Копируем в nginx..."
-docker cp build/. support-portal-nginx-1:/usr/share/nginx/html/
-docker exec support-portal-nginx-1 nginx -s reload
+# Nginx монтирует ./frontend/build напрямую как bind mount
+# Просто перезагружаем nginx — файлы уже на месте
+docker compose exec nginx nginx -s reload
 
 echo "Готово!"
