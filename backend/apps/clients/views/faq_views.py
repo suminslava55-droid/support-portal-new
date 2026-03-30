@@ -450,3 +450,176 @@ class FaqImportView(APIView):
         if not html_parts:
             return '<p>Не удалось извлечь содержимое из PDF.</p>'
         return ''.join(html_parts)
+
+
+class FaqExportView(APIView):
+    """GET /api/clients/faq-articles/{id}/export/?format=docx|pdf"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, article_id):
+        try:
+            article = FaqArticle.objects.select_related('author', 'category').get(pk=article_id)
+        except FaqArticle.DoesNotExist:
+            return Response({'error': 'Статья не найдена'}, status=404)
+
+        fmt = request.query_params.get('type', 'docx').lower()
+        if fmt == 'docx':
+            return self._export_docx(article, request)
+        elif fmt == 'pdf':
+            return self._export_pdf(article, request)
+        return Response({'error': 'Поддерживаются форматы: docx, pdf'}, status=400)
+
+    def _export_docx(self, article, request):
+        from docx import Document
+        from docx.shared import Pt, Inches, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from html.parser import HTMLParser
+        import io, os
+
+        doc = Document()
+
+        # Заголовок статьи
+        title_para = doc.add_heading(article.title, level=0)
+        title_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        # Метаданные
+        meta = doc.add_paragraph()
+        r1 = meta.add_run(f'Категория: {article.category.name}  |  Автор: {article.author.full_name if article.author else "—"}')
+        r1.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+        r1.font.size = Pt(10)
+        doc.add_paragraph()
+
+        class HTMLToDocx(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.para = None
+                self.bold = self.italic = self.underline = self.in_pre = False
+                self.skip_depth = 0
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if tag in ('script', 'style'):
+                    self.skip_depth += 1; return
+                if self.skip_depth: return
+                if tag in ('h1', 'h2'):
+                    self.para = doc.add_heading('', level=1)
+                elif tag == 'h3':
+                    self.para = doc.add_heading('', level=2)
+                elif tag == 'p':
+                    self.para = doc.add_paragraph()
+                elif tag == 'pre':
+                    self.in_pre = True; self.para = doc.add_paragraph()
+                elif tag == 'li':
+                    self.para = doc.add_paragraph(style='List Bullet')
+                elif tag in ('strong', 'b'): self.bold = True
+                elif tag in ('em', 'i'): self.italic = True
+                elif tag == 'u': self.underline = True
+                elif tag == 'br':
+                    if self.para: self.para.add_run('\n')
+                elif tag == 'img':
+                    src = attrs.get('src', '')
+                    if not src:
+                        return
+                    img_para = doc.add_paragraph()
+                    try:
+                        if src.startswith('data:image/'):
+                            import base64, io
+                            from docx.shared import Inches, Pt, Emu
+                            from PIL import Image as PILImage
+                            header, b64data = src.split(',', 1)
+                            img_bytes = base64.b64decode(b64data)
+                            # Определяем реальный размер картинки
+                            pil_img = PILImage.open(io.BytesIO(img_bytes))
+                            orig_w, orig_h = pil_img.size  # в пикселях
+                            dpi = pil_img.info.get('dpi', (96, 96))
+                            dpi_x = dpi[0] if isinstance(dpi, tuple) else 96
+                            # Переводим в дюймы
+                            w_inches = orig_w / dpi_x
+                            max_w = 5.5  # максимум 5.5 дюймов
+                            if w_inches > max_w:
+                                # Только уменьшаем — сохраняем пропорции
+                                img_para.add_run().add_picture(io.BytesIO(img_bytes), width=Inches(max_w))
+                            else:
+                                # Оригинальный размер
+                                img_para.add_run().add_picture(io.BytesIO(img_bytes), width=Inches(w_inches))
+                        elif '/media/' in src:
+                            from PIL import Image as PILImage
+                            import io
+                            rel = src.split('/media/')[-1].split('?')[0]
+                            path = os.path.join('/app/media', rel)
+                            if os.path.exists(path):
+                                pil_img = PILImage.open(path)
+                                orig_w, orig_h = pil_img.size
+                                dpi = pil_img.info.get('dpi', (96, 96))
+                                dpi_x = dpi[0] if isinstance(dpi, tuple) else 96
+                                w_inches = orig_w / dpi_x
+                                max_w = 5.5
+                                if w_inches > max_w:
+                                    img_para.add_run().add_picture(path, width=Inches(max_w))
+                                else:
+                                    img_para.add_run().add_picture(path, width=Inches(w_inches))
+                            else:
+                                img_para.add_run(f'[Изображение не найдено: {os.path.basename(src)}]')
+                        self.para = None
+                    except Exception:
+                        img_para.add_run('[Изображение]')
+
+            def handle_endtag(self, tag):
+                if tag in ('script', 'style'):
+                    self.skip_depth = max(0, self.skip_depth - 1); return
+                if tag in ('strong', 'b'): self.bold = False
+                elif tag in ('em', 'i'): self.italic = False
+                elif tag == 'u': self.underline = False
+                elif tag == 'pre': self.in_pre = False
+
+            def handle_data(self, data):
+                if self.skip_depth: return
+                text = data
+                if self.in_pre:
+                    text = text.replace('Копировать', '').strip()
+                    if not text: return
+                    if self.para is None: self.para = doc.add_paragraph()
+                    run = self.para.add_run(text)
+                    run.font.name = 'Courier New'; run.font.size = Pt(10)
+                    return
+                if not text.strip(): return
+                if self.para is None: self.para = doc.add_paragraph()
+                run = self.para.add_run(text)
+                run.bold = self.bold; run.italic = self.italic; run.underline = self.underline
+
+        HTMLToDocx().feed(article.content)
+
+        buf = io.BytesIO()
+        doc.save(buf); buf.seek(0)
+
+        safe = ''.join(c for c in article.title if c.isalnum() or c in ' _-')[:50]
+        from django.http import HttpResponse
+        resp = HttpResponse(buf.read(),
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        resp['Content-Disposition'] = f'attachment; filename="{safe}.docx"'
+        return resp
+
+    def _export_pdf(self, article, request):
+        import html as hl
+        from django.http import HttpResponse
+        meta = f'{article.category.name} · {article.author.full_name if article.author else "—"}'
+        css = """<style>
+          @page{margin:1.5cm 2cm}
+          body{font-family:Arial,sans-serif;font-size:13px;color:#333}
+          h1{font-size:20px;margin-bottom:4px}
+          h2{font-size:16px;margin-top:18px}
+          h3{font-size:14px}
+          .meta{color:#888;font-size:11px;margin-bottom:16px}
+          img{max-width:100%}
+          pre{background:#1e1e1e;color:#d4d4d4;padding:10px 14px;border-radius:6px;
+              font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all}
+          .copy-btn{display:none}
+        </style>"""
+        html_page = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>{hl.escape(article.title)}</title>{css}</head><body>
+<h1>{hl.escape(article.title)}</h1>
+<div class="meta">{hl.escape(meta)}</div><hr>
+{article.content}
+<script>window.onload=function(){{window.print()}}</script>
+</body></html>"""
+        return HttpResponse(html_page, content_type='text/html; charset=utf-8')

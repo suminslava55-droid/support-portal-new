@@ -8,7 +8,7 @@ import {
   BookOutlined, FolderOutlined, FileTextOutlined, SaveOutlined, CloseOutlined,
   BoldOutlined, ItalicOutlined, UnderlineOutlined, OrderedListOutlined,
   UnorderedListOutlined, LinkOutlined, PaperClipOutlined, DownloadOutlined,
-  PictureOutlined, ImportOutlined, ExpandOutlined,
+  PictureOutlined, ImportOutlined, ExpandOutlined, PrinterOutlined,
 } from '@ant-design/icons';
 import api from '../api/axios';
 import useAuthStore from '../store/authStore';
@@ -710,6 +710,33 @@ export default function FaqPage() {
                       <Button danger icon={<DeleteOutlined />}>Удалить</Button>
                     </Popconfirm>
                   )}
+                  <Tooltip title="Скачать как Word (.docx)">
+                    <Button icon={<DownloadOutlined />} onClick={() => {
+                      const token = localStorage.getItem('access_token');
+                      const url = `/api/clients/faq-articles/${selectedArticle.id}/export/?type=docx`;
+                      fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+                        .then(r => r.blob())
+                        .then(blob => {
+                          const a = document.createElement('a');
+                          a.href = URL.createObjectURL(blob);
+                          a.download = `${selectedArticle.title}.docx`;
+                          a.click();
+                        });
+                    }}>Word</Button>
+                  </Tooltip>
+                  <Tooltip title="Открыть для печати / сохранить как PDF">
+                    <Button icon={<PrinterOutlined />} onClick={() => {
+                      const token = localStorage.getItem('access_token');
+                      const url = `/api/clients/faq-articles/${selectedArticle.id}/export/?type=pdf`;
+                      fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+                        .then(r => r.text())
+                        .then(html => {
+                          const w = window.open('', '_blank');
+                          w.document.write(html);
+                          w.document.close();
+                        });
+                    }}>PDF</Button>
+                  </Tooltip>
                   <Button onClick={() => setSelectedArticle(null)}>← Назад</Button>
                 </Space>
               </div>

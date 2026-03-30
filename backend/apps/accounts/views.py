@@ -7,10 +7,32 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from .models import User, Role
 from .serializers import UserSerializer, RoleSerializer, CustomTokenObtainPairSerializer
 from .permissions import IsAdmin
+from .rate_limit import is_blocked, record_failure, reset
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        # Проверяем не заблокирован ли IP
+        blocked, retry_after = is_blocked(request)
+        if blocked:
+            return Response(
+                {'detail': f'Слишком много попыток входа. Попробуйте через {retry_after // 60} мин.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+                headers={'Retry-After': str(retry_after)},
+            )
+
+        response = super().post(request, *args, **kwargs)
+
+        if response.status_code == 200:
+            # Успешный вход — сбрасываем счётчик
+            reset(request)
+        else:
+            # Неудачная попытка — записываем
+            record_failure(request)
+
+        return response
 
 
 class ChangePasswordView(APIView):
