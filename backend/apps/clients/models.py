@@ -483,3 +483,32 @@ class FaqFile(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class FaqArticleHistory(models.Model):
+    """История изменений статьи FAQ"""
+    ACTION_CREATED  = 'created'
+    ACTION_TITLE    = 'title'
+    ACTION_CONTENT  = 'content'
+    ACTION_CATEGORY = 'category'
+    ACTION_CHOICES  = [
+        (ACTION_CREATED,  'создал статью'),
+        (ACTION_TITLE,    'изменил заголовок'),
+        (ACTION_CONTENT,  'изменил содержимое'),
+        (ACTION_CATEGORY, 'изменил категорию'),
+    ]
+
+    article    = models.ForeignKey(FaqArticle, on_delete=models.CASCADE, related_name='history')
+    user       = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
+    action     = models.CharField('Действие', max_length=20, choices=ACTION_CHOICES)
+    old_value  = models.TextField('Старое значение', blank=True)
+    new_value  = models.TextField('Новое значение', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'История изменений FAQ'
+        verbose_name_plural = 'История изменений FAQ'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.article.title} — {self.action}'

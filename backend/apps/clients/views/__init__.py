@@ -39,4 +39,4 @@ from .scheduler_views import (
 
 from .search_views import GlobalSearchView
 
-from .faq_views import FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView
+from .faq_views import FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView, FaqHistoryView

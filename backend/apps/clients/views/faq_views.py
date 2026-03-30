@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework import serializers
-from ..models import FaqCategory, FaqArticle, FaqFile
+from ..models import FaqCategory, FaqArticle, FaqFile, FaqArticleHistory
 
 
 class FaqCategorySerializer(serializers.ModelSerializer):
@@ -71,7 +71,37 @@ class FaqArticleViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
+        article = serializer.save(author=self.request.user)
+        FaqArticleHistory.objects.create(
+            article=article,
+            user=self.request.user,
+            action=FaqArticleHistory.ACTION_CREATED,
+        )
+
+    def perform_update(self, serializer):
+        article = self.get_object()
+        old_title    = article.title
+        old_category = article.category_id
+        old_content  = article.content
+        updated = serializer.save()
+        user = self.request.user
+        if updated.title != old_title:
+            FaqArticleHistory.objects.create(
+                article=updated, user=user,
+                action=FaqArticleHistory.ACTION_TITLE,
+                old_value=old_title, new_value=updated.title,
+            )
+        if updated.category_id != old_category:
+            FaqArticleHistory.objects.create(
+                article=updated, user=user,
+                action=FaqArticleHistory.ACTION_CATEGORY,
+                old_value=str(old_category), new_value=str(updated.category_id),
+            )
+        if updated.content != old_content:
+            FaqArticleHistory.objects.create(
+                article=updated, user=user,
+                action=FaqArticleHistory.ACTION_CONTENT,
+            )
 
     def destroy(self, request, *args, **kwargs):
         article = self.get_object()
@@ -452,8 +482,34 @@ class FaqImportView(APIView):
         return ''.join(html_parts)
 
 
+class FaqHistoryView(APIView):
+    """GET /api/clients/faq-articles/{id}/history/ — история изменений статьи"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, article_id):
+        try:
+            article = FaqArticle.objects.get(pk=article_id)
+        except FaqArticle.DoesNotExist:
+            return Response({'error': 'Статья не найдена'}, status=404)
+
+        history = FaqArticleHistory.objects.filter(article=article).select_related('user')[:20]
+        data = []
+        for h in history:
+            data.append({
+                'id':         h.id,
+                'action':     h.action,
+                'action_label': h.get_action_display(),
+                'old_value':  h.old_value,
+                'new_value':  h.new_value,
+                'user_name':  h.user.full_name if h.user else '—',
+                'user_initials': ''.join(w[0].upper() for w in (h.user.full_name or h.user.email).split()[:2]) if h.user else '?',
+                'created_at': h.created_at.isoformat(),
+            })
+        return Response(data)
+
+
 class FaqExportView(APIView):
-    """GET /api/clients/faq-articles/{id}/export/?format=docx|pdf"""
+    """GET /api/clients/faq-articles/{id}/export/?type=docx|pdf"""
     permission_classes = [IsAuthenticated]
 
     def get(self, request, article_id):

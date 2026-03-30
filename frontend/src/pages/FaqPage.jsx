@@ -371,6 +371,75 @@ function WysiwygEditor({ value, onChange, isDark, articleId }) {
 }
 
 // ── Блок файлов ───────────────────────────────────────────
+function HistoryBlock({ articleId, isDark }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api.get(`/clients/faq-articles/${articleId}/history/`)
+      .then(r => setHistory(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [articleId]);
+
+  if (loading || history.length === 0) return null;
+
+  const COLORS = ['#CECBF6/#3C3489', '#9FE1CB/#085041', '#B5D4F4/#0C447C',
+                  '#FAC775/#633806', '#F4C0D1/#72243E', '#C0DD97/#27500A'];
+  const colorFor = (name) => {
+    const c = COLORS[(name?.charCodeAt(0) || 0) % COLORS.length].split('/');
+    return { bg: c[0], text: c[1] };
+  };
+
+  const actionColor = {
+    created:  { bg: '#B5D4F4', text: '#0C447C' },
+    title:    { bg: '#C0DD97', text: '#27500A' },
+    content:  { bg: '#C0DD97', text: '#27500A' },
+    category: { bg: '#FAC775', text: '#633806' },
+  };
+
+  return (
+    <div style={{ borderTop: `0.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, paddingTop: 14, marginTop: 4 }}>
+      <div style={{ fontSize: 11, fontWeight: 500, color: isDark ? 'rgba(255,255,255,0.4)' : '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+        История изменений
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {history.map(h => {
+          const col = colorFor(h.user_name);
+          const ac = actionColor[h.action] || actionColor.content;
+          return (
+            <div key={h.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: col.bg, color: col.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 500, flexShrink: 0 }}>
+                {h.user_initials}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: isDark ? 'rgba(255,255,255,0.85)' : '#333' }}>{h.user_name}</span>
+                  <span style={{ fontSize: 11, color: isDark ? 'rgba(255,255,255,0.4)' : '#888' }}>{dayjs(h.created_at).format('DD.MM.YYYY · HH:mm')}</span>
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: ac.bg, color: ac.text }}>{h.action_label}</span>
+                </div>
+                {h.old_value && h.new_value && (
+                  <div style={{ fontSize: 12, color: isDark ? 'rgba(255,255,255,0.5)' : '#888', marginTop: 3 }}>
+                    <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>
+                      {h.old_value.length > 60 ? h.old_value.slice(0, 60) + '…' : h.old_value}
+                    </span>
+                    <span style={{ margin: '0 6px' }}>→</span>
+                    <span>
+                      {h.new_value.length > 60 ? h.new_value.slice(0, 60) + '…' : h.new_value}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
 function FilesBlock({ articleId, isDark, readOnly }) {
   const user = useAuthStore(s => s.user);
   const isAdmin = user?.is_superuser || user?.role_data?.name === 'admin';
@@ -797,6 +866,7 @@ export default function FaqPage() {
               <div style={{ borderTop: `0.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, paddingTop: 14 }}>
                 <FilesBlock articleId={selectedArticle.id} isDark={isDark} readOnly={true} />
               </div>
+              <HistoryBlock articleId={selectedArticle.id} isDark={isDark} />
             </div>
           ) : (
             <div style={cardStyle}>
