@@ -157,9 +157,12 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
                 'user_id': u.id,
                 'user_name': u.full_name or u.email,
                 'totals': {},
+                'days': {},
             }
             for dt in duty_types:
-                row['totals'][dt] = qs.filter(user=u, duty_type=dt).count()
+                entries = qs.filter(user=u, duty_type=dt).order_by('date')
+                row['totals'][dt] = entries.count()
+                row['days'][dt] = [e.date.day for e in entries]
             row['total'] = sum(row['totals'].values())
             report_data.append(row)
 

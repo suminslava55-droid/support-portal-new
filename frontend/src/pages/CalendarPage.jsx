@@ -17,11 +17,11 @@ dayjs.locale('ru');
 const { Text } = Typography;
 const HIDDEN_USERS_KEY = 'calendar_hidden_users';
 const DUTY_TYPES = [
-  { value: 'phone',     label: 'Телефон',         color: '#00FF00', textColor: '#000' },
-  { value: 'day',       label: 'Работа днём',      color: '#0000FF', textColor: '#fff' },
-  { value: 'phone_day', label: 'Телефон + день',   color: '#00FF00', textColor: '#000' },
-  { value: 'vacation',  label: 'Отпуск',           color: '#FFFF00', textColor: '#000' },
-  { value: 'busy',      label: 'Занят',            color: '#FF0000', textColor: '#fff' },
+  { value: 'phone',     label: 'Телефон',         shortLabel: 'Тел', color: '#00FF00', textColor: '#000' },
+  { value: 'day',       label: 'Работа днём',      shortLabel: 'День', color: '#0000FF', textColor: '#fff' },
+  { value: 'phone_day', label: 'Телефон + день',   shortLabel: 'Т+Д', color: '#00FF00', textColor: '#000' },
+  { value: 'vacation',  label: 'Отпуск',           shortLabel: 'Отп', color: '#FFFF00', textColor: '#000' },
+  { value: 'busy',      label: 'Занят',            shortLabel: 'Зан', color: '#FF0000', textColor: '#fff' },
 ];
 
 const DUTY_MAP = Object.fromEntries(DUTY_TYPES.map(d => [d.value, d]));
@@ -69,6 +69,8 @@ export default function CalendarPage() {
   const [reportModal, setReportModal] = useState(false);
   const [report, setReport] = useState(null);
   const [reportLabels, setReportLabels] = useState({});
+  const [dutyExportModal, setDutyExportModal] = useState(false);
+  const [dutyPrice, setDutyPrice] = useState('');
 
   // Отчёт отпусков
   const [vacationModal, setVacationModal]     = useState(false);
@@ -227,6 +229,65 @@ export default function CalendarPage() {
       setReportLabels(data.labels);
       setReportModal(true);
     } catch {}
+  };
+
+  const exportDutyExcel = () => {
+    if (!report) return;
+    const price = parseFloat(dutyPrice) || 0;
+    const monthName = MONTH_NAMES[month];
+
+    // Таблица 1: Телефон + Телефон+день
+    const rows1 = report
+      .filter(r => [...(r.days?.phone || []), ...(r.days?.phone_day || [])].length > 0)
+      .map(r => {
+        const days = [...(r.days?.phone || []), ...(r.days?.phone_day || [])].sort((a, b) => a - b);
+        return { name: r.user_name, days: days.join(', '), total: days.length * price };
+      });
+
+    // Таблица 2: Телефон+день и Работа днём (6 часов за день)
+    const rows2 = report
+      .filter(r => [...(r.days?.phone_day || []), ...(r.days?.day || [])].length > 0)
+      .map(r => {
+        const days = [...(r.days?.phone_day || []), ...(r.days?.day || [])].sort((a, b) => a - b);
+        const count = days.length;
+        return { name: r.user_name, days: days.join(', '), count, hours: count * 6 };
+      });
+
+    const td = (val, bold) =>
+      `<td style="border:1px solid #ccc;padding:4px 8px;${bold ? 'font-weight:bold;background:#f0f0f0;' : ''}">${val}</td>`;
+
+    const t1 = rows1.map(r =>
+      `<tr>${td(r.name)}${td(r.days)}${td('- ' + r.total.toLocaleString('ru-RU') + ' руб.')}</tr>`
+    ).join('') || '<tr><td colspan="3" style="color:#999;padding:4px 8px;">Нет данных</td></tr>';
+
+    const t2 = rows2.map(r =>
+      `<tr>${td(r.name)}${td(r.days)}${td(r.count + ' дн. × 6 ч. = ' + r.hours + ' ч.')}</tr>`
+    ).join('') || '<tr><td colspan="3" style="color:#999;padding:4px 8px;">Нет данных</td></tr>';
+
+    const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">'
+      + '<head><meta charset="UTF-8"/></head><body><table>'
+      + `<tr><td colspan="3" style="font-size:14px;font-weight:bold;padding:6px 8px;">Отчёт дежурств за ${monthName} ${year}</td></tr>`
+      + `<tr><td colspan="3" style="font-size:12px;color:#666;padding:2px 8px;">Телефон и Телефон + день</td></tr>`
+      + '<tr><td></td></tr>'
+      + `<tr>${td('Сотрудник', true)}${td('Числа дежурств', true)}${td('Сумма', true)}</tr>`
+      + t1
+      + '<tr><td></td></tr><tr><td></td></tr>'
+      + `<tr><td colspan="3" style="font-size:14px;font-weight:bold;padding:6px 8px;">Работа днём за ${monthName} ${year}</td></tr>`
+      + '<tr><td colspan="3" style="font-size:12px;color:#666;padding:2px 8px;">Телефон+день и Работа днём &mdash; 1 день = 6 часов</td></tr>'
+      + '<tr><td></td></tr>'
+      + `<tr>${td('Сотрудник', true)}${td('Числа работы', true)}${td('Итого часов', true)}</tr>`
+      + t2
+      + '</table></body></html>';
+
+    const blob = new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `дежурства_${monthName}_${year}.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setDutyExportModal(false);
+    setDutyPrice('');
   };
 
   const openVacationReport = async (yr) => {
@@ -397,7 +458,7 @@ export default function CalendarPage() {
                 : isSelected
                   ? <span style={{ fontSize: 10, color: '#1677ff' }}>✓</span>
                   : duty
-                    ? <span style={{ fontSize: 9, fontWeight: 600, color: duty.textColor }}>{duty.label.slice(0, 3)}</span>
+                    ? <span style={{ fontSize: 10, fontWeight: 600, color: duty.textColor }}>{duty.shortLabel}</span>
                     : isBirthday ? <span style={{ fontSize: 11 }}>🎂</span> : null
               }
             </div>
@@ -628,7 +689,20 @@ export default function CalendarPage() {
         title={`Отчёт за ${MONTH_NAMES[month]} ${year}`}
         open={reportModal}
         onCancel={() => setReportModal(false)}
-        footer={<Button onClick={() => setReportModal(false)}>Закрыть</Button>}
+        footer={
+          <Space>
+            {isAdmin && (
+              <Button
+                icon={<FileExcelOutlined />}
+                style={{ color: '#389e0d', borderColor: '#389e0d' }}
+                onClick={() => { setDutyPrice(''); setDutyExportModal(true); }}
+              >
+                Экспорт в Excel
+              </Button>
+            )}
+            <Button onClick={() => setReportModal(false)}>Закрыть</Button>
+          </Space>
+        }
         width={740}
       >
         {report && (
@@ -642,6 +716,31 @@ export default function CalendarPage() {
             scroll={{ x: 550 }}
           />
         )}
+      </Modal>
+
+      {/* Модал ввода стоимости дежурства */}
+      <Modal
+        title="Экспорт дежурств в Excel"
+        open={dutyExportModal}
+        onCancel={() => setDutyExportModal(false)}
+        onOk={exportDutyExcel}
+        okText="Скачать"
+        cancelText="Отмена"
+        okButtonProps={{ icon: <FileExcelOutlined />, style: { background: '#389e0d', borderColor: '#389e0d' } }}
+        width={360}
+      >
+        <div style={{ marginBottom: 8 }}>Укажите стоимость дежурства (руб.)</div>
+        <Input
+          type="number"
+          min={0}
+          placeholder="Например: 2000"
+          value={dutyPrice}
+          onChange={e => setDutyPrice(e.target.value)}
+          onPressEnter={exportDutyExcel}
+          suffix="руб."
+          autoFocus
+        />
+
       </Modal>
       {/* Модал редактирования дня */}
       {holidayModalDate && (
