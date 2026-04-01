@@ -76,9 +76,11 @@ function BarRow({ label, value, max }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 12 }}>
-      <div style={{ width: 110, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
-        {label}
-      </div>
+      <Tooltip title={label} placement="topLeft">
+        <div style={{ width: 160, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default' }}>
+          {label}
+        </div>
+      </Tooltip>
       <div style={{ flex: 1, height: 8, background: 'rgba(128,128,128,0.15)', borderRadius: 4, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: label === 'Без провайдера' ? '#888' : '#378ADD', borderRadius: 4 }} />
       </div>
