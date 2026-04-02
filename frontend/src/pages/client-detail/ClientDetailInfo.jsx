@@ -6,6 +6,22 @@ import { message } from 'antd';
 
 const { Text } = Typography;
 
+// Иконка WinBox (RouterOS логотип — стилизованная "W")
+const WinBoxIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="14" height="14" rx="3" fill="#CC0000"/>
+    <text x="2" y="11" fontSize="9" fontWeight="bold" fill="white" fontFamily="monospace">W</text>
+  </svg>
+);
+
+// Иконка LiteManager (стилизованная "LM")
+const LiteManagerIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="14" height="14" rx="3" fill="#0066CC"/>
+    <text x="1" y="11" fontSize="7" fontWeight="bold" fill="white" fontFamily="monospace">LM</text>
+  </svg>
+);
+
 export default function ClientDetailInfo({ client, pingResults, pinging, checkPing }) {
   return (
     <>
@@ -66,12 +82,22 @@ export default function ClientDetailInfo({ client, pingResults, pinging, checkPi
                   : '—'}
               </Tag>
               {client.mikrotik_ip && (
-                <Tooltip title="Скопировать">
-                  <Button type="text" size="small"
-                    onClick={() => { copyToClipboard(client.mikrotik_ip); message.success('Скопировано!', 1); }}
-                    style={{ padding: '0 2px', height: 'auto' }}
-                  />
-                </Tooltip>
+                <>
+                  <Tooltip title="Скопировать">
+                    <Button type="text" size="small"
+                      icon={<span style={{ color: '#1677ff' }}>⎘</span>}
+                      onClick={() => { copyToClipboard(client.mikrotik_ip); message.success('Скопировано!', 1); }}
+                      style={{ padding: '0 2px', height: 'auto' }}
+                    />
+                  </Tooltip>
+                  <Tooltip title={`Открыть в WinBox (${client.mikrotik_ip})`}>
+                    <Button type="text" size="small"
+                      icon={<WinBoxIcon />}
+                      onClick={() => { window.location.href = `winbox://${client.mikrotik_ip}`; }}
+                      style={{ padding: '0 2px', height: 'auto' }}
+                    />
+                  </Tooltip>
+                </>
               )}
               <PingStatus status={pingResults.mikrotik_ip} ip={client.mikrotik_ip} />
             </Space>
@@ -82,12 +108,22 @@ export default function ClientDetailInfo({ client, pingResults, pinging, checkPi
                 {client.server_ip || '—'}
               </Tag>
               {client.server_ip && (
-                <Tooltip title="Скопировать">
-                  <Button type="text" size="small"
-                    onClick={() => { copyToClipboard(client.server_ip); message.success('Скопировано!', 1); }}
-                    style={{ padding: '0 2px', height: 'auto' }}
-                  />
-                </Tooltip>
+                <>
+                  <Tooltip title="Скопировать">
+                    <Button type="text" size="small"
+                      icon={<span style={{ color: '#1677ff' }}>⎘</span>}
+                      onClick={() => { copyToClipboard(client.server_ip); message.success('Скопировано!', 1); }}
+                      style={{ padding: '0 2px', height: 'auto' }}
+                    />
+                  </Tooltip>
+                  <Tooltip title={`Подключиться через LiteManager (${client.server_ip})`}>
+                    <Button type="text" size="small"
+                      icon={<LiteManagerIcon />}
+                      onClick={() => { window.location.href = `litemanager://${client.server_ip}`; }}
+                      style={{ padding: '0 2px', height: 'auto' }}
+                    />
+                  </Tooltip>
+                </>
               )}
               <PingStatus status={pingResults.server_ip} ip={client.server_ip} />
             </Space>
