@@ -791,7 +791,7 @@ export default function FaqPage() {
                 <Space>
                   <Button icon={<EditOutlined />} onClick={() => { setEditingArticle(selectedArticle); setEditing(true); }}>Редактировать</Button>
                   {selectedArticle.can_delete && (
-                    <Popconfirm title="Удалить статью?" okText="Удалить" cancelText="Отмена" okButtonProps={{ danger: true }} onConfirm={() => { handleDeleteArticle(selectedArticle.id); setSelectedArticle(null); }}>
+                    <Popconfirm title="Удалить статью?" okText="Удалить" cancelText="Отмена" okButtonProps={{ danger: true }} onConfirm={() => { handleDeleteArticle(selectedArticle.id); setSelectedArticle(null); setSearchParams({}); }}>
                       <Button danger icon={<DeleteOutlined />}>Удалить</Button>
                     </Popconfirm>
                   )}
@@ -822,7 +822,7 @@ export default function FaqPage() {
                         });
                     }}>PDF</Button>
                   </Tooltip>
-                  <Button onClick={() => setSelectedArticle(null)}>← Назад</Button>
+                  <Button onClick={() => { setSelectedArticle(null); setSearchParams({}); }}>← Назад</Button>
                 </Space>
               </div>
               <div style={{ borderTop: `0.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, paddingTop: 16, marginBottom: 16 }}>
@@ -892,7 +892,7 @@ export default function FaqPage() {
                 <Empty description="Статей нет. Нажмите «Новая статья» чтобы добавить." style={{ padding: 60 }} />
               ) : (
                 articles.map((art, i) => (
-                  <div key={art.id} onClick={() => setSelectedArticle(art)} style={{ padding: '14px 20px', cursor: 'pointer', borderBottom: i < articles.length - 1 ? `0.5px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` : 'none' }}
+                  <div key={art.id} onClick={() => { setSelectedArticle(art); setSearchParams({ article: art.id }); }} style={{ padding: '14px 20px', cursor: 'pointer', borderBottom: i < articles.length - 1 ? `0.5px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` : 'none' }}
                     onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#f5f5f5'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
