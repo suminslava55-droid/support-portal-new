@@ -121,10 +121,11 @@ class OfdCompanyViewSet(viewsets.ModelViewSet):
 
 
 class ProviderViewSet(viewsets.ModelViewSet):
-    queryset = Provider.objects.all()
+    queryset = Provider.objects.all().order_by("name")
     serializer_class = ProviderSerializer
     permission_classes = [IsAuthenticated, CanEditClient]
 
+    pagination_class = None
 
 
 class DashboardStatsView(APIView):
