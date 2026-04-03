@@ -202,7 +202,7 @@ export default function AppLayout({ children }) {
 
       <Layout>
         <Header style={{
-          background: isDark ? '#141414' : '#fff',
+          background: 'transparent',
           padding: '0 16px',
           display: 'flex',
           justifyContent: 'space-between',

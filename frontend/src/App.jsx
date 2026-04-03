@@ -8,6 +8,7 @@ import useAuthStore from './store/authStore';
 import useThemeStore from './store/themeStore';
 import { authAPI } from './api';
 import AppLayout from './components/AppLayout';
+import { customTheme, darkTheme } from './theme/customTheme';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import CalendarPage from './pages/CalendarPage';
@@ -49,8 +50,6 @@ export default function App() {
   const isDark = useThemeStore((s) => s.isDark);
   const [initializing, setInitializing] = useState(true);
 
-  // Применяем фон к body/html при смене темы —
-  // antd 5 меняет токены компонентов, но НЕ красит body автоматически
   useEffect(() => {
     const bg = isDark ? '#141414' : '#ffffff';
     const color = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.88)';
@@ -60,7 +59,6 @@ export default function App() {
     document.documentElement.style.background = bg;
     document.documentElement.style.backgroundColor = bg;
 
-    // Скроллбар под тему
     let styleEl = document.getElementById('scrollbar-theme');
     if (!styleEl) {
       styleEl = document.createElement('style');
@@ -110,12 +108,15 @@ export default function App() {
     );
   }
 
+  const theme = isDark ? darkTheme : customTheme;
+
   return (
     <ConfigProvider
       locale={ruRU}
       theme={{
         algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
-        token: { colorPrimary: '#1677ff', borderRadius: 6 },
+        token: theme.token,
+        components: theme.components,
       }}
     >
       <BrowserRouter>
