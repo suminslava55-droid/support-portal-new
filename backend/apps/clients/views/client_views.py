@@ -17,6 +17,7 @@ from ..serializers import (
 )
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
+from .search_utils import fuzzy_filter_clients, build_exact_q
 
 
 class CustomFieldDefinitionViewSet(viewsets.ModelViewSet):
@@ -79,6 +80,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         qs = super().filter_queryset(queryset)
         search = self.request.query_params.get('search', '').strip()
         if search:
+            # Поиск по типу подключения (по читаемому названию)
             CONNECTION_TYPE_CHOICES = [
                 ('fiber', 'Оптоволокно'), ('dsl', 'DSL'), ('cable', 'Кабель'),
                 ('wireless', 'Беспроводное'), ('modem', 'Модем'), ('mrnet', 'MR-Net'),
@@ -87,12 +89,15 @@ class ClientViewSet(viewsets.ModelViewSet):
                              if search.lower() in label.lower()]
             if matched_types:
                 from django.db.models import Q
-                qs = (qs | Client.objects.filter(
+                conn_qs = Client.objects.filter(
                     is_draft=False,
                 ).filter(
                     Q(connection_type__in=matched_types) |
                     Q(connection_type2__in=matched_types)
-                )).distinct()
+                )
+                qs = (fuzzy_filter_clients(qs, search) | conn_qs).distinct()
+            else:
+                qs = fuzzy_filter_clients(qs, search)
         return qs
 
     def get_serializer_class(self):
@@ -182,19 +187,6 @@ class ClientViewSet(viewsets.ModelViewSet):
         qs = Client.objects.select_related('provider', 'provider2').filter(is_draft=False)
         if search:
             from django.db.models import Q
-            qs = qs.filter(
-                Q(address__icontains=search) |
-                Q(phone__icontains=search) | Q(email__icontains=search) |
-                Q(pharmacy_code__icontains=search) |
-                Q(warehouse_code__icontains=search) |
-                Q(ofd_company__name__icontains=search) |
-                Q(ofd_company__inn__icontains=search) |
-                Q(personal_account__icontains=search) |
-                Q(contract_number__icontains=search) |
-                Q(personal_account2__icontains=search) |
-                Q(contract_number2__icontains=search)
-            )
-            # Поиск по типу подключения — по читаемому названию
             CONNECTION_TYPE_CHOICES = [
                 ('fiber', 'Оптоволокно'), ('dsl', 'DSL'), ('cable', 'Кабель'),
                 ('wireless', 'Беспроводное'), ('modem', 'Модем'), ('mrnet', 'MR-Net'),
@@ -202,15 +194,15 @@ class ClientViewSet(viewsets.ModelViewSet):
             matched_types = [code for code, label in CONNECTION_TYPE_CHOICES
                              if search.lower() in label.lower()]
             if matched_types:
-                qs = (qs | Client.objects.filter(
+                conn_qs = Client.objects.filter(
                     is_draft=False,
-                    **{}
                 ).filter(
                     Q(connection_type__in=matched_types) |
                     Q(connection_type2__in=matched_types)
-                )).distinct()
+                )
+                qs = (fuzzy_filter_clients(qs, search) | conn_qs).distinct()
             else:
-                qs = qs.distinct()
+                qs = fuzzy_filter_clients(qs, search)
         if status_filter:
             qs = qs.filter(status=status_filter)
         clients = qs.order_by('-created_at')

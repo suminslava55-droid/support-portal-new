@@ -8,6 +8,7 @@ import {
   DownloadOutlined, MailOutlined, SendOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { getSearchVariants } from '../utils/keyboardLayout';
 import { clientsAPI, settingsAPI } from '../api';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
@@ -224,7 +225,10 @@ export default function ClientsPage() {
       const { data } = await clientsAPI.list({
         page,
         page_size: pagination.pageSize,
-        search: search || undefined,
+        search: search ? (() => {
+          const variants = getSearchVariants(search);
+          return variants.length > 1 ? variants[1] : variants[0];
+        })() : undefined,
         status: status || undefined,
         provider: providerFilter.length ? providerFilter.join(',') : undefined,
         ordering,
