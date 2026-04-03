@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, Spin, theme as antTheme } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
@@ -9,21 +9,28 @@ import useThemeStore from './store/themeStore';
 import { authAPI } from './api';
 import AppLayout from './components/AppLayout';
 import { customTheme, darkTheme } from './theme/customTheme';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import CalendarPage from './pages/CalendarPage';
-import ClientsPage from './pages/ClientsPage';
-import ClientDetailPage from './pages/ClientDetailPage';
-import SettingsPage from './pages/SettingsPage';
-import ClientFormPage from './pages/ClientFormPage';
-import UsersPage from './pages/UsersPage';
-import ProvidersPage from './pages/ProvidersPage';
-import OfdCompaniesPage from './pages/OfdCompaniesPage';
-import FnReplacementPage from './pages/FnReplacementPage';
-import SearchPage from './pages/SearchPage';
-import FaqPage from './pages/FaqPage';
+
+const LoginPage        = lazy(() => import('./pages/LoginPage'));
+const DashboardPage    = lazy(() => import('./pages/DashboardPage'));
+const CalendarPage     = lazy(() => import('./pages/CalendarPage'));
+const ClientsPage      = lazy(() => import('./pages/ClientsPage'));
+const ClientDetailPage = lazy(() => import('./pages/ClientDetailPage'));
+const SettingsPage     = lazy(() => import('./pages/SettingsPage'));
+const ClientFormPage   = lazy(() => import('./pages/ClientFormPage'));
+const UsersPage        = lazy(() => import('./pages/UsersPage'));
+const ProvidersPage    = lazy(() => import('./pages/ProvidersPage'));
+const OfdCompaniesPage = lazy(() => import('./pages/OfdCompaniesPage'));
+const FnReplacementPage= lazy(() => import('./pages/FnReplacementPage'));
+const SearchPage       = lazy(() => import('./pages/SearchPage'));
+const FaqPage          = lazy(() => import('./pages/FaqPage'));
 
 dayjs.locale('ru');
+
+const PageLoader = () => (
+  <div style={{ height: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <Spin size="large" />
+  </div>
+);
 
 function RequireAuth({ children }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -120,23 +127,25 @@ export default function App() {
       }}
     >
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" /> : <LoginPage />} />
-          <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
-          <Route path="/search" element={<RequireAuth><SearchPage /></RequireAuth>} />
-          <Route path="/calendar" element={<RequireAuth><RequireCalendar><CalendarPage /></RequireCalendar></RequireAuth>} />
-          <Route path="/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
-          <Route path="/clients/new" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
-          <Route path="/clients/:id/edit" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
-          <Route path="/clients/:id" element={<RequireAuth><ClientDetailPage /></RequireAuth>} />
-          <Route path="/users" element={<RequireAuth><RequireAdmin><UsersPage /></RequireAdmin></RequireAuth>} />
-          <Route path="/providers" element={<RequireAuth><ProvidersPage /></RequireAuth>} />
-          <Route path="/ofd-companies" element={<RequireAuth><OfdCompaniesPage /></RequireAuth>} />
-          <Route path="/fn-replacement" element={<RequireAuth><FnReplacementPage /></RequireAuth>} />
-          <Route path="/faq" element={<RequireAuth><FaqPage /></RequireAuth>} />
-          <Route path="/settings" element={<RequireAuth><RequireAdmin><SettingsPage /></RequireAdmin></RequireAuth>} />
-          <Route path="*" element={<Navigate to="/dashboard" />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" /> : <LoginPage />} />
+            <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+            <Route path="/search" element={<RequireAuth><SearchPage /></RequireAuth>} />
+            <Route path="/calendar" element={<RequireAuth><RequireCalendar><CalendarPage /></RequireCalendar></RequireAuth>} />
+            <Route path="/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
+            <Route path="/clients/new" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
+            <Route path="/clients/:id/edit" element={<RequireAuth><ClientFormPage /></RequireAuth>} />
+            <Route path="/clients/:id" element={<RequireAuth><ClientDetailPage /></RequireAuth>} />
+            <Route path="/users" element={<RequireAuth><RequireAdmin><UsersPage /></RequireAdmin></RequireAuth>} />
+            <Route path="/providers" element={<RequireAuth><ProvidersPage /></RequireAuth>} />
+            <Route path="/ofd-companies" element={<RequireAuth><OfdCompaniesPage /></RequireAuth>} />
+            <Route path="/fn-replacement" element={<RequireAuth><FnReplacementPage /></RequireAuth>} />
+            <Route path="/faq" element={<RequireAuth><FaqPage /></RequireAuth>} />
+            <Route path="/settings" element={<RequireAuth><RequireAdmin><SettingsPage /></RequireAdmin></RequireAuth>} />
+            <Route path="*" element={<Navigate to="/dashboard" />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </ConfigProvider>
   );
