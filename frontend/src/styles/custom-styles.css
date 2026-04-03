@@ -1,0 +1,609 @@
+/**
+ * Кастомные стили для улучшенного интерфейса
+ */
+
+/* ===== Переменные темы ===== */
+:root {
+  --primary-color: #4F46E5;
+  --primary-hover: #4338CA;
+  --primary-active: #3730A3;
+  --success-color: #10B981;
+  --warning-color: #F59E0B;
+  --error-color: #EF4444;
+  --info-color: #3B82F6;
+  
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+  
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F9FAFB;
+  --bg-tertiary: #F3F4F6;
+  
+  --border-color: #E5E7EB;
+  --border-secondary: #F3F4F6;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
+/* Темная тема */
+[data-theme='dark'] {
+  --primary-color: #6366F1;
+  --primary-hover: #818CF8;
+  --primary-active: #4F46E5;
+  
+  --text-primary: #F9FAFB;
+  --text-secondary: #D1D5DB;
+  --text-tertiary: #9CA3AF;
+  
+  --bg-primary: #1F2937;
+  --bg-secondary: #111827;
+  --bg-tertiary: #374151;
+  
+  --border-color: #374151;
+  --border-secondary: #4B5563;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+}
+
+/* ===== Базовые стили ===== */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== Улучшенные карточки ===== */
+.ant-card {
+  border-radius: var(--radius-lg);
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.ant-card:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+.ant-card-head {
+  border-bottom: 1px solid var(--border-secondary);
+  font-weight: 600;
+}
+
+/* ===== Улучшенные кнопки ===== */
+.ant-btn {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.ant-btn-primary {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+  border: none;
+  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary-active) 100%);
+  box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3);
+  transform: translateY(-1px);
+}
+
+.ant-btn-primary:active {
+  transform: translateY(0);
+}
+
+/* ===== Улучшенные таблицы ===== */
+.ant-table {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ant-table-thead > tr > th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-color);
+}
+
+.ant-table-tbody > tr {
+  transition: background-color 0.2s ease;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: var(--bg-tertiary) !important;
+}
+
+.ant-table-tbody > tr:nth-child(even) {
+  background: var(--bg-secondary);
+}
+
+/* Resizable колонки */
+.react-resizable {
+  position: relative;
+  background-clip: padding-box;
+}
+
+.react-resizable-handle {
+  position: absolute;
+  width: 6px;
+  height: 100%;
+  bottom: 0;
+  right: -3px;
+  cursor: col-resize;
+  z-index: 1;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.react-resizable-handle:hover {
+  background: var(--primary-color);
+}
+
+/* ===== Улучшенные инпуты ===== */
+.ant-input,
+.ant-input-affix-wrapper {
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+
+.ant-input:focus,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused {
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+  border-color: var(--primary-color);
+}
+
+/* ===== Улучшенные селекты ===== */
+.ant-select:not(.ant-select-customize-input) .ant-select-selector {
+  border-radius: var(--radius-md);
+}
+
+/* ===== Улучшенные модальные окна ===== */
+.ant-modal-content {
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.ant-modal-header {
+  border-bottom: 1px solid var(--border-secondary);
+  padding: 20px 24px;
+}
+
+.ant-modal-body {
+  padding: 24px;
+}
+
+.ant-modal-footer {
+  border-top: 1px solid var(--border-secondary);
+  padding: 16px 24px;
+}
+
+/* ===== Улучшенное меню ===== */
+.ant-menu {
+  border-radius: var(--radius-md);
+}
+
+.ant-menu-item {
+  border-radius: var(--radius-sm);
+  margin: 4px 8px;
+  transition: all 0.2s ease;
+}
+
+.ant-menu-item:hover {
+  background: rgba(79, 70, 229, 0.08);
+}
+
+.ant-menu-item-selected {
+  background: rgba(79, 70, 229, 0.12) !important;
+  color: var(--primary-color) !important;
+  font-weight: 500;
+}
+
+/* ===== Улучшенные теги ===== */
+.ant-tag {
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  padding: 2px 10px;
+}
+
+/* ===== Улучшенные бейджи ===== */
+.ant-badge-count {
+  border-radius: 10px;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}
+
+/* ===== Улучшенные алерты ===== */
+.ant-alert {
+  border-radius: var(--radius-md);
+}
+
+/* ===== Улучшенные уведомления ===== */
+.ant-notification-notice {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ===== Skeleton анимация ===== */
+.ant-skeleton .ant-skeleton-content .ant-skeleton-title,
+.ant-skeleton .ant-skeleton-content .ant-skeleton-paragraph > li {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ===== Анимации переходов ===== */
+.fade-enter {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.fade-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.fade-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.fade-exit-active {
+  opacity: 0;
+  transform: translateY(-20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* ===== Scrollbar стили ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ===== Улучшенная пагинация ===== */
+.ant-pagination-item {
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.ant-pagination-item:hover {
+  border-color: var(--primary-color);
+}
+
+.ant-pagination-item-active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.ant-pagination-item-active a {
+  color: white !important;
+}
+
+/* ===== Улучшенные табы ===== */
+.ant-tabs-tab {
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition: all 0.2s ease;
+}
+
+.ant-tabs-tab:hover {
+  color: var(--primary-color);
+}
+
+.ant-tabs-tab-active {
+  font-weight: 500;
+}
+
+/* ===== Улучшенный дропдаун ===== */
+.ant-dropdown-menu {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.ant-dropdown-menu-item {
+  border-radius: var(--radius-sm);
+  margin: 2px 4px;
+}
+
+/* ===== Улучшенный тултип ===== */
+.ant-tooltip-inner {
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+/* ===== Улучшенный поповер ===== */
+.ant-popover-inner {
+  border-radius: var(--radius-lg);
+}
+
+/* ===== Улучшенный drawer ===== */
+.ant-drawer-content {
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+}
+
+/* ===== Улучшенный прогресс ===== */
+.ant-progress-bg {
+  border-radius: 100px;
+}
+
+/* ===== Улучшенный слайдер ===== */
+.ant-slider-track {
+  background: var(--primary-color);
+}
+
+.ant-slider-handle {
+  border-color: var(--primary-color);
+}
+
+/* ===== Улучшенный свитч ===== */
+.ant-switch-checked {
+  background: var(--primary-color);
+}
+
+/* ===== Улучшенный чекбокс и радио ===== */
+.ant-checkbox-checked .ant-checkbox-inner,
+.ant-radio-checked .ant-radio-inner {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+/* ===== Улучшенный date picker ===== */
+.ant-picker {
+  border-radius: var(--radius-md);
+}
+
+/* ===== Улучшенный time picker ===== */
+.ant-picker-time-panel-column > li.ant-picker-time-panel-cell-selected .ant-picker-time-panel-cell-inner {
+  background: var(--primary-color);
+}
+
+/* ===== Улучшенный steps ===== */
+.ant-steps-item-process .ant-steps-item-icon {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.ant-steps-item-finish .ant-steps-item-icon {
+  border-color: var(--primary-color);
+}
+
+.ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon {
+  color: var(--primary-color);
+}
+
+/* ===== Улучшенный upload ===== */
+.ant-upload-drag {
+  border-radius: var(--radius-lg);
+  border-color: var(--border-color);
+}
+
+.ant-upload-drag:hover {
+  border-color: var(--primary-color);
+}
+
+/* ===== Улучшенный collapse ===== */
+.ant-collapse {
+  border-radius: var(--radius-lg);
+}
+
+.ant-collapse-item {
+  border-radius: var(--radius-md);
+}
+
+/* ===== Улучшенный list ===== */
+.ant-list-item {
+  transition: background-color 0.2s ease;
+}
+
+.ant-list-item:hover {
+  background: var(--bg-secondary);
+}
+
+/* ===== Улучшенный description ===== */
+.ant-descriptions-item-label {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* ===== Улучшенный statistic ===== */
+.ant-statistic-content {
+  font-weight: 600;
+}
+
+.ant-statistic-title {
+  color: var(--text-secondary);
+}
+
+/* ===== Улучшенный timeline ===== */
+.ant-timeline-item-head {
+  border-color: var(--primary-color);
+}
+
+/* ===== Улучшенный tree ===== */
+.ant-tree-node-content-wrapper:hover {
+  background: rgba(79, 70, 229, 0.08);
+}
+
+.ant-tree-node-selected {
+  background: rgba(79, 70, 229, 0.12) !important;
+}
+
+/* ===== Улучшенный transfer ===== */
+.ant-transfer-list {
+  border-radius: var(--radius-md);
+}
+
+/* ===== Улучшенный calendar ===== */
+.ant-picker-calendar-full .ant-picker-panel {
+  border-radius: var(--radius-lg);
+}
+
+.ant-picker-calendar-date {
+  border-radius: var(--radius-sm);
+}
+
+/* ===== Улучшенный carousel ===== */
+.ant-carousel .slick-dots li button {
+  border-radius: 4px;
+}
+
+.ant-carousel .slick-dots li.slick-active button {
+  background: var(--primary-color);
+}
+
+/* ===== Улучшенный affix ===== */
+.ant-affix {
+  z-index: 1000;
+}
+
+/* ===== Улучшенный back-top ===== */
+.ant-back-top {
+  border-radius: 50%;
+}
+
+/* ===== Улучшенный spin ===== */
+.ant-spin-dot-item {
+  background: var(--primary-color);
+}
+
+/* ===== Улучшенный empty ===== */
+.ant-empty-description {
+  color: var(--text-secondary);
+}
+
+/* ===== Улучшенный result ===== */
+.ant-result-icon > .anticon {
+  color: var(--primary-color);
+}
+
+/* ===== Улучшенный segmented ===== */
+.ant-segmented-item-selected {
+  background: var(--primary-color);
+  color: white;
+}
+
+/* ===== Улучшенный rate ===== */
+.ant-rate-star-full .ant-rate-star-second,
+.ant-rate-star-half .ant-rate-star-first {
+  color: var(--warning-color);
+}
+
+/* ===== Улучшенный slider ===== */
+.ant-slider:hover .ant-slider-track {
+  background: var(--primary-hover);
+}
+
+/* ===== Улучшенный mentions ===== */
+.ant-mentions {
+  border-radius: var(--radius-md);
+}
+
+/* ===== Улучшенный cascader ===== */
+.ant-cascader-menu-item-active {
+  background: rgba(79, 70, 229, 0.08);
+  font-weight: 500;
+}
+
+/* ===== Улучшенный auto-complete ===== */
+.ant-select-auto-complete {
+  border-radius: var(--radius-md);
+}
+
+/* ===== Улучшенный color-picker ===== */
+.ant-color-picker-trigger {
+  border-radius: var(--radius-md);
+}
+
+/* ===== Улучшенный qr-code ===== */
+.ant-qrcode {
+  border-radius: var(--radius-md);
+}
+
+/* ===== Улучшенный watermark ===== */
+.ant-water-mark {
+  z-index: 9999;
+}
+
+/* ===== Улучшенный tour ===== */
+.ant-tour-inner {
+  border-radius: var(--radius-lg);
+}
+
+/* ===== Улучшенный float-button ===== */
+.ant-float-btn {
+  border-radius: 50%;
+  box-shadow: var(--shadow-lg);
+}
+
+.ant-float-btn-primary {
+  background: var(--primary-color);
+}
+
+/* ===== Адаптивность ===== */
+@media (max-width: 768px) {
+  .ant-card {
+    border-radius: var(--radius-md);
+  }
+  
+  .ant-modal-content {
+    border-radius: var(--radius-lg);
+  }
+  
+  .ant-drawer-content {
+    border-radius: 0;
+  }
+  
+  .ant-table {
+    font-size: 13px;
+  }
+  
+  .ant-btn {
+    padding-inline: 16px;
+  }
+}
+
+/* ===== Печать ===== */
+@media print {
+  .ant-layout-sider,
+  .ant-layout-header,
+  .ant-btn:not(.ant-btn-primary),
+  .ant-pagination {
+    display: none !important;
+  }
+  
+  .ant-layout-content {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
