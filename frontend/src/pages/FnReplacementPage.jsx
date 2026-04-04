@@ -10,6 +10,7 @@ import {
   DownloadOutlined, SendOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { getSearchVariants } from '../utils/keyboardLayout';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import api from '../api/axios';
@@ -290,7 +291,7 @@ function useKktData(month, year) {
     try {
       const { data } = await api.get('/clients/kkt-list/', {
         params: {
-          search:    search || undefined,
+          search:    search ? getSearchVariants(search).pop() : undefined,
           ordering,
           page:      pagination.page,
           page_size: pagination.pageSize,
