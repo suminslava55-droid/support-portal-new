@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { getSearchVariants } from '../utils/keyboardLayout';
 import {
   Typography, Input, Button, Modal, Form, Select, Space,
   Popconfirm, message, Spin, Empty, Tag, Tooltip, Upload,
@@ -657,7 +658,7 @@ export default function FaqPage() {
     try {
       const params = {};
       if (catId) params.category = catId;
-      if (q) params.search = q;
+      if (q) params.search = getSearchVariants(q).pop();
       const { data } = await api.get('/clients/faq-articles/', { params });
       setArticles(data.results || data);
     } finally { setLoading(false); }

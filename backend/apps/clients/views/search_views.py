@@ -3,6 +3,30 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
 from ..models import Client, KktData, ClientActivity, ClientNote, FaqArticle
+from .search_utils import fuzzy_filter_clients
+
+
+def _convert_layout(s):
+    """Конвертация латиницы (неверная раскладка) в кириллицу."""
+    EN_TO_RU = {
+        'q':'й','w':'ц','e':'у','r':'к','t':'е','y':'н','u':'г','i':'ш','o':'щ','p':'з',
+        '[':'х',']':'ъ','a':'ф','s':'ы','d':'в','f':'а','g':'п','h':'р','j':'о','k':'л',
+        'l':'д',';':'ж',"'":'э','z':'я','x':'ч','c':'с','v':'м','b':'и','n':'т','m':'ь',
+        ',':'б','.':'ю','Q':'Й','W':'Ц','E':'У','R':'К','T':'Е','Y':'Н','U':'Г','I':'Ш',
+        'O':'Щ','P':'З','{':'Х','}':'Ъ','A':'Ф','S':'Ы','D':'В','F':'А','G':'П','H':'Р',
+        'J':'О','K':'Л','L':'Д',':':'Ж','"':'Э','Z':'Я','X':'Ч','C':'С','V':'М','B':'И',
+        'N':'Т','M':'Ь','<':'Б','>':'Ю',
+    }
+    latin = sum(1 for ch in s if ch in EN_TO_RU)
+    if latin > len(s) * 0.4 and latin > 0:
+        return ''.join(EN_TO_RU.get(ch, ch) for ch in s)
+    return s
+
+
+def _get_search_term(q):
+    """Возвращает поисковый термин с учётом раскладки."""
+    converted = _convert_layout(q)
+    return converted if converted != q else q
 
 
 class GlobalSearchView(APIView):
@@ -13,85 +37,80 @@ class GlobalSearchView(APIView):
         if len(q) < 2:
             return Response({'results': [], 'total': 0})
 
+        # Конвертируем раскладку если нужно
+        search_term = _get_search_term(q)
+
         results = []
 
-        clients_qs = Client.objects.filter(is_draft=False).filter(
-            Q(address__icontains=q) | Q(phone__icontains=q) | Q(email__icontains=q) |
-            Q(pharmacy_code__icontains=q) | Q(warehouse_code__icontains=q) |
-            Q(iccid__icontains=q) | Q(personal_account__icontains=q) |
-            Q(contract_number__icontains=q) | Q(personal_account2__icontains=q) |
-            Q(contract_number2__icontains=q) | Q(ofd_company__name__icontains=q) |
-            Q(ofd_company__inn__icontains=q) | Q(external_ip__icontains=q) |
-            Q(subnet__icontains=q)
-        ).select_related('ofd_company').distinct()[:20]
+        # Fuzzy поиск клиентов
+        base_qs = Client.objects.filter(is_draft=False).select_related('ofd_company')
+        clients_qs = fuzzy_filter_clients(base_qs, search_term)[:20]
 
         for c in clients_qs:
-            match_field = _match_field_client(c, q)
+            match_field = _match_field_client(c, search_term)
             results.append({
                 'type': 'client', 'source': f'Клиент — {match_field}',
                 'client_id': c.id,
-                'client_name': c.address or c.company or f'Клиент #{c.id}',
-                'company': c.company or '', 'snippet': match_field,
+                'client_name': c.address or f'Клиент #{c.id}',
+                'company': '', 'snippet': match_field,
             })
 
         kkt_qs = KktData.objects.filter(
-            Q(fn_number__icontains=q) | Q(serial_number__icontains=q) |
-            Q(kkt_reg_id__icontains=q) | Q(kkt_model__icontains=q)
+            Q(fn_number__icontains=search_term) | Q(serial_number__icontains=search_term) |
+            Q(kkt_reg_id__icontains=search_term) | Q(kkt_model__icontains=search_term)
         ).select_related('client', 'client__ofd_company').filter(client__is_draft=False).distinct()[:20]
 
         for kkt in kkt_qs:
-            match_field = _match_field_kkt(kkt, q)
+            match_field = _match_field_kkt(kkt, search_term)
             results.append({
                 'type': 'kkt', 'source': f'ККТ — {match_field}',
                 'client_id': kkt.client_id,
-                'client_name': kkt.client.address or kkt.client.company or f'Клиент #{kkt.client_id}',
-                'company': kkt.client.company or '', 'snippet': match_field,
+                'client_name': kkt.client.address or f'Клиент #{kkt.client_id}',
+                'company': '', 'snippet': match_field,
             })
 
         activity_qs = ClientActivity.objects.filter(
-            action__icontains=q, client__is_draft=False
+            action__icontains=search_term, client__is_draft=False
         ).select_related('client', 'user').order_by('-created_at').distinct()[:20]
 
         for a in activity_qs:
             results.append({
                 'type': 'activity', 'source': 'История изменений',
                 'client_id': a.client_id,
-                'client_name': a.client.address or a.client.company or f'Клиент #{a.client_id}',
-                'company': a.client.company or '',
-                'snippet': _truncate(a.action, q),
+                'client_name': a.client.address or f'Клиент #{a.client_id}',
+                'company': '',
+                'snippet': _truncate(a.action, search_term),
                 'date': a.created_at.strftime('%d.%m.%Y %H:%M'),
                 'user': a.user.full_name if a.user else '—',
             })
 
         notes_qs = ClientNote.objects.filter(
-            text__icontains=q, client__is_draft=False
+            text__icontains=search_term, client__is_draft=False
         ).select_related('client', 'author').order_by('-created_at').distinct()[:20]
 
         for note in notes_qs:
             results.append({
                 'type': 'note', 'source': 'Заметка',
                 'client_id': note.client_id,
-                'client_name': note.client.address or note.client.company or f'Клиент #{note.client_id}',
-                'company': note.client.company or '',
-                'snippet': _truncate(note.text, q),
+                'client_name': note.client.address or f'Клиент #{note.client_id}',
+                'company': '',
+                'snippet': _truncate(note.text, search_term),
                 'date': note.created_at.strftime('%d.%m.%Y %H:%M'),
                 'user': note.author.full_name if note.author else '—',
             })
 
-        # Поиск по базе знаний
         faq_qs = FaqArticle.objects.filter(
-            Q(title__icontains=q) | Q(content__icontains=q)
+            Q(title__icontains=search_term) | Q(content__icontains=search_term)
         ).select_related('category', 'author').distinct()[:10]
 
         for article in faq_qs:
-            if q.lower() in article.title.lower():
+            if search_term.lower() in article.title.lower():
                 snippet = article.title
             else:
-                # Извлекаем текст из HTML для сниппета
                 import re
                 text = re.sub(r'<[^>]+>', ' ', article.content)
                 text = re.sub(r'\s+', ' ', text).strip()
-                snippet = _truncate(text, q)
+                snippet = _truncate(text, search_term)
             results.append({
                 'type': 'faq',
                 'source': f'База знаний — {article.category.name}',
