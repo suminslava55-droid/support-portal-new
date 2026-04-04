@@ -9,6 +9,7 @@ import useThemeStore from './store/themeStore';
 import { authAPI } from './api';
 import AppLayout from './components/AppLayout';
 import { customTheme, darkTheme } from './theme/customTheme';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const LoginPage        = lazy(() => import('./pages/LoginPage'));
 const DashboardPage    = lazy(() => import('./pages/DashboardPage'));
@@ -127,6 +128,7 @@ export default function App() {
       }}
     >
       <BrowserRouter>
+        <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" /> : <LoginPage />} />
@@ -146,6 +148,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Suspense>
+        </ErrorBoundary>
       </BrowserRouter>
     </ConfigProvider>
   );

@@ -11,10 +11,14 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config
+
+    // Refresh token при 401
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true
       const refresh = localStorage.getItem('refresh_token')
@@ -30,6 +34,18 @@ api.interceptors.response.use(
         }
       }
     }
+
+    // Retry при сетевых ошибках и 5xx (не для POST/PATCH/DELETE и не для upload)
+    const isIdempotent = ['get', 'GET'].includes(original.method)
+    const isServerError = error.response?.status >= 500
+    const isNetworkError = !error.response
+
+    if ((isServerError || isNetworkError) && isIdempotent && !original._retryCount) {
+      original._retryCount = 1
+      await sleep(1000)
+      return api(original)
+    }
+
     return Promise.reject(error)
   }
 )
