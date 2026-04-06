@@ -17,13 +17,13 @@
 - Блок **Сеть**: подсеть, внешний IP, Микротик IP (авто: .1), Сервер IP (авто: .2), проверка доступности
 - Провайдер 1 и 2: название, тип подключения, тариф, лицевой счёт, № договора, настройки, оборудование
 - Передача провайдера между клиентами с выбором слота и логированием
-- Получение внешнего IP с Микротика по SSH (paramiko) — строки ошибок от Микротика не сохраняются
+- Получение внешнего IP с Микротика по SSH (paramiko)
 - Заметки и история изменений
 - Вложенные файлы до 5 МБ
 - Система черновиков (старше 2 часов удаляются автоматически)
 - Экспорт списка в Excel с выбором полей и отправкой на Email
 - Фильтрация по нескольким провайдерам одновременно
-- Поиск по: адресу, телефону, email, коду аптеки, коду склада, компании ОФД, ИНН, лицевому счёту, № договора, типу подключения
+- Поиск с fuzzy (опечатки через pg_trgm) и конвертацией раскладки клавиатуры
 
 ### 🧾 ККТ (Кассовая техника)
 - Раздел **«Компании»** — справочник с ИНН и зашифрованным токеном ОФД (lk.ofd.ru)
@@ -36,11 +36,12 @@
 - **Вкладка По месяцам** — фильтр по месяцу и году окончания срока ФН
 - Подсветка: красная (просрочен), оранжевая (≤30 дней), жёлтая (≤90 дней)
 - Клик по **адресу** — переход в карточку клиента на вкладку ККТ
+- Поиск с конвертацией раскладки клавиатуры
 
 ### 📅 Календарь дежурств
 - Типы дежурств: Телефон, Работа днём, Телефон + день, Отпуск, Занят
 - Мультивыделение: Ctrl+клик, затем «Применить тип…»
-- Пагинация отключена — отображаются все записи месяца (исправлено: ранее показывались только первые 20)
+- Пагинация отключена — отображаются все записи месяца
 - Кнопка **Отчёт за месяц**
 - График отпусков с выгрузкой в Excel или на Email
 
@@ -57,9 +58,9 @@
   - Изменение размера картинки (кнопка «Размер» + drag-ручка)
   - Импорт из `.docx` и `.pdf` (текст + картинки включая VML-формат)
 - **Прикреплённые файлы** — до 10 МБ, любой тип
-- **Черновик** — при открытии нового редактора сразу создаётся черновик (кнопки изображений и файлов доступны немедленно)
+- **Черновик** — при открытии нового редактора сразу создаётся черновик
 - **Удаление**: свою статью может удалить автор, чужую — только администратор
-- **Поиск** по заголовку и содержимому статей
+- **Поиск** по заголовку и содержимому статей с конвертацией раскладки
 - Категории создаёт и удаляет только администратор
 
 #### Хранение данных базы знаний
@@ -72,11 +73,12 @@
 ### 🔍 Поиск
 - Раздел доступен всем пользователям из левого меню
 - Поиск по: адресу, телефону, email, кодам аптеки/склада, ICCID, лицевым счетам, ИНН, IP
-- Поиск по ККТ: номер ФН, серийный номер, РНМ, модель (включая исторические данные)
-- Поиск по истории изменений — находит даже замененные ФН и старые данные
-- Поиск по заметкам клиентов
+- Поиск по ККТ: номер ФН, серийный номер, РНМ, модель
+- Поиск по истории изменений и заметкам клиентов
+- Поиск по базе знаний
+- **Fuzzy поиск** через `pg_trgm` — находит при опечатках (порог схожести 0.1)
+- **Конвертация раскладки** — автоматически распознаёт латиницу набранную в русской раскладке (jvcr → Омск)
 - Минимум 2 символа, задержка 400мс, до 20 результатов каждого типа
-- Подсветка найденного фрагмента, клик открывает карточку клиента
 
 ### ⚙️ Настройки (только Администратор)
 Страница разделена на 4 вкладки:
@@ -87,6 +89,63 @@
 | Автоматизация | Массовая загрузка клиентов из JSON |
 | Регламентные задания | Часовой пояс + три задания с расписанием |
 | Диагностика | Проверка Python-зависимостей (6 пакетов) |
+
+---
+
+## Производительность и UI
+
+### Кастомная тема Ant Design
+- Файл: `frontend/src/theme/customTheme.js`
+- Цвет акцента: `#4F46E5` (индиго) вместо стандартного синего
+- Скругления: 8-12px, улучшенные тени
+- Поддержка светлой и тёмной темы
+
+### Lazy Loading
+- Все страницы загружаются по требованию через `React.lazy()`
+- Уменьшает размер начального бандла
+- При переходе на страницу показывается спиннер
+
+### Skeleton Loading
+- Компоненты: `SkeletonCard`, `SkeletonTable`, `SkeletonForm`, `SkeletonStats`, `SkeletonDetail`, `SkeletonList`
+- Файл: `frontend/src/components/SkeletonComponents.jsx`
+
+### Error Boundary
+- Перехватывает JavaScript ошибки в компонентах
+- Показывает понятное сообщение вместо белого экрана
+- Файл: `frontend/src/components/ErrorBoundary.jsx`
+- В режиме разработки показывает стек ошибки
+
+### Retry Logic
+- Автоповтор GET-запросов при сетевых ошибках и 5xx ответах
+- Одна попытка повтора через 1 секунду
+- Файл: `frontend/src/api/axios.js`
+
+---
+
+## Fuzzy поиск
+
+### Как работает
+1. Сначала выполняется точный `icontains` поиск
+2. Если результатов нет — fuzzy поиск через PostgreSQL `pg_trgm`
+3. Порог схожести: `0.1` (настраивается в `search_utils.py`)
+
+### Конвертация раскладки
+- Файл: `frontend/src/utils/keyboardLayout.js`
+- Определяет доминирующую раскладку по доле латинских символов (>40%)
+- Конвертирует латиницу → кириллицу перед отправкой запроса
+- Текст в поле ввода не изменяется
+
+### Где применяется
+- Список клиентов (`ClientsPage.jsx`)
+- Замена ФН (`FnReplacementPage.jsx`)
+- База знаний (`FaqPage.jsx`)
+- Глобальный поиск (`search_views.py`)
+
+### Требования
+- PostgreSQL расширение `pg_trgm` должно быть включено:
+  ```sql
+  CREATE EXTENSION IF NOT EXISTS pg_trgm;
+  ```
 
 ---
 
@@ -130,8 +189,8 @@ privileged: true
 | task_id | Название | Описание |
 |---------|----------|----------|
 | `update_rnm` | Обновление данных по ККТ | Обходит клиентов с ККТ, обновляет данные через lk.ofd.ru (1 запрос/сек) |
-| `fetch_external_ip` | Обновление внешнего IP | Подключается к каждому Микротику по SSH, получает внешний IP через ipify.org. Строки ошибок от Микротика (`failure: connection timeout`) не сохраняются |
-| `backup_system` | Резервное копирование | Создаёт дамп БД (Django dumpdata) + копирует медиафайлы, архивирует в `.tar.gz`, хранит последние 7 копий |
+| `fetch_external_ip` | Обновление внешнего IP | Подключается к каждому Микротику по SSH, получает внешний IP через ipify.org |
+| `backup_system` | Резервное копирование | Создаёт дамп БД + копирует медиафайлы, хранит последние 7 копий |
 
 ### Файлы планировщика
 
@@ -139,10 +198,10 @@ privileged: true
 |------|----------|
 | `/opt/support-portal/setup_scheduler.py` | Создаёт пользователя и токен, запускать один раз |
 | `/opt/support-portal/.scheduler_token` | JWT-токен (365 дней). **Не в git!** |
-| `/opt/support-portal/scheduler_run.sh` | Скрипт для cron (создаётся `setup_scheduler.py`). **Не в git!** Содержит `"scheduled":true` — включает режим only_expiring |
+| `/opt/support-portal/scheduler_run.sh` | Скрипт для cron. **Не в git!** |
 | `/opt/support-portal/cron_manager.sh` | Управляет crontab хоста из контейнера через nsenter |
 | `/usr/local/bin/cron-watch.sh` | Скрипт службы-наблюдателя |
-| `/etc/systemd/system/cron-watch.service` | Служба-наблюдатель: перезагружает cron при изменении crontab |
+| `/etc/systemd/system/cron-watch.service` | Служба-наблюдатель |
 | `/var/log/support-portal-scheduler.log` | Лог выполнения cron-заданий |
 
 ### Endpoints API планировщика
@@ -169,10 +228,6 @@ privileged: true
 | POST | `/api/clients/faq-articles/{id}/images/` | Загрузка изображения в текст |
 | POST | `/api/clients/faq-articles/{id}/import/` | Импорт из .docx/.pdf |
 
-### Формат расписания
-
-Дни недели в интерфейсе: 0=Пн, 1=Вт, 2=Ср, 3=Чт, 4=Пт, 5=Сб, 6=Вс (конвертируются в cron-формат автоматически).
-
 ---
 
 ## Массовая загрузка клиентов (Автоматизация)
@@ -191,8 +246,6 @@ privileged: true
 | `organization_inn` | `ofd_company` | Поиск по ИНН в справочнике компаний |
 | `telephone_number` | `phone` | |
 | `cashbox[].kkt_reg_id` | `KktData` (РНМ) | |
-
-Отчёт по результатам: создано / дубли / ошибки.
 
 ---
 
@@ -230,12 +283,13 @@ support-portal/
 │   │       │   ├── kkt_views.py      # OfdKktView, KktListView, KktExportView
 │   │       │   ├── bulk_views.py     # BulkImportClientsView
 │   │       │   ├── scheduler_views.py # ScheduledTask*, _run_update_rnm, _run_fetch_external_ip, _run_backup_system
-│   │       │   ├── search_views.py    # GlobalSearchView — глобальный поиск
+│   │       │   ├── search_views.py    # GlobalSearchView — глобальный поиск с fuzzy
+│   │       │   ├── search_utils.py    # fuzzy_filter_clients, build_exact_q (pg_trgm)
 │   │       │   ├── faq_views.py       # FaqCategoryViewSet, FaqArticleViewSet, FaqFileView,
 │   │       │   │                      # FaqFileDeleteView, FaqImageUploadView, FaqImportView
 │   │       │   └── utils.py          # ping_ip, build_change_log, FIELD_LABELS
 │   │       ├── serializers.py    # Сериализаторы моделей
-│   │       ├── settings_views.py # Настройки SSH и SMTP (SystemSettingsView, TestEmailView, CheckPackagesView)
+│   │       ├── settings_views.py # Настройки SSH и SMTP
 │   │       ├── urls.py           # Маршруты приложения clients
 │   │       └── migrations/       # Миграции базы данных
 │   ├── config/
@@ -245,50 +299,60 @@ support-portal/
 │   ├── requirements.txt          # Python-зависимости
 │   ├── create_admin.py           # Создание администратора и ролей
 │   └── Dockerfile
-├── frontend/src/pages/
-│   ├── DashboardPage.jsx         # Заглавная страница (дашборд с метриками)
-│   ├── ClientsPage.jsx           # Список клиентов с фильтрами, поиском, экспортом
-│   ├── ClientDetailPage.jsx      # Просмотр карточки клиента (обёртка с вкладками)
-│   ├── client-detail/
-│   │   ├── ClientDetailInfo.jsx      # Вкладка: Информация + Сеть
-│   │   ├── ClientDetailProviders.jsx # Вкладка: Провайдеры
-│   │   ├── ClientDetailKkt.jsx       # Вкладка: ККТ
-│   │   └── helpers.js                # Общие утилиты (CopyField, PingStatus, форматирование)
-│   ├── ClientFormPage.jsx        # Создание/редактирование клиента (обёртка с вкладками)
-│   ├── client-form/
-│   │   ├── ClientFormInfo.jsx        # Вкладка: Информация + Сеть + Файлы
-│   │   ├── ClientFormProviders.jsx   # Вкладка: Провайдер 1 и 2
-│   │   ├── ClientFormKkt.jsx         # Вкладка: ККТ (создание и редактирование)
-│   │   └── TransferModal.jsx         # Модал передачи провайдера другому клиенту
-│   ├── FaqPage.jsx               # База знаний (категории, статьи, WYSIWYG редактор)
-│   ├── OfdCompaniesPage.jsx      # Управление компаниями (ИНН, токен ОФД)
-│   ├── FnReplacementPage.jsx     # Замена ФН: вкладки Общий и По месяцам
-│   ├── CalendarPage.jsx          # Календарь дежурств
-│   ├── SettingsPage.jsx          # Настройки (обёртка, 4 вкладки)
-│   ├── settings/
-│   │   ├── SettingsAccounts.jsx      # Вкладка: SSH + SMTP
-│   │   ├── SettingsAutomation.jsx    # Вкладка: Массовая загрузка клиентов
-│   │   ├── SettingsScheduler.jsx     # Вкладка: Регламентные задания
-│   │   └── SettingsDiagnostics.jsx   # Вкладка: Зависимости Python (6 пакетов)
-│   ├── SearchPage.jsx            # Глобальный поиск по клиентам, ККТ, истории, заметкам
-│   ├── UsersPage.jsx             # Управление пользователями
-│   └── ProvidersPage.jsx         # Управление провайдерами
-├── nginx/default.conf            # Не в git (специфичен для каждого сервера)
-├── media/                        # Медиафайлы (не в git)
-│   └── faq/                      # Картинки и файлы базы знаний
-│       └── images/               # Картинки вставленные в статьи
-├── backups/                      # Резервные копии (не в git)
-├── ofd_fetch.sh                  # Запросы к lk.ofd.ru (запускается на хосте)
-├── cron_manager.sh               # Управляет crontab хоста через nsenter
-├── setup_scheduler.py            # Первичная настройка планировщика
-├── scheduler_run.sh              # Скрипт для cron (не в git, создаётся setup_scheduler.py)
-├── check_ofd_network.sh          # Диагностика сети до lk.ofd.ru
-├── check_ofd_tokens.sh           # Проверка валидности токенов компаний
-├── diagnose.sh                   # Универсальная диагностика
-├── deploy-frontend.sh            # Быстрый деплой фронтенда
+├── frontend/src/
+│   ├── pages/
+│   │   ├── DashboardPage.jsx         # Заглавная страница
+│   │   ├── ClientsPage.jsx           # Список клиентов с fuzzy поиском
+│   │   ├── ClientDetailPage.jsx      # Просмотр карточки клиента
+│   │   ├── client-detail/
+│   │   │   ├── ClientDetailInfo.jsx
+│   │   │   ├── ClientDetailProviders.jsx
+│   │   │   ├── ClientDetailKkt.jsx
+│   │   │   └── helpers.js
+│   │   ├── ClientFormPage.jsx        # Создание/редактирование клиента
+│   │   ├── client-form/
+│   │   │   ├── ClientFormInfo.jsx
+│   │   │   ├── ClientFormProviders.jsx
+│   │   │   ├── ClientFormKkt.jsx
+│   │   │   └── TransferModal.jsx
+│   │   ├── FaqPage.jsx               # База знаний с fuzzy поиском
+│   │   ├── OfdCompaniesPage.jsx
+│   │   ├── FnReplacementPage.jsx     # Замена ФН с fuzzy поиском
+│   │   ├── CalendarPage.jsx
+│   │   ├── SettingsPage.jsx
+│   │   ├── settings/
+│   │   │   ├── SettingsAccounts.jsx
+│   │   │   ├── SettingsAutomation.jsx
+│   │   │   ├── SettingsScheduler.jsx
+│   │   │   └── SettingsDiagnostics.jsx
+│   │   ├── SearchPage.jsx            # Глобальный поиск с fuzzy
+│   │   ├── UsersPage.jsx
+│   │   └── ProvidersPage.jsx
+│   ├── components/
+│   │   ├── AppLayout.jsx             # Основной layout с меню
+│   │   ├── ErrorBoundary.jsx         # Перехват JS ошибок
+│   │   └── SkeletonComponents.jsx    # Skeleton loading компоненты
+│   ├── theme/
+│   │   └── customTheme.js            # Кастомная тема Ant Design (индиго)
+│   ├── styles/
+│   │   └── custom-styles.css         # Кастомные CSS стили
+│   ├── utils/
+│   │   └── keyboardLayout.js         # Конвертация раскладки клавиатуры
+│   └── api/
+│       ├── axios.js                  # Axios instance с retry logic
+│       ├── auth.js
+│       ├── clients.js
+│       ├── index.js
+│       └── users.js
+├── nginx/default.conf
+├── media/
+├── backups/
+├── ofd_fetch.sh
+├── cron_manager.sh
+├── setup_scheduler.py
+├── deploy-frontend.sh
 ├── docker-compose.yml
 ├── .env                          # Не в git!
-├── .scheduler_token              # Не в git!
 └── .env.example
 ```
 
@@ -298,62 +362,37 @@ support-portal/
 
 ### Автоматическое (через регламентное задание)
 
-Задание `backup_system` доступно в **Настройки → Регламентные задания**. Создаёт полный бэкап системы и хранит последние 7 копий.
+Задание `backup_system` — создаёт полный бэкап, хранит последние 7 копий.
 
-Что входит в бэкап:
-- **БД** — дамп через Django `dumpdata` (все клиенты, ККТ, провайдеры, компании с токенами, пользователи, настройки, история изменений, **статьи базы знаний**)
-- **Медиафайлы** — вложения клиентов и базы знаний из `/app/media`
+Что входит:
+- **БД** — дамп через Django `dumpdata`
+- **Медиафайлы** — из `/app/media`
 
-Бэкапы хранятся в `/opt/support-portal/backups/` на хосте (смонтировано через volume).
+Бэкапы хранятся в `/opt/support-portal/backups/`.
 
 ### Ручное создание бэкапа
 
 ```bash
-# Только БД
 docker compose exec backend python manage.py dumpdata \
   --natural-foreign --natural-primary \
   --exclude=contenttypes --exclude=auth.permission \
   --indent=2 > /opt/support-portal/backups/db_manual_$(date +%Y%m%d).json
 
-# Только медиафайлы (включая картинки базы знаний)
 tar -czf /opt/support-portal/backups/media_$(date +%Y%m%d).tar.gz \
   -C /opt/support-portal media/
 ```
 
 ### Восстановление из бэкапа
 
-> ⚠️ Перед восстановлением убедитесь что `.env` содержит тот же `ENCRYPTION_KEY`, что был при создании бэкапа — иначе токены ОФД, SSH и SMTP пароли не расшифруются.
+> ⚠️ Убедитесь что `.env` содержит тот же `ENCRYPTION_KEY` — иначе токены не расшифруются.
 
-**1. Распаковать архив:**
 ```bash
-tar -xzf /opt/support-portal/backups/backup_YYYY-MM-DD_HH-MM-SS.tar.gz \
-  -C /tmp/restore/
-```
-
-**2. Восстановить базу данных:**
-```bash
+tar -xzf /opt/support-portal/backups/backup_YYYY-MM-DD_HH-MM-SS.tar.gz -C /tmp/restore/
 docker compose exec backend python manage.py flush --no-input
-docker compose exec backend python manage.py loaddata \
-  /tmp/restore/backup_YYYY-MM-DD_HH-MM-SS/db.json
+docker compose exec backend python manage.py loaddata /tmp/restore/.../db.json
+cp -r /tmp/restore/.../media/. /opt/support-portal/media/
+docker compose restart backend
 ```
-
-**3. Восстановить медиафайлы:**
-```bash
-cp -r /tmp/restore/backup_YYYY-MM-DD_HH-MM-SS/media/. \
-  /opt/support-portal/media/
-```
-
-**4. Перезапустить бэкенд:**
-```bash
-cd /opt/support-portal && docker compose restart backend
-```
-
-### Важные файлы которые НЕ входят в бэкап задания
-
-| Файл | Зачем |
-|------|-------|
-| `/opt/support-portal/.env` | `ENCRYPTION_KEY`, `SECRET_KEY`, пароль БД — без них бэкап бесполезен |
-| `/opt/support-portal/.scheduler_token` | JWT-токен планировщика (восстанавливается через `setup_scheduler.py`) |
 
 ---
 
@@ -372,8 +411,8 @@ cd /opt/support-portal && docker compose restart backend
 | paramiko | SSH-подключение к Микротику |
 | openpyxl | Генерация Excel файлов |
 | python-docx | Импорт из Word (.docx) в базу знаний |
-| pdfminer.six | Извлечение текста из PDF в базу знаний |
-| PyMuPDF | Извлечение картинок из PDF в базу знаний |
+| pdfminer.six | Извлечение текста из PDF |
+| PyMuPDF | Извлечение картинок из PDF |
 | gunicorn | WSGI-сервер |
 | Pillow | Обработка изображений |
 

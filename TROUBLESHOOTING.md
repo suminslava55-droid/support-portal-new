@@ -259,6 +259,46 @@ print(f'Просрочено: {expired}')
 
 ---
 
+## Проблемы с поиском
+
+### Fuzzy поиск не работает (500 ошибка при поиске)
+
+Расширение `pg_trgm` не включено в базе данных. Включить:
+```bash
+docker compose exec db psql -U postgres -d support_portal -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+```
+
+Проверить:
+```bash
+docker compose exec db psql -U postgres -d support_portal -c "SELECT extname, extversion FROM pg_extension WHERE extname='pg_trgm';"
+```
+
+### Поиск не находит клиентов с опечатками
+
+Проверьте порог схожести в `search_utils.py` (по умолчанию `0.1`):
+```bash
+grep "SIMILARITY_THRESHOLD" /opt/support-portal/backend/apps/clients/views/search_utils.py
+```
+
+Если нужно понизить порог (больше результатов, меньше точность):
+```bash
+docker compose exec backend python -c "
+content = open('/app/apps/clients/views/search_utils.py').read()
+print(content[:200])
+"
+```
+
+### Конвертация раскладки не работает
+
+Проверьте что файл существует:
+```bash
+ls /opt/support-portal/frontend/src/utils/keyboardLayout.js
+```
+
+Если файла нет — нужно пересобрать фронтенд после `git pull`.
+
+---
+
 ## Прочее
 
 ### Конфликт миграций

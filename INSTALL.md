@@ -286,7 +286,22 @@ docker compose exec backend python create_admin.py
 
 ---
 
-## 10. Настройка планировщика заданий ⚡
+## 10. Включаем расширение pg_trgm (fuzzy поиск)
+
+```bash
+docker compose exec db psql -U postgres -d support_portal -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+```
+
+Проверяем:
+```bash
+docker compose exec db psql -U postgres -d support_portal -c "SELECT extname, extversion FROM pg_extension WHERE extname='pg_trgm';"
+```
+
+Должна появиться строка с `pg_trgm | 1.6`.
+
+---
+
+## 11. Настройка планировщика заданий ⚡
 
 ```bash
 cd /opt/support-portal
@@ -297,7 +312,7 @@ python3 setup_scheduler.py
 
 ---
 
-## 11. Установка службы cron-watch ⚡
+## 12. Установка службы cron-watch ⚡
 
 ```bash
 cat > /usr/local/bin/cron-watch.sh << 'EOF'
@@ -337,7 +352,7 @@ systemctl status cron-watch
 
 ---
 
-## 12. Деплой фронтенда
+## 13. Деплой фронтенда
 
 ```bash
 cd /opt/support-portal
@@ -348,7 +363,7 @@ cd /opt/support-portal
 
 ---
 
-## 13. Первоначальная настройка в интерфейсе
+## 14. Первоначальная настройка в интерфейсе
 
 1. Откройте `http://ВАШ_IP` — попадёте на дашборд
 2. Перейдите в **Настройки**:
@@ -361,7 +376,7 @@ cd /opt/support-portal
 
 ---
 
-## 14. Когда что использовать
+## 15. Когда что использовать
 
 | Изменение | Команда |
 |-----------|---------|
