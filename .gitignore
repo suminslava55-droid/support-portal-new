@@ -10,7 +10,7 @@ __pycache__/
 *.log
 node_modules/
 .DS_Store
-frontend/build/*.bak
+frontend/build/
 backups/
 **/__pycache__/
 *.pyc
