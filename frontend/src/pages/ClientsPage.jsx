@@ -423,6 +423,9 @@ export default function ClientsPage() {
           value={providerFilter}
           onChange={v => setProviderFilter(v || [])}
           options={allProviders.map(p => ({ value: p.id, label: p.name }))}
+          filterOption={(input, option) =>
+            (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+          }
         />
         <Select
           value={pagination.pageSize}
