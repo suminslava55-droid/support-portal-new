@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView, FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView, FaqHistoryView
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, KassaIpsView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView, FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView, FaqHistoryView
 from .settings_views import SystemSettingsView, TestEmailView, CheckPackagesView
 
 router = DefaultRouter()
@@ -35,6 +35,7 @@ urlpatterns = [
     path('faq-articles/<int:article_id>/export/', FaqExportView.as_view(), name='faq-export'),
     path('faq-articles/<int:article_id>/history/', FaqHistoryView.as_view(), name='faq-history'),
     path('faq-files/<int:file_id>/', FaqFileDeleteView.as_view(), name='faq-file-delete'),
+    path('<int:pk>/kassa-ips/', KassaIpsView.as_view(), name='kassa-ips'),
     path('<int:pk>/ofd_kkt/', OfdKktView.as_view(), name='ofd-kkt'),
     path('<int:pk>/ofd_kkt/<int:kkt_id>/', OfdKktView.as_view(), name='ofd-kkt-detail'),
     path('', include(router.urls)),
