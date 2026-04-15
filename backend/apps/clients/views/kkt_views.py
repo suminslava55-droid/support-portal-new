@@ -357,8 +357,8 @@ class OfdKktView(APIView):
                 'message': f'Получены данные по РНМ {rnm_override}, время: {elapsed} сек',
             })
 
-        # Стандартный режим — обновляем по РНМ из БД
-        kkts = client.kkt_data.all()
+        # Стандартный режим — один запрос к ОФД по ИНН, фильтрация по РНМ из БД
+        kkts = list(client.kkt_data.filter(kkt_reg_id__isnull=False).exclude(kkt_reg_id=''))
         if not kkts:
             return Response({'error': 'Нет сохранённых ККТ. Сначала нажмите «Получить данные с ОФД»'}, status=404)
 
@@ -368,52 +368,60 @@ class OfdKktView(APIView):
         fetched = []
         errors = []
 
+        # Один запрос к ОФД — получаем все ККТ компании по ИНН
+        try:
+            result = subprocess.run(
+                [script, inn, token],
+                capture_output=True, text=True, timeout=60
+            )
+            if not result.stdout.strip():
+                return Response({'error': f'Пустой ответ от ОФД. stderr: {result.stderr[:200]}'}, status=502)
+            all_data = json.loads(result.stdout)
+        except subprocess.TimeoutExpired:
+            return Response({'error': 'Превышено время ожидания ответа от ОФД (60 сек)'}, status=502)
+        except Exception as e:
+            return Response({'error': f'Ошибка запроса к ОФД: {str(e)}'}, status=502)
+
+        if all_data.get('Status') != 'Success':
+            return Response({'error': f'ОФД вернул ошибку: {all_data.get("Message") or all_data}'}, status=502)
+
+        # Строим словарь РНМ → данные из ОФД для быстрого поиска
+        ofd_by_rnm = {
+            item.get('KktRegId', ''): item
+            for item in all_data.get('Data', [])
+            if item.get('KktRegId')
+        }
+
+        # Обновляем только те ККТ, которые есть в БД у клиента
         for kkt_obj in kkts:
             rnm = kkt_obj.kkt_reg_id
-            if not rnm:
+            item = ofd_by_rnm.get(rnm)
+            if not item:
+                errors.append(f'РНМ {rnm}: не найден в ОФД (касса не зарегистрирована или РНМ изменился)')
                 continue
-            try:
-                result = subprocess.run(
-                    [script, inn, token, rnm],
-                    capture_output=True, text=True, timeout=15
+            old_fn = kkt_obj.fn_number
+            old_serial = kkt_obj.serial_number
+            was_empty = not old_serial and not old_fn
+            kkt_obj.serial_number = item.get('SerialNumber', '')
+            kkt_obj.fn_number = item.get('FnNumber', '')
+            kkt_obj.kkt_model = item.get('KktModel', '')
+            kkt_obj.create_date = parse_datetime(item.get('CreateDate'))
+            kkt_obj.contract_end_date = parse_datetime(item.get('ContractEndDate'))
+            kkt_obj.fn_end_date = parse_datetime(item.get('FnEndDate'))
+            kkt_obj.fiscal_address = item.get('FiscalAddress', '')
+            kkt_obj.raw_data = item
+            kkt_obj.save()
+            fetched.append(rnm)
+            if was_empty and (kkt_obj.serial_number or kkt_obj.fn_number):
+                ClientActivity.objects.create(
+                    client=client, user=request.user,
+                    action=f'Обновлена ККТ по РНМ\nРНМ: {rnm}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: {kkt_obj.fn_number or "—"}\nМодель: {kkt_obj.kkt_model or "—"}'
                 )
-                if not result.stdout.strip():
-                    errors.append(f'РНМ {rnm}: пустой ответ')
-                    continue
-                detail_data = json.loads(result.stdout)
-            except Exception as e:
-                errors.append(f'РНМ {rnm}: {str(e)}')
-                continue
-
-            if detail_data.get('Status') != 'Success':
-                errors.append(f'РНМ {rnm}: ОФД вернул ошибку')
-                continue
-
-            for item in detail_data.get('Data', []):
-                old_fn = kkt_obj.fn_number
-                old_serial = kkt_obj.serial_number
-                was_empty = not old_serial and not old_fn  # запись была только с РНМ
-                kkt_obj.serial_number = item.get('SerialNumber', '')
-                kkt_obj.fn_number = item.get('FnNumber', '')
-                kkt_obj.kkt_model = item.get('KktModel', '')
-                kkt_obj.create_date = parse_datetime(item.get('CreateDate'))
-                kkt_obj.contract_end_date = parse_datetime(item.get('ContractEndDate'))
-                kkt_obj.fn_end_date = parse_datetime(item.get('FnEndDate'))
-                kkt_obj.fiscal_address = item.get('FiscalAddress', '')
-                kkt_obj.raw_data = item
-                kkt_obj.save()
-                fetched.append(rnm)
-                if was_empty and (kkt_obj.serial_number or kkt_obj.fn_number):
-                    # Запись была пустой (только РНМ), теперь заполнена данными с ОФД
-                    ClientActivity.objects.create(
-                        client=client, user=request.user,
-                        action=f'Обновлена ККТ по РНМ\nРНМ: {rnm}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: {kkt_obj.fn_number or "—"}\nМодель: {kkt_obj.kkt_model or "—"}'
-                    )
-                elif old_fn and old_fn != kkt_obj.fn_number:
-                    ClientActivity.objects.create(
-                        client=client, user=request.user,
-                        action=f'Изменён номер ФН\nРНМ: {rnm}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: «{old_fn}» → «{kkt_obj.fn_number}»'
-                    )
+            elif old_fn and old_fn != kkt_obj.fn_number:
+                ClientActivity.objects.create(
+                    client=client, user=request.user,
+                    action=f'Изменён номер ФН\nРНМ: {rnm}\nСерийный номер: {kkt_obj.serial_number or "—"}\nНомер ФН: «{old_fn}» → «{kkt_obj.fn_number}»'
+                )
 
         elapsed = round(time.time() - t_start, 1)
         return Response({

@@ -240,73 +240,105 @@ def _run_update_rnm(task_id, company_id, user_id, only_expiring=False):
         errors_total  = 0
         error_log     = []
 
-        for ci, (client, kkts) in enumerate(clients_with_kkt):
-            inn   = (client.ofd_company.inn or '').strip()
-            token = (client.ofd_company.ofd_token or '').strip()
+        # Группируем клиентов по компании (ИНН) — один запрос к ОФД на компанию
+        from collections import defaultdict
+        by_company = defaultdict(list)
+        for client, kkts in clients_with_kkt:
+            by_company[client.ofd_company_id].append((client, kkts))
+
+        total_companies = len(by_company)
+        company_idx = 0
+
+        for company_id_key, company_clients in by_company.items():
+            company_idx += 1
+            # Берём inn/token из первого клиента группы
+            first_client = company_clients[0][0]
+            inn   = (first_client.ofd_company.inn or '').strip()
+            token = (first_client.ofd_company.ofd_token or '').strip()
+            company_label = _safe_log(first_client.ofd_company.name or inn)
+
             if not inn or not token:
-                done_kkts += len(kkts)
+                for client, kkts in company_clients:
+                    done_kkts += len(kkts)
                 continue
 
-            client_pct = int((ci / total_clients) * 100)
-            _set(progress=client_pct,
-                 progress_text=f'Клиент {ci+1}/{total_clients}: {client.address or client.pharmacy_code}')
+            _set(progress=int((company_idx - 1) / total_companies * 100),
+                 progress_text=f'Компания {company_idx}/{total_companies}: {company_label}')
 
-            for kkt_obj in kkts:
-                rnm = kkt_obj.kkt_reg_id
-                try:
-                    result = subprocess.run(
-                        [script, inn, token, rnm],
-                        capture_output=True, text=True, timeout=20
-                    )
-                    if not result.stdout.strip():
+            # Один запрос к ОФД — получаем все ККТ компании
+            try:
+                result = subprocess.run(
+                    [script, inn, token],
+                    capture_output=True, text=True, timeout=60
+                )
+                if not result.stdout.strip():
+                    stderr_info = (result.stderr or '')[:200]
+                    for client, kkts in company_clients:
+                        for kkt_obj in kkts:
+                            errors_total += 1
+                            error_log.append(
+                                f'Компания {company_label}: пустой ответ скрипта'
+                                + (f' | stderr: {_safe_log(stderr_info)}' if stderr_info else '')
+                            )
+                            done_kkts += 1
+                    continue
+                all_data = json.loads(result.stdout)
+            except subprocess.TimeoutExpired:
+                for client, kkts in company_clients:
+                    for kkt_obj in kkts:
                         errors_total += 1
-                        stderr_info = result.stderr.strip()[:200] if result.stderr else ''
-                        error_log.append(
-                            f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: '
-                            f'пустой ответ скрипта' + (f' | stderr: {_safe_log(stderr_info)}' if stderr_info else '')
-                        )
+                        done_kkts += 1
+                error_log.append(f'Компания {company_label}: таймаут (60 сек)')
+                continue
+            except Exception as e:
+                for client, kkts in company_clients:
+                    for kkt_obj in kkts:
+                        errors_total += 1
+                        done_kkts += 1
+                error_log.append(f'Компания {company_label}: {_safe_log(e)}')
+                continue
+
+            if all_data.get('Status') != 'Success':
+                ofd_msg = all_data.get('Message') or all_data.get('Error') or 'нет описания'
+                for client, kkts in company_clients:
+                    for kkt_obj in kkts:
+                        errors_total += 1
+                        done_kkts += 1
+                error_log.append(f'Компания {company_label}: ОФД ошибка — {_safe_log(ofd_msg)}')
+                continue
+
+            # Строим словарь РНМ → данные из ОФД
+            ofd_by_rnm = {
+                item.get('KktRegId', ''): item
+                for item in all_data.get('Data', [])
+                if item.get('KktRegId')
+            }
+
+            # Обновляем каждого клиента компании
+            for ci, (client, kkts) in enumerate(company_clients):
+                client_label = _safe_log(client.address or client.pharmacy_code or '')
+                for kkt_obj in kkts:
+                    rnm = kkt_obj.kkt_reg_id
+                    item = ofd_by_rnm.get(rnm)
+                    if not item:
+                        errors_total += 1
+                        error_log.append(f'РНМ {_safe_log(rnm)} | {client_label}: не найден в ОФД')
                         done_kkts += 1
                         continue
-                    detail_data = json.loads(result.stdout)
-                except subprocess.TimeoutExpired:
-                    errors_total += 1
-                    error_log.append(f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: таймаут (20 сек)')
-                    done_kkts += 1
-                    continue
-                except Exception as e:
-                    errors_total += 1
-                    error_log.append(f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: {_safe_log(e)}')
-                    done_kkts += 1
-                    continue
-
-                if detail_data.get('Status') != 'Success':
-                    errors_total += 1
-                    ofd_msg = detail_data.get('Message') or detail_data.get('Error') or 'нет описания'
-                    error_log.append(f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: ОФД ошибка — {_safe_log(ofd_msg)}')
-                    done_kkts += 1
-                    continue
-
-                data_items = detail_data.get('Data', [])
-                if not data_items:
-                    errors_total += 1
-                    error_log.append(f'РНМ {_safe_log(rnm)} | {_safe_log(client.address or client.pharmacy_code)}: ОФД вернул пустой Data (касса не найдена по РНМ)')
-                    done_kkts += 1
-                    continue
-
-                for item in data_items:
                     old_fn     = kkt_obj.fn_number
                     old_serial = kkt_obj.serial_number
                     was_empty  = not old_serial and not old_fn
-                    kkt_obj.serial_number    = item.get('SerialNumber', '')
-                    kkt_obj.fn_number        = item.get('FnNumber', '')
-                    kkt_obj.kkt_model        = item.get('KktModel', '')
-                    kkt_obj.create_date      = parse_datetime(item.get('CreateDate'))
+                    kkt_obj.serial_number     = item.get('SerialNumber', '')
+                    kkt_obj.fn_number         = item.get('FnNumber', '')
+                    kkt_obj.kkt_model         = item.get('KktModel', '')
+                    kkt_obj.create_date       = parse_datetime(item.get('CreateDate'))
                     kkt_obj.contract_end_date = parse_datetime(item.get('ContractEndDate'))
-                    kkt_obj.fn_end_date      = parse_datetime(item.get('FnEndDate'))
-                    kkt_obj.fiscal_address   = item.get('FiscalAddress', '')
-                    kkt_obj.raw_data         = item
+                    kkt_obj.fn_end_date       = parse_datetime(item.get('FnEndDate'))
+                    kkt_obj.fiscal_address    = item.get('FiscalAddress', '')
+                    kkt_obj.raw_data          = item
                     kkt_obj.save()
                     fetched_total += 1
+                    done_kkts += 1
                     if user:
                         if was_empty and (kkt_obj.serial_number or kkt_obj.fn_number):
                             ClientActivity.objects.create(
@@ -318,9 +350,6 @@ def _run_update_rnm(task_id, company_id, user_id, only_expiring=False):
                                 client=client, user=user,
                                 action=f'Изменён номер ФН (регламент)\nРНМ: {rnm}\nНомер ФН: «{old_fn}» → «{kkt_obj.fn_number}»'
                             )
-                done_kkts += 1
-                # Rate limit ОФД — 1 запрос/сек
-                time.sleep(1.05)
 
         elapsed = timezone.now() - started_at
         elapsed_str = f'{int(elapsed.total_seconds() // 60)} мин {int(elapsed.total_seconds() % 60)} сек'
