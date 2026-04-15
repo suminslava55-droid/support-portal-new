@@ -103,6 +103,78 @@ class FetchExternalIPView(APIView):
             return Response({'error': f'Ошибка подключения к {mikrotik_ip}: {str(e)}'}, status=400)
 
 
+class KassaIpsView(APIView):
+    """
+    Получает IP-адреса касс 1-6 из DHCP-сервера Микротика по SSH.
+    Данные не сохраняются в БД и не логируются в историю изменений.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        import paramiko, re
+
+        try:
+            client = Client.objects.get(pk=pk)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=404)
+
+        mikrotik_ip = (client.mikrotik_ip or '').strip()
+        if not mikrotik_ip:
+            return Response({'error': 'Микротик IP не задан у клиента'}, status=400)
+
+        settings_obj = SystemSettings.get()
+        if not settings_obj.ssh_user:
+            return Response({'error': 'SSH пользователь не задан в настройках системы'}, status=400)
+        if not settings_obj.ssh_password_encrypted:
+            return Response({'error': 'SSH пароль не задан в настройках системы'}, status=400)
+
+        cmd = (
+            ':foreach i in={"kassa1";"kassa2";"kassa3";"kassa4";"kassa5";"kassa6"} do={'
+            ':local l [/ip dhcp-server lease find where host-name=$i]; '
+            ':if ($l!="") do={:put "$i -> $[/ip dhcp-server lease get $l address]"} '
+            'else={:put "$i -> not found"}}'
+        )
+
+        try:
+            ssh = _make_ssh_client(mikrotik_ip)
+            ssh.connect(
+                mikrotik_ip,
+                username=settings_obj.ssh_user,
+                password=settings_obj.ssh_password,
+                timeout=10, port=22,
+            )
+            _save_known_hosts(ssh)
+            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=15)
+            output = stdout.read().decode('utf-8', errors='replace').strip()
+            ssh.close()
+        except paramiko.AuthenticationException:
+            return Response({'error': f'Ошибка аутентификации SSH на {mikrotik_ip}'}, status=400)
+        except paramiko.SSHException as e:
+            err_str = str(e)
+            if 'not found in known_hosts' in err_str or 'changed' in err_str.lower():
+                return Response({'error': (
+                    f'SSH ключ Микротика {mikrotik_ip} изменился. '
+                    f'Удалите старую запись из known_hosts и повторите попытку.'
+                )}, status=400)
+            return Response({'error': f'SSH ошибка {mikrotik_ip}: {err_str}'}, status=400)
+        except Exception as e:
+            return Response({'error': f'Ошибка подключения к {mikrotik_ip}: {str(e)}'}, status=400)
+
+        # Парсим вывод: "kassa1 -> 10.1.64.10" или "kassa1 -> not found"
+        result = {}
+        for line in output.splitlines():
+            m = re.match(r'^(kassa\d+)\s*->\s*(.+)$', line.strip())
+            if m:
+                name, value = m.group(1), m.group(2).strip()
+                result[name] = None if value == 'not found' else value
+
+        # Заполняем отсутствующие кассы None
+        for i in range(1, 7):
+            result.setdefault(f'kassa{i}', None)
+
+        return Response(result)
+
+
 class OfdCompanyViewSet(viewsets.ModelViewSet):
     queryset = OfdCompany.objects.all()
 

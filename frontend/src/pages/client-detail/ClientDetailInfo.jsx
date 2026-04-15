@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Descriptions, Space, Button, Tag, Tooltip, Typography } from 'antd';
+import { Card, Descriptions, Space, Button, Tag, Tooltip, Typography, Spin } from 'antd';
 import { GlobalOutlined, SyncOutlined } from '@ant-design/icons';
 import { CopyField, PingStatus, copyToClipboard } from './helpers';
 import { message } from 'antd';
@@ -22,7 +22,31 @@ const LiteManagerIcon = () => (
   </svg>
 );
 
-export default function ClientDetailInfo({ client, pingResults, pinging, checkPing }) {
+function KassaIpField({ ip, loading, label }) {
+  if (loading) return <Spin size="small" />;
+  if (!ip) return <Text type="secondary">—</Text>;
+  return (
+    <Space>
+      <Tag color="cyan" style={{ fontFamily: 'monospace', fontSize: 13 }}>{ip}</Tag>
+      <Tooltip title="Скопировать">
+        <Button type="text" size="small"
+          icon={<span style={{ color: '#1677ff' }}>⎘</span>}
+          onClick={() => { copyToClipboard(ip); message.success('Скопировано!', 1); }}
+          style={{ padding: '0 2px', height: 'auto' }}
+        />
+      </Tooltip>
+      <Tooltip title={`Подключиться через LiteManager (${label}: ${ip})`}>
+        <Button type="text" size="small"
+          icon={<LiteManagerIcon />}
+          onClick={() => { window.location.href = `litemanager://${ip}`; }}
+          style={{ padding: '0 2px', height: 'auto' }}
+        />
+      </Tooltip>
+    </Space>
+  );
+}
+
+export default function ClientDetailInfo({ client, pingResults, pinging, checkPing, kassaIps, kassaLoading }) {
   return (
     <>
       <Card title="Информация о клиенте" style={{ marginBottom: 16 }}>
@@ -128,6 +152,28 @@ export default function ClientDetailInfo({ client, pingResults, pinging, checkPi
               <PingStatus status={pingResults.server_ip} ip={client.server_ip} />
             </Space>
           </Descriptions.Item>
+          {client.mikrotik_ip && (
+            <>
+              <Descriptions.Item label="Касса 1">
+                <KassaIpField ip={kassaIps.kassa1} loading={kassaLoading} label="Касса 1" />
+              </Descriptions.Item>
+              <Descriptions.Item label="Касса 2">
+                <KassaIpField ip={kassaIps.kassa2} loading={kassaLoading} label="Касса 2" />
+              </Descriptions.Item>
+              <Descriptions.Item label="Касса 3">
+                <KassaIpField ip={kassaIps.kassa3} loading={kassaLoading} label="Касса 3" />
+              </Descriptions.Item>
+              <Descriptions.Item label="Касса 4">
+                <KassaIpField ip={kassaIps.kassa4} loading={kassaLoading} label="Касса 4" />
+              </Descriptions.Item>
+              <Descriptions.Item label="Касса 5">
+                <KassaIpField ip={kassaIps.kassa5} loading={kassaLoading} label="Касса 5" />
+              </Descriptions.Item>
+              <Descriptions.Item label="Касса 6">
+                <KassaIpField ip={kassaIps.kassa6} loading={kassaLoading} label="Касса 6" />
+              </Descriptions.Item>
+            </>
+          )}
         </Descriptions>
       </Card>
     </>

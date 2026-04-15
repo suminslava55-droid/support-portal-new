@@ -8,6 +8,7 @@ from .client_views import (
 
 from .misc_views import (
     FetchExternalIPView,
+    KassaIpsView,
     OfdCompanyViewSet,
     ProviderViewSet,
     DashboardStatsView,

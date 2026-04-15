@@ -50,6 +50,10 @@ export default function ClientDetailPage() {
   const [kktFetching, setKktFetching] = useState(false);
   const [kktRefreshing, setKktRefreshing] = useState(false);
 
+  // Кассы (DHCP Микротика)
+  const [kassaIps, setKassaIps]       = useState({});
+  const [kassaLoading, setKassaLoading] = useState(false);
+
   // ─── Загрузка ───────────────────────────────────────────
   const fetchClient = useCallback(async () => {
     try {
@@ -76,13 +80,29 @@ export default function ClientDetailPage() {
     } catch { setKktData([]); }
   }, [id]);
 
+  const loadKassaIps = useCallback(async (mikrotikIp) => {
+    if (!mikrotikIp) return;
+    setKassaLoading(true);
+    try {
+      const res = await api.get(`/clients/${id}/kassa-ips/`);
+      setKassaIps(res.data);
+    } catch {
+      setKassaIps({});
+    } finally {
+      setKassaLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     fetchClient();
     loadKktData();
   }, [fetchClient, loadKktData]);
 
   useEffect(() => {
-    if (client) checkPing();
+    if (client) {
+      checkPing();
+      loadKassaIps(client.mikrotik_ip);
+    }
   }, [client?.id]); // eslint-disable-line
 
   // ─── Пинг ───────────────────────────────────────────────
@@ -190,6 +210,8 @@ export default function ClientDetailPage() {
           pingResults={pingResults}
           pinging={pinging}
           checkPing={checkPing}
+          kassaIps={kassaIps}
+          kassaLoading={kassaLoading}
         />
       ),
     },
