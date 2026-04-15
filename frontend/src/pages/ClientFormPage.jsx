@@ -338,6 +338,9 @@ export default function ClientFormPage() {
   // ─── Сохранение ─────────────────────────────────────────
   const onFinish = async (values) => {
     if (!values.address?.trim()) { message.error('Адрес обязателен для заполнения'); return; }
+    // undefined не попадает в JSON при PATCH — явно передаём null/'' чтобы очистить поля
+    ['provider', 'provider2'].forEach(f => { if (values[f] === undefined) values[f] = null; });
+    ['connection_type', 'connection_type2'].forEach(f => { if (values[f] === undefined) values[f] = ''; });
     setSaving(true);
     try {
       if (isEdit && !isDraftMode) {
