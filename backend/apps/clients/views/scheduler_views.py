@@ -386,8 +386,8 @@ def _run_fetch_external_ip(task_id, user_id):
         ssh_user     = settings_obj.ssh_user
         ssh_password = settings_obj.ssh_password
 
-        # Клиенты у которых есть subnet (из него вычисляется mikrotik_ip)
-        clients = [c for c in Client.objects.filter(is_draft=False, subnet__isnull=False).exclude(subnet='') if c.mikrotik_ip]
+        # Клиенты у которых есть subnet (из него вычисляется mikrotik_ip), только активные
+        clients = [c for c in Client.objects.filter(is_draft=False, status=Client.STATUS_ACTIVE, subnet__isnull=False).exclude(subnet='') if c.mikrotik_ip]
         total = len(clients)
 
         if total == 0:
