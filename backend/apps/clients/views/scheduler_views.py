@@ -203,8 +203,8 @@ def _run_update_rnm(task_id, company_id, user_id, only_expiring=False):
         now = timezone.now().date()
         expiry_threshold = now + timedelta(days=30)
 
-        # Выбираем клиентов
-        qs = Client.objects.filter(is_draft=False).select_related('ofd_company')
+        # Выбираем клиентов (только активные, не черновики)
+        qs = Client.objects.filter(is_draft=False, status=Client.STATUS_ACTIVE).select_related('ofd_company')
         if company_id:
             qs = qs.filter(ofd_company_id=company_id)
 
