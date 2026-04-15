@@ -7,7 +7,7 @@ import {
   PlusOutlined, FileExcelOutlined, SearchOutlined,
   DownloadOutlined, MailOutlined, SendOutlined, SettingOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { getSearchVariants } from '../utils/keyboardLayout';
 import { clientsAPI, settingsAPI } from '../api';
 import useAuthStore from '../store/authStore';
@@ -354,10 +354,10 @@ export default function ClientsPage() {
       title: 'Адрес', dataIndex: 'address', key: 'address',
       sorter: true, sortOrder: sortField === 'address' ? sortOrder : null,
       render: (address, r) => (
-        <Button type="link" onClick={() => navigate(`/clients/${r.id}`)}
-          style={{ padding: 0, fontWeight: 500, textAlign: 'left', whiteSpace: 'normal', height: 'auto' }}>
+        <Link to={`/clients/${r.id}`}
+          style={{ fontWeight: 500, whiteSpace: 'normal' }}>
           {address || r.display_name || '—'}
-        </Button>
+        </Link>
       ),
     },
     show('company')       && { title: 'Компания',    dataIndex: 'company',       key: 'company',       sorter: true, sortOrder: sortField === 'company' ? sortOrder : null,   render: v => v || '—' },

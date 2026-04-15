@@ -222,7 +222,11 @@ function KktTable({ rows, loading, total, pagination, onPageChange, onSortChange
     show('address') && {
       title: 'Адрес', dataIndex: 'address', key: 'address', sorter: true, ellipsis: true,
       render: (val, row) => (
-        <a style={{ color: '#1677ff', cursor: 'pointer' }} onClick={() => onNavigate(row.client_id)}>
+        <a
+          href={`/clients/${row.client_id}`}
+          style={{ color: '#1677ff' }}
+          onClick={(e) => { e.preventDefault(); onNavigate(row.client_id); }}
+        >
           {val}
         </a>
       ),
