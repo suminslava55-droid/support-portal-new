@@ -151,7 +151,7 @@ class DashboardStatsView(APIView):
             clients.filter(provider__isnull=False)
             .values('provider__name')
             .annotate(count=Count('id'))
-            .order_by('-count')[:8]
+            .order_by('-count')[:9]
         )
         by_provider_data = [{'name': r['provider__name'], 'value': r['count']} for r in by_provider]
         no_provider = clients.filter(provider__isnull=True).count()
@@ -197,7 +197,7 @@ class DashboardStatsView(APIView):
             client__is_draft=False,
             fn_end_date__isnull=False,
             fn_end_date__gte=now,
-        ).select_related('client').order_by('fn_end_date')[:5]:
+        ).select_related('client').order_by('fn_end_date')[:6]:
             diff = (kkt.fn_end_date.date() - today).days
             fn_nearest.append({
                 'client_id': kkt.client_id,
