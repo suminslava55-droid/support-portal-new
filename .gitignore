@@ -12,6 +12,8 @@ node_modules/
 .DS_Store
 frontend/build/
 backups/
+nginx/default.conf
+nginx/certs/
 **/__pycache__/
 *.pyc
 *.pyo
