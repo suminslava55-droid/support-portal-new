@@ -51,6 +51,7 @@ export const clientsAPI = {
   delete: (id) => api.delete(`/clients/${id}/`),
   getNotes: (id) => api.get(`/clients/${id}/notes/`),
   addNote: (id, text) => api.post(`/clients/${id}/notes/`, { text }),
+  deleteNote: (clientId, noteId) => api.delete(`/clients/${clientId}/notes/${noteId}/`),
   createDraft: () => api.post('/clients/create_draft/'),
   discardDraft: (id) => api.delete(`/clients/${id}/discard_draft/`),
   getFiles: (id) => api.get(`/clients/${id}/files/`),

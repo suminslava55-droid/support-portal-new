@@ -186,6 +186,16 @@ export default function ClientDetailPage() {
     finally { setNoteSending(false); }
   };
 
+  const handleDeleteNote = async (noteId) => {
+    try {
+      await clientsAPI.deleteNote(id, noteId);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      message.success('Заметка удалена');
+    } catch (err) {
+      message.error(err?.response?.data?.detail || 'Ошибка удаления заметки');
+    }
+  };
+
   // ─── Удаление ───────────────────────────────────────────
   const handleDelete = async () => {
     try {
@@ -291,11 +301,24 @@ export default function ClientDetailPage() {
             ) : (
               notes.map((note) => (
                 <Card key={note.id} size="small" style={{ marginBottom: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                     <Text strong>{note.author_name}</Text>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {dayjs(note.created_at).format('DD.MM.YYYY HH:mm')}
-                    </Text>
+                    <Space size={4}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {dayjs(note.created_at).format('DD.MM.YYYY HH:mm')}
+                      </Text>
+                      {permissions.can_manage_users && (
+                        <Popconfirm
+                          title="Удалить заметку?"
+                          onConfirm={() => handleDeleteNote(note.id)}
+                          okText="Удалить"
+                          cancelText="Отмена"
+                          okButtonProps={{ danger: true }}
+                        >
+                          <Button type="text" danger size="small" icon={<DeleteOutlined />} style={{ padding: '0 4px' }} />
+                        </Popconfirm>
+                      )}
+                    </Space>
                   </div>
                   <Text>{note.text}</Text>
                 </Card>

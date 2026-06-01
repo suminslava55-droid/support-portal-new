@@ -139,7 +139,8 @@ export default function AppLayout({ children }) {
   const selectedKey = '/' + location.pathname.split('/')[1];
 
   const menuContent = (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
       {/* Логотип — скрыт при свёрнутом сайдбаре */}
       {!collapsed && (
         <div style={{
@@ -168,7 +169,58 @@ export default function AppLayout({ children }) {
         onClick={({ key }) => { navigate(key); setDrawerOpen(false); }}
         style={{ border: 'none', marginTop: collapsed ? 8 : 8 }}
       />
-    </>
+      </div>
+
+      {/* Низ сайдбара: пользователь + свернуть */}
+      <div style={{
+        borderTop: isDark ? '1px solid #303030' : '1px solid #f0f0f0',
+        background: isDark ? '#141414' : '#fff',
+      }}>
+        {collapsed ? (
+          /* Свёрнутый вид: иконка сверху, аватар снизу */
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0' }}>
+            {!isMobile && (
+              <Tooltip title="Развернуть меню" placement="right">
+                <Button
+                  type="text"
+                  size="small"
+                  style={{ marginBottom: 4 }}
+                  icon={<MenuUnfoldOutlined />}
+                  onClick={() => setCollapsed(c => !c)}
+                />
+              </Tooltip>
+            )}
+            <Dropdown menu={userMenu} placement="topRight" trigger={['click']}>
+              <Avatar style={{ background: '#1677ff', cursor: 'pointer' }}>{user?.full_name?.[0] || 'U'}</Avatar>
+            </Dropdown>
+          </div>
+        ) : (
+          /* Развёрнутый вид: аватар + имя + иконка в одну строку */
+          <div style={{ padding: '10px 8px 10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Dropdown menu={userMenu} placement="topRight" trigger={['click']}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1, minWidth: 0 }}>
+                <Avatar style={{ background: '#1677ff', flexShrink: 0 }}>{user?.full_name?.[0] || 'U'}</Avatar>
+                <div style={{ lineHeight: 1.2, overflow: 'hidden', minWidth: 0 }}>
+                  <Typography.Text strong style={{ fontSize: 13, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.full_name}</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>{user?.role_display}</Typography.Text>
+                </div>
+              </div>
+            </Dropdown>
+            {!isMobile && (
+              <Tooltip title="Свернуть меню" placement="right">
+                <Button
+                  type="text"
+                  size="small"
+                  style={{ flexShrink: 0 }}
+                  icon={<MenuFoldOutlined />}
+                  onClick={() => setCollapsed(c => !c)}
+                />
+              </Tooltip>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 
   return (
@@ -181,7 +233,7 @@ export default function AppLayout({ children }) {
           width={220}
           collapsedWidth={64}
           collapsed={collapsed}
-          style={{ boxShadow: '2px 0 8px rgba(0,0,0,0.06)', position: 'sticky', top: 0, height: '100vh', overflow: 'auto', transition: 'width 0.2s' }}
+          style={{ boxShadow: '2px 0 8px rgba(0,0,0,0.06)', position: 'sticky', top: 0, height: '100vh', overflow: 'hidden', transition: 'width 0.2s' }}
         >
           {menuContent}
         </Sider>
@@ -201,40 +253,22 @@ export default function AppLayout({ children }) {
       )}
 
       <Layout>
-        <Header style={{
-          background: 'transparent',
-          padding: '0 16px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          position: 'sticky', top: 0, zIndex: 10,
-        }}>
-          {/* Кнопка бургер/свернуть */}
-          {isMobile
-            ? <Button type="text" icon={<MenuOutlined style={{ fontSize: 18 }} />} onClick={() => setDrawerOpen(true)} />
-            : <Tooltip title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}>
-                <Button
-                  type="text"
-                  icon={collapsed ? <MenuUnfoldOutlined style={{ fontSize: 18 }} /> : <MenuFoldOutlined style={{ fontSize: 18 }} />}
-                  onClick={() => setCollapsed(c => !c)}
-                />
-              </Tooltip>
-          }
+        {isMobile && (
+          <Header style={{
+            background: 'transparent',
+            padding: '0 16px',
+            display: 'flex',
+            alignItems: 'center',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            position: 'sticky', top: 0, zIndex: 10,
+            height: 48,
+            lineHeight: '48px',
+          }}>
+            <Button type="text" icon={<MenuOutlined style={{ fontSize: 18 }} />} onClick={() => setDrawerOpen(true)} />
+          </Header>
+        )}
 
-          <Dropdown menu={userMenu} placement="bottomRight" trigger={['click']}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <Avatar style={{ background: '#1677ff' }}>{user?.full_name?.[0] || 'U'}</Avatar>
-              <div style={{ lineHeight: 1.2 }}>
-                <Typography.Text strong style={{ fontSize: 13 }}>{user?.full_name}</Typography.Text>
-                <br />
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{user?.role_display}</Typography.Text>
-              </div>
-            </div>
-          </Dropdown>
-        </Header>
-
-        <Content style={{ padding: isMobile ? 12 : 24, minHeight: 'calc(100vh - 64px)' }}>
+        <Content style={{ padding: isMobile ? 12 : 24, minHeight: isMobile ? 'calc(100vh - 48px)' : '100vh' }}>
           <div style={{ padding: isMobile ? 12 : 24, borderRadius: 8, minHeight: '100%', background: 'transparent' }}>
             {children}
           </div>

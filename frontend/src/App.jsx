@@ -1,6 +1,6 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, Spin, theme as antTheme } from 'antd';
+import { ConfigProvider, App as AntApp, Spin, theme as antTheme } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
@@ -127,6 +127,7 @@ export default function App() {
         components: theme.components,
       }}
     >
+      <AntApp>
       <BrowserRouter>
         <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
@@ -150,6 +151,7 @@ export default function App() {
         </Suspense>
         </ErrorBoundary>
       </BrowserRouter>
+      </AntApp>
     </ConfigProvider>
   );
 }

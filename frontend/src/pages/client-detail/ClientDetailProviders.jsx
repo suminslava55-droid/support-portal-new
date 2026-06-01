@@ -13,7 +13,7 @@ function ProviderCard({ title, color, providerData, client, connectionType, tari
       title={<Space><WifiOutlined style={{ color }} /><span>{title}</span></Space>}
       style={{ marginBottom: 16, ...(borderColor ? { borderColor } : {}) }}
     >
-      <Descriptions column={2} bordered size="small">
+      <Descriptions column={2} bordered size="small" labelStyle={{ width: 180, whiteSpace: 'nowrap' }}>
         <Descriptions.Item label="Название" span={2}>
           <Text strong>{providerData.name}</Text>
         </Descriptions.Item>

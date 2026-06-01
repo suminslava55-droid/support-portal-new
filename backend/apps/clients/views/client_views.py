@@ -154,8 +154,16 @@ class ClientViewSet(viewsets.ModelViewSet):
         serializer = ClientNoteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         note = serializer.save(client=client, author=request.user)
-        ClientActivity.objects.create(client=client, user=request.user, action='Добавлена заметка')
         return Response(ClientNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+    def delete_note(self, request, pk=None, note_id=None):
+        from django.shortcuts import get_object_or_404
+        if not (request.user.is_superuser or request.user.has_perm_flag('can_manage_users')):
+            return Response({'detail': 'Недостаточно прав.'}, status=status.HTTP_403_FORBIDDEN)
+        client = self.get_object()
+        note = get_object_or_404(ClientNote, pk=note_id, client=client)
+        note.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=['get', 'post'], url_path='export_excel')
     def export_excel(self, request):

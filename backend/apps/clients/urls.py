@@ -35,6 +35,7 @@ urlpatterns = [
     path('faq-articles/<int:article_id>/export/', FaqExportView.as_view(), name='faq-export'),
     path('faq-articles/<int:article_id>/history/', FaqHistoryView.as_view(), name='faq-history'),
     path('faq-files/<int:file_id>/', FaqFileDeleteView.as_view(), name='faq-file-delete'),
+    path('<int:pk>/notes/<int:note_id>/', ClientViewSet.as_view({'delete': 'delete_note'}), name='client-note-delete'),
     path('<int:pk>/kassa-ips/', KassaIpsView.as_view(), name='kassa-ips'),
     path('<int:pk>/ofd_kkt/', OfdKktView.as_view(), name='ofd-kkt'),
     path('<int:pk>/ofd_kkt/<int:kkt_id>/', OfdKktView.as_view(), name='ofd-kkt-detail'),
