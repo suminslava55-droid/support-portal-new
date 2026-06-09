@@ -320,6 +320,11 @@ class DashboardStatsView(APIView):
 
         DUTY_WORK_TYPES = {'phone', 'day', 'phone_day'}
 
+        def _make_person(u):
+            name = u.full_name if hasattr(u, 'full_name') and u.full_name else u.email
+            initials = ''.join([p[0].upper() for p in name.split()[:2]]) if name else '?'
+            return {'user_id': u.id, 'name': name, 'initials': initials}
+
         def get_duty(target_date):
             entries = DutySchedule.objects.filter(
                 date=target_date,
@@ -327,20 +332,34 @@ class DashboardStatsView(APIView):
             ).select_related('user').exclude(user__email='scheduler@system.local')
             result = []
             for e in entries:
-                u = e.user
-                name = u.full_name if hasattr(u, 'full_name') and u.full_name else u.email
-                initials = ''.join([p[0].upper() for p in name.split()[:2]]) if name else '?'
-                result.append({
-                    'user_id': u.id,
-                    'name': name,
-                    'initials': initials,
-                    'duty_type': e.duty_type,
-                })
+                p = _make_person(e.user)
+                p['duty_type'] = e.duty_type
+                result.append(p)
             return result
+
+        def get_vacations(target_date):
+            entries = DutySchedule.objects.filter(
+                date=target_date,
+                duty_type='vacation',
+            ).select_related('user').exclude(user__email='scheduler@system.local')
+            return [_make_person(e.user) for e in entries]
+
+        def get_birthdays(target_date):
+            users = User.objects.filter(
+                is_active=True,
+                birthday__isnull=False,
+                birthday__month=target_date.month,
+                birthday__day=target_date.day,
+            ).exclude(email='scheduler@system.local')
+            return [_make_person(u) for u in users]
 
         tomorrow = today + timedelta(days=1)
         duty_today = get_duty(today)
         duty_tomorrow = get_duty(tomorrow)
+        vacations_today = get_vacations(today)
+        vacations_tomorrow = get_vacations(tomorrow)
+        birthdays_today = get_birthdays(today)
+        birthdays_tomorrow = get_birthdays(tomorrow)
 
         # ── Последняя активность ───────────────────────────────
         recent_activities = []
@@ -370,6 +389,10 @@ class DashboardStatsView(APIView):
             'backup': backup_info,
             'duty_today': duty_today,
             'duty_tomorrow': duty_tomorrow,
+            'vacations_today': vacations_today,
+            'vacations_tomorrow': vacations_tomorrow,
+            'birthdays_today': birthdays_today,
+            'birthdays_tomorrow': birthdays_tomorrow,
             'today_str': today.strftime('%d %B, %A'),
             'tomorrow_str': tomorrow.strftime('%d %B, %A'),
             'recent_activities': recent_activities,

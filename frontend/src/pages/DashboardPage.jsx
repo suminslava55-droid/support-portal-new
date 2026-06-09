@@ -11,9 +11,11 @@ dayjs.locale('ru');
 const { Title } = Typography;
 
 const DUTY_LABELS = {
-  phone:     { label: 'Телефон',       bg: '#00FF00', color: '#1a5200' },
-  day:       { label: 'Работа днём',   bg: '#0000FF', color: '#fff' },
+  phone:     { label: 'Телефон',        bg: '#00FF00', color: '#1a5200' },
+  day:       { label: 'Работа днём',    bg: '#0000FF', color: '#fff' },
   phone_day: { label: 'Телефон + день', bg: '#00cc00', color: '#fff' },
+  birthday:  { label: 'День рождения',  bg: '#eb2f96', color: '#fff' },
+  vacation:  { label: 'Отпуск',         bg: '#13c2c2', color: '#fff' },
 };
 
 const AVATAR_COLORS = [
@@ -291,21 +293,37 @@ export default function DashboardPage() {
 
         {/* Сегодня */}
         <Card title={`Сегодня · ${todayLabel}`}>
-          {(data.duty_today || []).length === 0
-            ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет дежурных</div>
-            : (data.duty_today || []).map((d, i) => (
-              <DutyPerson key={d.user_id} name={d.name} initials={d.initials} dutyType={d.duty_type} idx={i} />
-            ))
+          {(data.duty_today || []).length === 0 && (data.birthdays_today || []).length === 0 && (data.vacations_today || []).length === 0
+            ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет событий</div>
+            : <>
+                {(data.duty_today || []).map((d, i) => (
+                  <DutyPerson key={`duty-${d.user_id}`} name={d.name} initials={d.initials} dutyType={d.duty_type} idx={i} />
+                ))}
+                {(data.birthdays_today || []).map((d, i) => (
+                  <DutyPerson key={`bday-${d.user_id}`} name={d.name} initials={d.initials} dutyType="birthday" idx={i} />
+                ))}
+                {(data.vacations_today || []).map((d, i) => (
+                  <DutyPerson key={`vac-${d.user_id}`} name={d.name} initials={d.initials} dutyType="vacation" idx={i} />
+                ))}
+              </>
           }
         </Card>
 
         {/* Завтра */}
         <Card title={`Завтра · ${tomorrowLabel}`}>
-          {(data.duty_tomorrow || []).length === 0
-            ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет дежурных</div>
-            : (data.duty_tomorrow || []).map((d, i) => (
-              <DutyPerson key={d.user_id} name={d.name} initials={d.initials} dutyType={d.duty_type} idx={i} />
-            ))
+          {(data.duty_tomorrow || []).length === 0 && (data.birthdays_tomorrow || []).length === 0 && (data.vacations_tomorrow || []).length === 0
+            ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет событий</div>
+            : <>
+                {(data.duty_tomorrow || []).map((d, i) => (
+                  <DutyPerson key={`duty-${d.user_id}`} name={d.name} initials={d.initials} dutyType={d.duty_type} idx={i} />
+                ))}
+                {(data.birthdays_tomorrow || []).map((d, i) => (
+                  <DutyPerson key={`bday-${d.user_id}`} name={d.name} initials={d.initials} dutyType="birthday" idx={i} />
+                ))}
+                {(data.vacations_tomorrow || []).map((d, i) => (
+                  <DutyPerson key={`vac-${d.user_id}`} name={d.name} initials={d.initials} dutyType="vacation" idx={i} />
+                ))}
+              </>
           }
         </Card>
 
