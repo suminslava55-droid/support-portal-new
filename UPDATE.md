@@ -2,6 +2,24 @@
 
 ## История изменений
 
+### Июнь 2026
+
+#### Безопасность и надёжность
+- **Санитайзинг HTML** в базе знаний — серверная очистка через `bleach`, клиентская через `DOMPurify`
+- **Ограничение типов файлов** в базе знаний — разрешены только безопасные расширения (.pdf, .docx, .xlsx, .png и др.)
+- **Защита от инъекций** в планировщике заданий — allowlist разрешённых task_id
+- **Подтверждение** при отправке Excel на Email — диалог с адресом получателя
+- **Allowlist доменов** для Email-экспорта — настраивается в Настройки → Учётные записи → SMTP
+- **Исправление refresh-токена** — корректная работа при удалённом access_token
+- **Атомарные транзакции** в bulk-импорте клиентов и восстановлении бэкапа
+- **GIN-индексы** для fuzzy-поиска через миграцию 0034
+
+#### DevOps
+- `nginx/default.conf` перенесён из git в `.gitignore`; шаблон — `nginx/default.conf.example`
+- Исправлен `location /static/` в nginx для раздачи Django staticfiles
+
+---
+
 ### Апрель 2026
 
 #### UI и производительность
@@ -66,7 +84,7 @@ bash /opt/support-portal/deploy-frontend.sh
 
 # После пересборки — проверяем все пакеты
 docker compose exec backend python -c "
-import cryptography, paramiko, openpyxl, docx, pdfminer, fitz
+import cryptography, paramiko, openpyxl, docx, pdfminer, fitz, bleach
 print('Все пакеты OK')
 "
 ```

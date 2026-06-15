@@ -58,13 +58,13 @@ docker compose logs nginx --tail=30
 docker compose logs backend --tail=50
 ```
 
-### No module named 'cryptography' / 'paramiko' / 'openpyxl' / 'docx' / 'pdfminer' / 'fitz'
+### No module named 'cryptography' / 'paramiko' / 'openpyxl' / 'docx' / 'pdfminer' / 'fitz' / 'bleach'
 
 Пакеты устанавливаются автоматически из `requirements.txt` при `docker compose up --build`. При ручной установке:
 
 ```bash
 docker compose exec backend pip install \
-  cryptography paramiko openpyxl python-docx pdfminer.six PyMuPDF \
+  cryptography paramiko openpyxl python-docx pdfminer.six PyMuPDF bleach \
   --break-system-packages
 docker compose restart backend
 ```
@@ -156,6 +156,21 @@ docker compose exec backend python manage.py migrate
 ---
 
 ## Проблемы с регламентными заданиями
+
+### 500 при открытии «Регламентные задания» (GET /api/clients/scheduled-tasks/cron/)
+
+Скрипт `cron_manager.sh` смонтирован в контейнер без права на исполнение.
+
+```bash
+chmod +x /opt/support-portal/cron_manager.sh
+```
+
+Если скрипт принадлежит root:
+```bash
+sudo chmod +x /opt/support-portal/cron_manager.sh
+```
+
+Перезапуск контейнера не требуется — bind volume применяет изменения немедленно.
 
 ### «Не удалось прочитать crontab» / ошибка nsenter
 
@@ -305,6 +320,15 @@ ls /opt/support-portal/frontend/src/utils/keyboardLayout.js
 
 ```bash
 docker compose exec backend python manage.py migrate --run-syncdb
+```
+
+### nginx не стартует после git clone
+
+Файл `nginx/default.conf` не хранится в git. После клонирования скопировать из шаблона:
+
+```bash
+cp /opt/support-portal/nginx/default.conf.example /opt/support-portal/nginx/default.conf
+docker compose restart nginx
 ```
 
 ### Ошибка сборки фронтенда

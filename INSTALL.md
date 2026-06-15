@@ -242,9 +242,21 @@ docker compose ps
 
 ---
 
-## 7. Устанавливаем зависимости фронтенда
+## 7. Настраиваем nginx
 
-Выполняется один раз после клонирования:
+Шаблон конфигурации nginx хранится в репозитории как `nginx/default.conf.example`. Сам файл `nginx/default.conf` в git не входит (в `.gitignore`) — он специфичен для каждого сервера.
+
+```bash
+cp /opt/support-portal/nginx/default.conf.example /opt/support-portal/nginx/default.conf
+# При необходимости отредактировать server_name, пути к сертификатам и т.д.:
+# nano /opt/support-portal/nginx/default.conf
+```
+
+---
+
+## 8. Устанавливаем зависимости фронтенда
+
+Выполняется один раз после клонирования. Включает все необходимые пакеты, в том числе `DOMPurify` для клиентской санитизации HTML:
 
 ```bash
 cd /opt/support-portal/frontend
@@ -253,11 +265,11 @@ npm install
 
 ---
 
-## 8. Проверяем Python-пакеты в контейнере
+## 9. Проверяем Python-пакеты в контейнере
 
 ```bash
 docker compose exec backend python -c "
-import cryptography, paramiko, openpyxl, docx, pdfminer, fitz
+import cryptography, paramiko, openpyxl, docx, pdfminer, fitz, bleach
 print('Все пакеты OK')
 "
 ```
@@ -265,13 +277,13 @@ print('Все пакеты OK')
 Если какой-то пакет отсутствует:
 
 ```bash
-docker compose exec backend pip install cryptography paramiko openpyxl python-docx pdfminer.six PyMuPDF --break-system-packages
+docker compose exec backend pip install cryptography paramiko openpyxl python-docx pdfminer.six PyMuPDF bleach --break-system-packages
 docker compose restart backend
 ```
 
 ---
 
-## 9. Применяем миграции и создаём администратора
+## 10. Применяем миграции и создаём администратора
 
 ```bash
 docker compose exec backend python manage.py migrate
@@ -286,7 +298,7 @@ docker compose exec backend python create_admin.py
 
 ---
 
-## 10. Включаем расширение pg_trgm (fuzzy поиск)
+## 11. Включаем расширение pg_trgm (fuzzy поиск)
 
 ```bash
 docker compose exec db psql -U postgres -d support_portal -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
@@ -301,7 +313,7 @@ docker compose exec db psql -U postgres -d support_portal -c "SELECT extname, ex
 
 ---
 
-## 11. Настройка планировщика заданий ⚡
+## 12. Настройка планировщика заданий ⚡
 
 ```bash
 cd /opt/support-portal
@@ -312,7 +324,7 @@ python3 setup_scheduler.py
 
 ---
 
-## 12. Установка службы cron-watch ⚡
+## 13. Установка службы cron-watch ⚡
 
 ```bash
 cat > /usr/local/bin/cron-watch.sh << 'EOF'
@@ -352,7 +364,7 @@ systemctl status cron-watch
 
 ---
 
-## 13. Деплой фронтенда
+## 14. Деплой фронтенда
 
 ```bash
 cd /opt/support-portal
@@ -363,7 +375,7 @@ cd /opt/support-portal
 
 ---
 
-## 14. Первоначальная настройка в интерфейсе
+## 15. Первоначальная настройка в интерфейсе
 
 1. Откройте `http://ВАШ_IP` — попадёте на дашборд
 2. Перейдите в **Настройки**:
@@ -376,7 +388,7 @@ cd /opt/support-portal
 
 ---
 
-## 15. Когда что использовать
+## 16. Когда что использовать
 
 | Изменение | Команда |
 |-----------|---------|
@@ -394,7 +406,7 @@ cd /opt/support-portal
 - `.env` — ключи и пароли
 - `.scheduler_token` — JWT-токен планировщика
 - `scheduler_run.sh` — скрипт с токеном
-- `nginx/default.conf` — специфичен для каждого сервера
+- `nginx/default.conf` — специфичен для каждого сервера (шаблон: `nginx/default.conf.example`)
 - `media/` — загруженные файлы
 - `backups/` — резервные копии
 - `frontend/package-lock.json`

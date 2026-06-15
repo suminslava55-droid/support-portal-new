@@ -25,6 +25,7 @@ export default function SettingsDiagnostics({ packages, packagesLoading, loadPac
             { key: 'docx',        label: 'python-docx',   desc: 'Импорт из Word (.docx) в базу знаний' },
             { key: 'pdfminer',    label: 'pdfminer.six',  desc: 'Импорт текста из PDF в базу знаний' },
             { key: 'fitz',        label: 'PyMuPDF',       desc: 'Импорт картинок из PDF в базу знаний' },
+            { key: 'bleach',      label: 'bleach',         desc: 'Санитизация HTML в базе знаний' },
           ].map(({ key, label, desc }) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {packages[key]
