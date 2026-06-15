@@ -107,9 +107,15 @@ class ScheduledTaskRunView(APIView):
         if task_id not in self.ALLOWED_TASKS:
             return Response({'error': f'Недопустимый task_id. Разрешены: {", ".join(self.ALLOWED_TASKS)}'}, status=400)
 
-        t = _get_or_create_task(task_id)
-        if t.status == 'running':
-            return Response({'error': 'Задание уже выполняется'}, status=400)
+        _get_or_create_task(task_id)  # гарантируем что запись существует
+        from django.db import transaction
+        from ..models import ScheduledTask
+        with transaction.atomic():
+            t = ScheduledTask.objects.select_for_update().get(task_id=task_id)
+            if t.status == 'running':
+                return Response({'error': 'Задание уже выполняется'}, status=400)
+            t.status = 'running'
+            t.save(update_fields=['status'])
 
         # Стартуем в фоне
         if task_id == 'fetch_external_ip':
@@ -852,6 +858,7 @@ def _run_backup_system(task_id, user_id):
     BACKUP_DIR = '/opt/support-portal/backups'
     MEDIA_DIR  = '/app/media'
     KEEP_DAYS  = 7
+    backup_folder = None
 
     try:
         os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -937,6 +944,8 @@ def _run_backup_system(task_id, user_id):
              last_run_result=summary)
 
     except Exception as e:
+        if backup_folder and os.path.exists(backup_folder):
+            shutil.rmtree(backup_folder, ignore_errors=True)
         _set(status='error', progress=0,
              progress_text='Ошибка резервного копирования',
              last_run_result=f'Критическая ошибка:\n{str(e)}\n{traceback.format_exc()[:800]}')

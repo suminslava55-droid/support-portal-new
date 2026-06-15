@@ -1,5 +1,8 @@
+import logging
 from django.db import models
 from apps.accounts.models import User
+
+logger = logging.getLogger(__name__)
 
 
 class CustomFieldDefinition(models.Model):
@@ -63,7 +66,8 @@ def decrypt_value(value):
             return ''
         f = Fernet(key.encode())
         return f.decrypt(value.encode()).decode()
-    except Exception:
+    except Exception as e:
+        logger.warning('Не удалось расшифровать значение: %s', e)
         return ''
 
 
