@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Spin, Space, Tabs, Typography, message } from 'antd';
 import {
-  SettingOutlined, CalendarOutlined, RobotOutlined,
+  SettingOutlined, CalendarOutlined, RobotOutlined, AppstoreAddOutlined,
 } from '@ant-design/icons';
 import { settingsAPI } from '../api';
 import api from '../api/axios';
@@ -10,6 +10,7 @@ import SettingsAutomation  from './settings/SettingsAutomation';
 import SettingsScheduler   from './settings/SettingsScheduler';
 import SettingsDiagnostics from './settings/SettingsDiagnostics';
 import SettingsRnmSync     from './settings/SettingsRnmSync';
+import CustomFieldsPage    from '../pages/CustomFieldsPage';
 import { Form } from 'antd';
 
 const { Title } = Typography;
@@ -409,6 +410,11 @@ export default function SettingsPage() {
       ),
     },
     {
+      key: 'custom-fields',
+      label: <Space><AppstoreAddOutlined />Доп. поля</Space>,
+      children: <CustomFieldsPage />,
+    },
+    {
       key: 'automation',
       label: <Space><RobotOutlined />Автоматизация</Space>,
       children: (
@@ -474,7 +480,7 @@ export default function SettingsPage() {
         type="card"
         size="middle"
         items={tabItems}
-        style={{ maxWidth: 700 }}
+        style={{ width: '100%' }}
       />
     </div>
   );

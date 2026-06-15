@@ -222,6 +222,7 @@ export default function ClientDetailPage() {
           checkPing={checkPing}
           kassaIps={kassaIps}
           kassaLoading={kassaLoading}
+          customFieldValues={client.custom_field_values}
         />
       ),
     },

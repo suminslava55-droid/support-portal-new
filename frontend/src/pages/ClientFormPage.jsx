@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Form, Button, Typography, message, Spin, Space, Tabs, Modal } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
-import { useNavigate, useParams, useLocation, useBlocker } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { clientsAPI } from '../api';
 import api from '../api';
 import useAuthStore from '../store/authStore';
@@ -47,6 +47,7 @@ export default function ClientFormPage() {
   const [activeTab, setActiveTab]   = useState(location.state?.tab || 'info');
   const [isDraft, setIsDraft]       = useState(false);
   const [isDirty, setIsDirty]       = useState(false);
+  const [customFields, setCustomFields] = useState([]);
 
   // ККТ
   const [kktData, setKktData]               = useState([]);
@@ -67,37 +68,23 @@ export default function ClientFormPage() {
   const [selectedToSlot, setSelectedToSlot]         = useState(null);
   const [transferring, setTransferring]             = useState(false);
 
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      isDirty && currentLocation.pathname !== nextLocation.pathname
-  );
-
+  // ─── Предупреждение при уходе с несохранёнными изменениями ──────────────────
   useEffect(() => {
-    if (blocker.state === 'blocked') {
-      Modal.confirm({
-        title: 'Несохранённые изменения',
-        content: 'Данные формы не сохранены. Уйти со страницы?',
-        okText: 'Уйти',
-        cancelText: 'Остаться',
-        onOk: () => blocker.proceed(),
-        onCancel: () => blocker.reset(),
-      });
-    }
-  }, [blocker.state]);
-
-  // ─── Cleanup черновика ──────────────────────────────────
-  useEffect(() => {
-    const handleUnload = () => {
+    const handleBeforeUnload = (e) => {
       const draftId = draftIdRef.current || localStorage.getItem('pending_draft_id');
       if (draftId) {
         navigator.sendBeacon(`/api/clients/${draftId}/discard_draft/`,
           new Blob([JSON.stringify({})], { type: 'application/json' }));
         localStorage.removeItem('pending_draft_id');
       }
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
     };
-    window.addEventListener('beforeunload', handleUnload);
-    return () => window.removeEventListener('beforeunload', handleUnload);
-  }, []);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   useEffect(() => {
     return () => {
@@ -115,12 +102,14 @@ export default function ClientFormPage() {
     const init = async () => {
       setLoading(true);
       try {
-        const [providersRes, companiesRes] = await Promise.all([
+        const [providersRes, companiesRes, customFieldsRes] = await Promise.all([
           api.get('/clients/providers/'),
           api.get('/clients/ofd-companies/'),
+          api.get('/clients/custom-fields/'),
         ]);
         setProviders(providersRes.data.results || providersRes.data);
         setOfdCompanies(companiesRes.data.results || companiesRes.data);
+        setCustomFields(customFieldsRes.data.results || customFieldsRes.data || []);
 
         if (isEdit && !isDraftMode) {
           const { data } = await clientsAPI.get(id);
@@ -132,6 +121,12 @@ export default function ClientFormPage() {
           if (data.provider2 || data.personal_account2 || data.contract_number2) setShowProvider2(true);
           const filesRes = await clientsAPI.getFiles(id);
           setFiles(filesRes.data);
+          // Загружаем значения доп. полей
+          if (data.custom_field_values?.length) {
+            const cfvMap = {};
+            data.custom_field_values.forEach(cfv => { cfvMap[String(cfv.field)] = cfv.value; });
+            form.setFieldValue('custom_fields', cfvMap);
+          }
         } else if (isEdit && isDraftMode) {
           try {
             const filesRes = await clientsAPI.getFiles(id);
@@ -362,17 +357,31 @@ export default function ClientFormPage() {
     ['connection_type', 'connection_type2'].forEach(f => { if (values[f] === undefined) values[f] = ''; });
     setSaving(true);
     try {
+      const cfValues = values.custom_fields || {};
+      delete values.custom_fields;
+
+      let clientId = id;
       if (isEdit && !isDraftMode) {
         await clientsAPI.update(id, values);
-        setIsDirty(false); message.success('Клиент обновлён');
-        navigate(`/clients/${id}`);
       } else {
         await clientsAPI.update(id, { ...values, is_draft: false });
         draftIdRef.current = null; setIsDraft(false);
         localStorage.removeItem('pending_draft_id');
-        setIsDirty(false); message.success('Клиент создан');
-        navigate(`/clients/${id}`);
       }
+
+      // Сохраняем доп. поля
+      if (Object.keys(cfValues).length > 0) {
+        const cfPayload = Object.entries(cfValues)
+          .filter(([, v]) => v !== undefined && v !== null)
+          .map(([fieldId, value]) => ({ field: Number(fieldId), value: value || '' }));
+        if (cfPayload.length > 0) {
+          await api.post(`/clients/${clientId}/custom-field-values/`, cfPayload);
+        }
+      }
+
+      setIsDirty(false);
+      message.success(isEdit && !isDraftMode ? 'Клиент обновлён' : 'Клиент создан');
+      navigate(`/clients/${clientId}`);
     } catch { message.error('Ошибка сохранения'); }
     finally { setSaving(false); }
   };
@@ -394,6 +403,7 @@ export default function ClientFormPage() {
           files={files} uploading={uploading}
           handleUpload={handleUpload} handleDeleteFile={handleDeleteFile}
           saveDraftField={saveDraftField}
+          customFields={customFields}
         />
       ),
     },

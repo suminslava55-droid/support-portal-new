@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Input, Select, Button, Card, Row, Col, Space, Tooltip, List, Upload, Typography } from 'antd';
+import { Form, Input, Select, Button, Card, Row, Col, Space, Tooltip, List, Upload, Typography, Divider } from 'antd';
 import { SyncOutlined, UploadOutlined, DownloadOutlined, DeleteFilled } from '@ant-design/icons';
 import { getFileIcon, formatSize } from '../client-detail/helpers';
 
@@ -9,7 +9,7 @@ export default function ClientFormInfo({
   id, form, ofdCompanies, mikrotikIP, serverIP,
   fetchingIP, handleGetExternalIP,
   files, uploading, handleUpload, handleDeleteFile,
-  saveDraftField,
+  saveDraftField, customFields,
 }) {
   return (
     <>
@@ -162,6 +162,32 @@ export default function ClientFormInfo({
               </List.Item>
             )} />
           )}
+        </Card>
+      )}
+
+      {customFields && customFields.length > 0 && (
+        <Card title="Дополнительные поля" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            {customFields.map(field => (
+              <Col span={12} key={field.id}>
+                <Form.Item
+                  name={['custom_fields', String(field.id)]}
+                  label={field.name}
+                  rules={field.is_required ? [{ required: true, message: `Укажите ${field.name}` }] : []}
+                >
+                  {field.field_type === 'select' ? (
+                    <Select
+                      placeholder={`Выберите ${field.name}`}
+                      allowClear
+                      options={(field.options || []).map(o => ({ value: o, label: o }))}
+                    />
+                  ) : (
+                    <Input placeholder={field.name} />
+                  )}
+                </Form.Item>
+              </Col>
+            ))}
+          </Row>
         </Card>
       )}
     </>

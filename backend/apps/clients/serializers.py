@@ -122,6 +122,7 @@ class ClientDetailSerializer(serializers.ModelSerializer):
     provider_data = ProviderSerializer(source='provider', read_only=True)
     provider2_data = ProviderSerializer(source='provider2', read_only=True)
     ofd_company_data = OfdCompanySerializer(source='ofd_company', read_only=True)
+    custom_field_values = CustomFieldValueSerializer(many=True, read_only=True)
 
     class Meta:
         model = Client

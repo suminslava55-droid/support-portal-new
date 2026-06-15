@@ -46,7 +46,7 @@ function KassaIpField({ ip, loading, label }) {
   );
 }
 
-export default function ClientDetailInfo({ client, pingResults, pinging, checkPing, kassaIps, kassaLoading }) {
+export default function ClientDetailInfo({ client, pingResults, pinging, checkPing, kassaIps, kassaLoading, customFieldValues }) {
   return (
     <>
       <Card title="Информация о клиенте" style={{ marginBottom: 16 }}>
@@ -176,6 +176,18 @@ export default function ClientDetailInfo({ client, pingResults, pinging, checkPi
           )}
         </Descriptions>
       </Card>
+
+      {customFieldValues && customFieldValues.length > 0 && (
+        <Card title="Дополнительные поля" style={{ marginBottom: 16 }}>
+          <Descriptions column={2} bordered size="small">
+            {customFieldValues.map(cfv => (
+              <Descriptions.Item key={cfv.field} label={cfv.field_name}>
+                {cfv.value || <Text type="secondary">—</Text>}
+              </Descriptions.Item>
+            ))}
+          </Descriptions>
+        </Card>
+      )}
     </>
   );
 }

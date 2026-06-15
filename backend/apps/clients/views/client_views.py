@@ -403,6 +403,32 @@ class ClientViewSet(viewsets.ModelViewSet):
         except Client.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
+    @action(detail=True, methods=['get', 'post'], url_path='custom-field-values')
+    def custom_field_values(self, request, pk=None):
+        """GET — список значений доп. полей клиента. POST — bulk upsert значений."""
+        client = self.get_object()
+        if request.method == 'GET':
+            from ..serializers import CustomFieldValueSerializer
+            values = client.custom_field_values.select_related('field').all()
+            return Response(CustomFieldValueSerializer(values, many=True).data)
+        # POST: [{field: id, value: "..."}]
+        from ..models import CustomFieldValue, CustomFieldDefinition
+        from ..serializers import CustomFieldValueSerializer
+        items = request.data if isinstance(request.data, list) else []
+        for item in items:
+            field_id = item.get('field')
+            value = item.get('value', '')
+            try:
+                field = CustomFieldDefinition.objects.get(pk=field_id, is_active=True)
+                CustomFieldValue.objects.update_or_create(
+                    client=client, field=field,
+                    defaults={'value': value}
+                )
+            except CustomFieldDefinition.DoesNotExist:
+                pass
+        values = client.custom_field_values.select_related('field').all()
+        return Response(CustomFieldValueSerializer(values, many=True).data)
+
     @action(detail=True, methods=['get', 'post'], url_path='files')
     def files(self, request, pk=None):
         client = self.get_object_including_draft()
