@@ -420,6 +420,10 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
             if not to_email:
                 return Response({'error': 'Не указан email'}, status=400)
             s = SystemSettings.get()
+            from .utils import validate_email_domain
+            domain_err = validate_email_domain(to_email, s)
+            if domain_err:
+                return Response({'error': domain_err}, status=400)
             if not s.smtp_host or not s.smtp_user or not s.smtp_password_encrypted or not s.smtp_from_email:
                 return Response({'error': 'SMTP настройки не заполнены'}, status=400)
             try:

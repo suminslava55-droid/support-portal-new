@@ -310,8 +310,7 @@ export default function CalendarPage() {
     } catch { setVacSmtpOk(false); }
   };
 
-  const handleVacExport = async () => {
-    if (vacExportVia === 'email' && !vacExportEmail.trim()) { message.warning('Введите email'); return; }
+  const doVacExport = async () => {
     setVacExporting(true);
     try {
       const payload = { year: vacationYear, send_via: vacExportVia, to_email: vacExportVia === 'email' ? vacExportEmail.trim() : undefined };
@@ -329,6 +328,21 @@ export default function CalendarPage() {
       }
     } catch (e) { message.error(e.response?.data?.error || 'Ошибка экспорта'); }
     finally { setVacExporting(false); }
+  };
+
+  const handleVacExport = () => {
+    if (vacExportVia === 'email' && !vacExportEmail.trim()) { message.warning('Введите email'); return; }
+    if (vacExportVia === 'email') {
+      Modal.confirm({
+        title: 'Подтвердите отправку',
+        content: `Файл Excel будет отправлен на адрес: ${vacExportEmail.trim()}`,
+        okText: 'Отправить',
+        cancelText: 'Отмена',
+        onOk: doVacExport,
+      });
+    } else {
+      doVacExport();
+    }
   };
 
   const clearMonth = async () => {

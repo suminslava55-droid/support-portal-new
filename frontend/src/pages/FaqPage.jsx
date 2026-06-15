@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import { useSearchParams } from 'react-router-dom';
 import { getSearchVariants } from '../utils/keyboardLayout';
 import {
@@ -818,7 +819,8 @@ export default function FaqPage() {
                         .then(r => r.text())
                         .then(html => {
                           const w = window.open('', '_blank');
-                          w.document.write(html);
+                          // DOMPurify санитизирует HTML перед записью — второй рубеж защиты от XSS
+                          w.document.write(DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORCE_BODY: true }));
                           w.document.close();
                         });
                     }}>PDF</Button>

@@ -114,36 +114,53 @@ function ExportModal({ open, onClose, exportParams, visibleCols }) {
     }).catch(() => setSmtpOk(false));
   }, [open]);
 
-  const handle = async () => {
-    if (via === 'email' && !email.trim()) {
-      message.warning('Введите email'); return;
-    }
+  const doDownload = async () => {
     setLoading(true);
     try {
-      const payload = {
-        ...exportParams,
-        cols: visibleCols.join(','),
-        send_via: via,
-        to_email: via === 'email' ? email.trim() : undefined,
-      };
-      if (via === 'email') {
-        const { data } = await api.post('/clients/kkt-export/', payload);
-        message.success(data.message);
-        onClose();
-      } else {
-        const resp = await api.post('/clients/kkt-export/', payload, { responseType: 'blob' });
-        const url = URL.createObjectURL(new Blob([resp.data]));
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `fn_replacement_${dayjs().format('YYYY-MM-DD')}.xlsx`;
-        a.click();
-        URL.revokeObjectURL(url);
-        onClose();
-      }
+      const payload = { ...exportParams, cols: visibleCols.join(','), send_via: 'file' };
+      const resp = await api.post('/clients/kkt-export/', payload, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([resp.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fn_replacement_${dayjs().format('YYYY-MM-DD')}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      onClose();
     } catch (e) {
       message.error(e.response?.data?.error || 'Ошибка экспорта');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const doSendEmail = async () => {
+    setLoading(true);
+    try {
+      const payload = { ...exportParams, cols: visibleCols.join(','), send_via: 'email', to_email: email.trim() };
+      const { data } = await api.post('/clients/kkt-export/', payload);
+      message.success(data.message);
+      onClose();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Ошибка экспорта');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handle = () => {
+    if (via === 'email' && !email.trim()) {
+      message.warning('Введите email'); return;
+    }
+    if (via === 'email') {
+      Modal.confirm({
+        title: 'Подтвердите отправку',
+        content: `Файл Excel будет отправлен на адрес: ${email.trim()}`,
+        okText: 'Отправить',
+        cancelText: 'Отмена',
+        onOk: doSendEmail,
+      });
+    } else {
+      doDownload();
     }
   };
 

@@ -1,0 +1,58 @@
+server {
+    listen 80;
+    # На боевом сервере заменить _ на реальный домен: server_name techportal.example.com;
+    server_name _;
+
+    server_tokens off;
+    gzip on;
+    gzip_types text/plain application/json application/javascript text/css;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location /api/ {
+        proxy_pass http://backend:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        # Передаём реальный IP клиента, не позволяем подделать через X-Forwarded-For
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /admin/ {
+        # Ограничить доступом из внутренней сети на боевом сервере:
+        # allow 192.168.0.0/16;
+        # deny all;
+        proxy_pass http://backend:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Django staticfiles (collectstatic → /app/staticfiles → volume static_volume → /static)
+    location /static/ {
+        alias /static/;
+    }
+
+    # FAQ вложения — принудительное скачивание, не открывать в браузере (XSS через .html/.svg)
+    # Должен быть ДО общего /media/, иначе nginx не применит более специфичный location
+    location /media/faq/ {
+        alias /media/faq/;
+        add_header Content-Disposition "attachment" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        types { }
+        default_type application/octet-stream;
+    }
+
+    # Media файлы — общий каталог (./media монтируется как /media в контейнере nginx)
+    location /media/ {
+        alias /media/;
+    }
+
+    location / {
+        root /usr/share/nginx/html;
+        try_files $uri $uri/ /index.html;
+    }
+}

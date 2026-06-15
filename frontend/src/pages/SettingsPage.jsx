@@ -75,10 +75,11 @@ export default function SettingsPage() {
           smtp_host:       data.smtp_host,
           smtp_port:       data.smtp_port || 465,
           smtp_user:       data.smtp_user,
-          smtp_from_email: data.smtp_from_email,
-          smtp_from_name:  data.smtp_from_name,
-          smtp_use_ssl:    data.smtp_use_ssl,
-          smtp_use_tls:    data.smtp_use_tls,
+          smtp_from_email:        data.smtp_from_email,
+          smtp_from_name:         data.smtp_from_name,
+          smtp_use_ssl:           data.smtp_use_ssl,
+          smtp_use_tls:           data.smtp_use_tls,
+          allowed_email_domains:  data.allowed_email_domains || '',
         });
         setHasSMTPPassword(data.has_smtp_password);
         setUseSsl(data.smtp_use_ssl);
@@ -159,7 +160,7 @@ export default function SettingsPage() {
       setUseSsl(true);
       setUseTls(false);
       smtpForm.resetFields();
-      smtpForm.setFieldsValue({ smtp_port: 465, smtp_use_ssl: true, smtp_use_tls: false });
+      smtpForm.setFieldsValue({ smtp_port: 465, smtp_use_ssl: true, smtp_use_tls: false, allowed_email_domains: '' });
       message.success('SMTP данные очищены');
     } catch (e) {
       message.error(e.response?.data?.error || e.response?.data?.detail || 'Ошибка очистки');

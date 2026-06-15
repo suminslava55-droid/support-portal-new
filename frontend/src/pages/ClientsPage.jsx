@@ -274,15 +274,7 @@ export default function ClientsPage() {
     }
   };
 
-  const handleExport = async () => {
-    if (selectedFields.length === 0) {
-      message.warning('Выберите хотя бы одно поле');
-      return;
-    }
-    if (exportVia === 'email' && !emailTo.trim()) {
-      message.warning('Введите email для отправки');
-      return;
-    }
+  const doExport = async () => {
     setExporting(true);
     try {
       const payload = {
@@ -310,6 +302,28 @@ export default function ClientsPage() {
       message.error(e.response?.data?.error || 'Ошибка экспорта');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExport = () => {
+    if (selectedFields.length === 0) {
+      message.warning('Выберите хотя бы одно поле');
+      return;
+    }
+    if (exportVia === 'email' && !emailTo.trim()) {
+      message.warning('Введите email для отправки');
+      return;
+    }
+    if (exportVia === 'email') {
+      Modal.confirm({
+        title: 'Подтвердите отправку',
+        content: `Файл Excel будет отправлен на адрес: ${emailTo.trim()}`,
+        okText: 'Отправить',
+        cancelText: 'Отмена',
+        onOk: doExport,
+      });
+    } else {
+      doExport();
     }
   };
 

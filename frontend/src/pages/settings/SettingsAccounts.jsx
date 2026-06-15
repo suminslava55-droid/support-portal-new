@@ -122,6 +122,13 @@ export default function SettingsAccounts({
           <Form.Item name="smtp_from_name" label="Имя отправителя">
             <Input placeholder="Support Portal" />
           </Form.Item>
+          <Form.Item
+            name="allowed_email_domains"
+            label="Разрешённые домены получателей"
+            extra="Через запятую. Оставьте пустым — любые домены. Пример: company.ru,company2.ru"
+          >
+            <Input placeholder="company.ru,company2.ru" />
+          </Form.Item>
 
           <Space>
             <Button type="primary" htmlType="submit" loading={savingSmtp} icon={<SaveOutlined />}>

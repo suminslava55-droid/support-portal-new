@@ -2,6 +2,7 @@ import subprocess
 import json
 import os
 from datetime import datetime
+from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -34,97 +35,128 @@ class BulkImportClientsView(APIView):
         skipped_dup    = []  # уже существующие
         errors         = []  # прочие ошибки
 
-        for idx, item in enumerate(raw):
-            row_label = item.get('id_pharm') or f'строка #{idx + 1}'
+        # Весь импорт — одна транзакция: либо все клиенты созданы, либо ни одного.
+        # Внутренние savepoint'ы (вложенный atomic) изолируют DB-ошибки отдельных строк —
+        # при ошибке одной строки продолжаем сбор ошибок, но в конце откатываем ВСЁ.
+        try:
+            with transaction.atomic():
+                for idx, item in enumerate(raw):
+                    # 1. Пропускаем без id_pharm
+                    pharmacy_code = (item.get('id_pharm') or '').strip()
+                    if not pharmacy_code:
+                        skipped_null.append({
+                            'row': idx + 1,
+                            'reason': 'Пустой id_pharm — пропущено',
+                        })
+                        continue
 
-            # 1. Пропускаем без id_pharm
-            pharmacy_code = (item.get('id_pharm') or '').strip()
-            if not pharmacy_code:
-                skipped_null.append({
-                    'row': idx + 1,
-                    'reason': 'Пустой id_pharm — пропущено',
-                })
-                continue
+                    # 2. Пропускаем дубли
+                    if Client.objects.filter(pharmacy_code=pharmacy_code, is_draft=False).exists():
+                        skipped_dup.append({
+                            'pharmacy_code': pharmacy_code,
+                            'address': (item.get('address_pharm_zabbix') or '').strip(),
+                            'reason': 'Уже существует в базе',
+                        })
+                        continue
 
-            # 2. Пропускаем дубли
-            if Client.objects.filter(pharmacy_code=pharmacy_code, is_draft=False).exists():
-                skipped_dup.append({
-                    'pharmacy_code': pharmacy_code,
-                    'address': (item.get('address_pharm_zabbix') or '').strip(),
-                    'reason': 'Уже существует в базе',
-                })
-                continue
+                    # 3. Адрес обязателен
+                    address = (item.get('address_pharm_zabbix') or '').strip()
+                    if not address:
+                        errors.append({
+                            'pharmacy_code': pharmacy_code,
+                            'reason': 'Пустой адрес (address_pharm_zabbix)',
+                        })
+                        continue
 
-            # 3. Адрес обязателен
-            address = (item.get('address_pharm_zabbix') or '').strip()
-            if not address:
-                errors.append({
-                    'pharmacy_code': pharmacy_code,
-                    'reason': 'Пустой адрес (address_pharm_zabbix)',
-                })
-                continue
+                    # 4. Подсеть: берём первые 3 октета, дописываем .0/24
+                    subnet = ''
+                    ip_raw = (item.get('ip_pharm_ad') or '').strip()
+                    if ip_raw:
+                        parts = ip_raw.split('.')
+                        if len(parts) == 4:
+                            subnet = f'{parts[0]}.{parts[1]}.{parts[2]}.0/24'
 
-            # 4. Подсеть: берём первые 3 октета, дописываем .0/24
-            subnet = ''
-            ip_raw = (item.get('ip_pharm_ad') or '').strip()
-            if ip_raw:
-                parts = ip_raw.split('.')
-                if len(parts) == 4:
-                    subnet = f'{parts[0]}.{parts[1]}.{parts[2]}.0/24'
+                    # 5. Компания по ИНН
+                    inn = (item.get('organization_inn') or '').strip()
+                    ofd_company = None
+                    if inn:
+                        ofd_company = OfdCompany.objects.filter(inn=inn).first()
 
-            # 5. Компания по ИНН
-            inn = (item.get('organization_inn') or '').strip()
-            ofd_company = None
-            if inn:
-                ofd_company = OfdCompany.objects.filter(inn=inn).first()
+                    # 6. Создаём клиента (inner savepoint — только эту строку откатываем при DB-ошибке)
+                    try:
+                        with transaction.atomic():
+                            client = Client.objects.create(
+                                is_draft=False,
+                                created_by=request.user,
+                                address=address,
+                                pharmacy_code=pharmacy_code,
+                                warehouse_code=(item.get('pharmacy_id') or '').strip(),
+                                email=(item.get('mail') or '').strip(),
+                                phone=(item.get('telephone_number') or '').strip(),
+                                subnet=subnet,
+                                ofd_company=ofd_company,
+                                last_name='',
+                                first_name='',
+                            )
 
-            # 6. Создаём клиента
-            try:
-                client = Client.objects.create(
-                    is_draft=False,
-                    created_by=request.user,
-                    address=address,
-                    pharmacy_code=pharmacy_code,
-                    warehouse_code=(item.get('pharmacy_id') or '').strip(),
-                    email=(item.get('mail') or '').strip(),
-                    phone=(item.get('telephone_number') or '').strip(),
-                    subnet=subnet,
-                    ofd_company=ofd_company,
-                    last_name='',
-                    first_name='',
-                )
-            except Exception as e:
-                errors.append({'pharmacy_code': pharmacy_code, 'reason': str(e)})
-                continue
+                            # 7. РНМ из cashbox
+                            rnm_saved = []
+                            cashbox = item.get('cashbox') or []
+                            for cb in cashbox:
+                                rnm = str(cb.get('kkt_reg_id') or '').strip()
+                                if re.match(r'^\d{16}$', rnm):
+                                    kkt_obj, created_kkt = KktData.objects.get_or_create(
+                                        client=client, kkt_reg_id=rnm
+                                    )
+                                    if created_kkt:
+                                        ClientActivity.objects.create(
+                                            client=client, user=request.user,
+                                            action=f'Добавлена ККТ\nРНМ: {rnm}\nСерийный номер: —\nНомер ФН: —'
+                                        )
+                                        rnm_saved.append(rnm)
 
-            # 7. РНМ из cashbox
-            rnm_saved = []
-            cashbox = item.get('cashbox') or []
-            for cb in cashbox:
-                rnm = str(cb.get('kkt_reg_id') or '').strip()
-                if re.match(r'^\d{16}$', rnm):
-                    kkt_obj, created_kkt = KktData.objects.get_or_create(
-                        client=client, kkt_reg_id=rnm
-                    )
-                    if created_kkt:
-                        ClientActivity.objects.create(
-                            client=client, user=request.user,
-                            action=f'Добавлена ККТ\nРНМ: {rnm}\nСерийный номер: —\nНомер ФН: —'
-                        )
-                        rnm_saved.append(rnm)
+                            ClientActivity.objects.create(
+                                client=client, user=request.user,
+                                action='Клиент создан через массовый импорт'
+                            )
+                    except Exception as e:
+                        errors.append({'pharmacy_code': pharmacy_code, 'reason': str(e)})
+                        continue
 
-            ClientActivity.objects.create(
-                client=client, user=request.user,
-                action='Клиент создан через массовый импорт'
-            )
+                    created_list.append({
+                        'id': client.id,
+                        'pharmacy_code': pharmacy_code,
+                        'address': address,
+                        'company': ofd_company.name if ofd_company else (f'ИНН {inn} — не найден' if inn else '—'),
+                        'rnm_count': len(rnm_saved),
+                    })
 
-            created_list.append({
-                'id': client.id,
-                'pharmacy_code': pharmacy_code,
-                'address': address,
-                'company': ofd_company.name if ofd_company else (f'ИНН {inn} — не найден' if inn else '—'),
-                'rnm_count': len(rnm_saved),
-            })
+                # Если были ошибки создания — raise чтобы outer atomic сделал rollback
+                if errors:
+                    raise Exception('_bulk_rollback')
+
+        except Exception as exc:
+            if str(exc) == '_bulk_rollback':
+                # Все записи откачены — возвращаем подробный отчёт об ошибках
+                return Response({
+                    'created':      [],
+                    'skipped_null': skipped_null,
+                    'skipped_dup':  skipped_dup,
+                    'errors':       errors,
+                    'rollback':     True,
+                    'message':      (
+                        f'Импорт отменён: {len(errors)} ошибок. '
+                        f'Все {len(created_list)} уже созданных записей откачены.'
+                    ),
+                    'summary': {
+                        'total':        len(raw),
+                        'created':      0,
+                        'skipped_null': len(skipped_null),
+                        'skipped_dup':  len(skipped_dup),
+                        'errors':       len(errors),
+                    }
+                }, status=400)
+            raise  # неожиданное исключение — пробрасываем
 
         return Response({
             'created':      created_list,

@@ -305,6 +305,16 @@ class SystemSettings(models.Model):
     def set_smtp_password(self, value):
         self.smtp_password_encrypted = encrypt_value(value)
 
+    # Разрешённые домены для отправки экспортов по email.
+    # Пустое значение = ограничений нет.
+    # Формат: "company.ru,company2.ru,company3.ru"
+    allowed_email_domains = models.TextField(
+        'Разрешённые домены для отправки (через запятую)',
+        blank=True,
+        default='',
+        help_text='Оставьте пустым чтобы разрешить любые домены. Пример: company.ru,company2.ru'
+    )
+
     # Часовой пояс для расписания
     timezone_offset = models.IntegerField(
         'Часовой пояс (смещение от UTC)',

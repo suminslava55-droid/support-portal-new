@@ -49,6 +49,24 @@ def ping_ip(ip, timeout=5):
         return False
 
 
+def validate_email_domain(to_email: str, settings) -> str | None:
+    """
+    Проверяет домен адресата против разрешённого списка SystemSettings.allowed_email_domains.
+    Возвращает None если OK, иначе строку с текстом ошибки.
+    Если список пустой — ограничений нет.
+    """
+    allowed_raw = getattr(settings, 'allowed_email_domains', '') or ''
+    if not allowed_raw.strip():
+        return None
+    allowed_domains = [d.strip().lower() for d in allowed_raw.split(',') if d.strip()]
+    if not allowed_domains:
+        return None
+    domain = to_email.rsplit('@', 1)[-1].lower() if '@' in to_email else ''
+    if domain not in allowed_domains:
+        return f'Домен «{domain}» не разрешён. Допустимые домены: {", ".join(allowed_domains)}'
+    return None
+
+
 def build_change_log(old_client, new_data, provider_map):
     changes = []
     for field, label in FIELD_LABELS.items():

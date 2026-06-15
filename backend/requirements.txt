@@ -12,3 +12,4 @@ openpyxl
 python-docx
 pdfminer.six
 PyMuPDF
+bleach==6.1.0

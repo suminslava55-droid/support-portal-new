@@ -531,11 +531,20 @@ class ScheduledTaskCronView(APIView):
         )
         return result.stdout.strip(), result.stderr.strip(), result.returncode
 
+    # Разрешённые task_id — защита от инъекции \n в crontab (как в ScheduledTaskRunView)
+    ALLOWED_CRON_TASKS = {'update_rnm', 'fetch_external_ip', 'backup_system'}
+
     def post(self, request):
         task_id       = request.data.get('task_id', 'update_rnm')
         enabled       = request.data.get('enabled', False)
         schedule_time = (request.data.get('schedule_time') or '').strip()
         schedule_days = request.data.get('schedule_days', '0,1,2,3,4')
+
+        if task_id not in self.ALLOWED_CRON_TASKS:
+            return Response(
+                {'error': f'Недопустимый task_id. Разрешены: {", ".join(sorted(self.ALLOWED_CRON_TASKS))}'},
+                status=400
+            )
 
         MARKER = f'{self.SCHEDULER_SCRIPT} {task_id}'
 
@@ -1060,9 +1069,13 @@ def _run_restore_backup(task_id, filepath, user_id):
                  last_run_result='Архив повреждён или имеет неверную структуру')
             return
 
-        # ── 2. Очистка БД (только пользовательские таблицы) ─
+        # ── 2. Очистка БД + загрузка дампа в одной транзакции ──────────────────
+        # ВАЖНО: transaction.atomic() гарантирует, что при ошибке loaddata
+        # TRUNCATE будет откачен — БД останется нетронутой.
+        # PostgreSQL поддерживает TRUNCATE в транзакции (в отличие от MySQL).
         _set(progress=30, progress_text='Очистка базы данных...')
-        from django.db import connection
+        from django.db import connection, transaction
+        from django.core.management import call_command
         # Таблицы которые не трогаем — системные Django
         SKIP_TABLES = {
             'django_migrations',
@@ -1071,23 +1084,22 @@ def _run_restore_backup(task_id, filepath, user_id):
             'auth_group',
             'auth_group_permissions',
         }
-        with connection.cursor() as cursor:
-            cursor.execute("SET session_replication_role = 'replica';")
-            tables = connection.introspection.table_names(cursor)
-            for table in tables:
-                if table in SKIP_TABLES or table.startswith('django_'):
-                    continue
-                cursor.execute(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE;')
-            cursor.execute("SET session_replication_role = 'origin';")
-
-        # ── 3. Загрузка дампа ────────────────────────────────
-        _set(progress=55, progress_text='Восстановление данных из дампа...')
-        from django.core.management import call_command
-        # Копируем db.json в /tmp внутри контейнера чтобы loaddata нашёл файл
         internal_db = '/tmp/restore_db.json'
         shutil.copy2(db_file, internal_db)
         try:
-            call_command('loaddata', internal_db, format='json', verbosity=0)
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SET session_replication_role = 'replica';")
+                    tables = connection.introspection.table_names(cursor)
+                    for table in tables:
+                        if table in SKIP_TABLES or table.startswith('django_'):
+                            continue
+                        cursor.execute(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE;')
+                    cursor.execute("SET session_replication_role = 'origin';")
+
+                # ── 3. Загрузка дампа (внутри той же транзакции) ─────────────
+                _set(progress=55, progress_text='Восстановление данных из дампа...')
+                call_command('loaddata', internal_db, format='json', verbosity=0)
         finally:
             if os.path.exists(internal_db):
                 os.remove(internal_db)

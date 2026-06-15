@@ -41,6 +41,7 @@ class SystemSettingsView(APIView):
             'smtp_use_tls': s.smtp_use_tls,
             'has_smtp_password': bool(s.smtp_password_encrypted),
             'timezone_offset': s.timezone_offset,
+            'allowed_email_domains': s.allowed_email_domains,
         })
 
     def delete(self, request):
@@ -57,6 +58,7 @@ class SystemSettingsView(APIView):
             s.smtp_from_name = ''
             s.smtp_use_ssl = True
             s.smtp_use_tls = False
+            s.allowed_email_domains = ''
             s.save()
             return Response({'message': 'SMTP данные очищены'})
         else:
@@ -79,6 +81,7 @@ class SystemSettingsView(APIView):
             s.smtp_from_name = request.data.get('smtp_from_name', s.smtp_from_name)
             s.smtp_use_ssl = request.data.get('smtp_use_ssl', s.smtp_use_ssl)
             s.smtp_use_tls = request.data.get('smtp_use_tls', s.smtp_use_tls)
+            s.allowed_email_domains = request.data.get('allowed_email_domains', s.allowed_email_domains)
             smtp_password = request.data.get('smtp_password', '')
             if smtp_password and smtp_password != '••••••••':
                 s.set_smtp_password(smtp_password)
@@ -92,6 +95,7 @@ class SystemSettingsView(APIView):
                 'smtp_use_ssl': s.smtp_use_ssl,
                 'smtp_use_tls': s.smtp_use_tls,
                 'has_smtp_password': bool(s.smtp_password_encrypted),
+                'allowed_email_domains': s.allowed_email_domains,
             })
         elif section == 'general':
             s.timezone_offset = int(request.data.get('timezone_offset', s.timezone_offset) or 0)

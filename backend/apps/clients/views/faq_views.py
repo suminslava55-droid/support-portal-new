@@ -1,3 +1,4 @@
+import bleach
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,6 +6,39 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework import serializers
 from ..models import FaqCategory, FaqArticle, FaqFile, FaqArticleHistory
+
+# ── Санитайзинг HTML-контента статей FAQ ─────────────────────────────────────
+# Все теги и атрибуты вне этих списков будут удалены (strip=True).
+# Запрещены: <script>, <iframe>, on*-атрибуты, javascript:, data: URI и т.п.
+_FAQ_ALLOWED_TAGS = [
+    'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'del',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'ul', 'ol', 'li', 'blockquote', 'code', 'pre',
+    'a', 'img',
+    'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+    'span', 'div', 'section', 'hr',
+    'sub', 'sup', 'mark',
+]
+_FAQ_ALLOWED_ATTRS = {
+    '*':   ['class', 'style', 'id'],
+    'a':   ['href', 'title', 'target', 'rel'],
+    'img': ['src', 'alt', 'width', 'height', 'style'],
+    'td':  ['colspan', 'rowspan', 'style'],
+    'th':  ['colspan', 'rowspan', 'style'],
+}
+
+
+def sanitize_faq_content(content: str) -> str:
+    """Очищает HTML-контент статьи FAQ: удаляет опасные теги/атрибуты через bleach."""
+    if not content:
+        return ''
+    return bleach.clean(
+        content,
+        tags=_FAQ_ALLOWED_TAGS,
+        attributes=_FAQ_ALLOWED_ATTRS,
+        strip=True,
+        strip_comments=True,
+    )
 
 
 class FaqCategorySerializer(serializers.ModelSerializer):
@@ -71,7 +105,8 @@ class FaqArticleViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        article = serializer.save(author=self.request.user)
+        content = sanitize_faq_content(serializer.validated_data.get('content', ''))
+        article = serializer.save(author=self.request.user, content=content)
         FaqArticleHistory.objects.create(
             article=article,
             user=self.request.user,
@@ -83,7 +118,8 @@ class FaqArticleViewSet(viewsets.ModelViewSet):
         old_title    = article.title
         old_category = article.category_id
         old_content  = article.content
-        updated = serializer.save()
+        content = sanitize_faq_content(serializer.validated_data.get('content', old_content))
+        updated = serializer.save(content=content)
         user = self.request.user
         if updated.title != old_title:
             FaqArticleHistory.objects.create(
@@ -140,6 +176,16 @@ def _can_edit_article(user, article):
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 МБ
 
+# Разрешённые расширения для FAQ-вложений (аналогично FaqImageUploadView).
+# Исполняемые форматы (.html, .svg, .js и т.п.) запрещены — они отдаются nginx
+# как same-origin и могут выполнять JS при открытии.
+ALLOWED_FAQ_FILE_EXTENSIONS = {
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.odt', '.ods',
+    '.txt', '.csv', '.zip', '.rar', '.7z',
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp',
+    '.mp4', '.avi', '.mov', '.ppt', '.pptx',
+}
+
 def _check_real_size(file, max_bytes=MAX_FILE_SIZE):
     """Считает реальный размер файла по содержимому, не по Content-Length."""
     size = 0
@@ -176,6 +222,15 @@ class FaqFileView(APIView):
         file = request.FILES.get('file')
         if not file:
             return Response({'error': 'Файл не передан'}, status=400)
+        # Проверяем расширение до проверки размера — быстрый отказ для запрещённых типов
+        import os as _os
+        file_ext = _os.path.splitext(file.name)[1].lower()
+        if file_ext not in ALLOWED_FAQ_FILE_EXTENSIONS:
+            return Response(
+                {'error': f'Тип файла не разрешён: «{file_ext}». '
+                          f'Допустимые форматы: документы, архивы, изображения, видео.'},
+                status=400
+            )
         real_size = _check_real_size(file)
         if real_size is None:
             return Response({'error': 'Файл слишком большой (максимум 10 МБ)'}, status=400)
@@ -671,11 +726,12 @@ class FaqExportView(APIView):
               font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all}
           .copy-btn{display:none}
         </style>"""
+        safe_content = sanitize_faq_content(article.content)
         html_page = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>{hl.escape(article.title)}</title>{css}</head><body>
 <h1>{hl.escape(article.title)}</h1>
 <div class="meta">{hl.escape(meta)}</div><hr>
-{article.content}
+{safe_content}
 <script>window.onload=function(){{window.print()}}</script>
 </body></html>"""
         return HttpResponse(html_page, content_type='text/html; charset=utf-8')

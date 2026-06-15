@@ -2,9 +2,13 @@
 # cron_manager.sh — управление crontab хоста
 # Использует nsenter для вызова crontab команды хоста из контейнера
 
-ACTION="$1"
-MARKER="$2"
-CRON_LINE="$3"
+# Убираем символы переноса строки из аргументов — защита от инъекций в crontab
+ACTION="${1//$'\n'/}"
+ACTION="${ACTION//$'\r'/}"
+MARKER="${2//$'\n'/}"
+MARKER="${MARKER//$'\r'/}"
+CRON_LINE="${3//$'\n'/}"
+CRON_LINE="${CRON_LINE//$'\r'/}"
 
 if [ -z "$ACTION" ] || [ -z "$MARKER" ]; then
     echo "ERROR: usage: cron_manager.sh <list|set|remove> <marker> [cron_line]"

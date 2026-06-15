@@ -87,7 +87,8 @@ export default function App() {
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
-    if (token) {
+    const refresh = localStorage.getItem('refresh_token');
+    if (token || refresh) {
       authAPI.me()
         .then(({ data }) => {
           const permissions = data.role_data ? {

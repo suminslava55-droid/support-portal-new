@@ -12,10 +12,12 @@ node_modules/
 .DS_Store
 frontend/build/
 backups/
-nginx/default.conf
 nginx/certs/
+nginx/default.conf
 **/__pycache__/
 *.pyc
 *.pyo
 scheduler_run.sh
 frontend/package-lock.json
+AUDIT_*.md
+CLAUDE.md
