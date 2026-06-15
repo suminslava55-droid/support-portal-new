@@ -1,7 +1,24 @@
+# Пример конфига для боевого сервера с HTTPS (Let's Encrypt или внутренний CA)
+# Скопировать как default.conf и заменить:
+#   - techportal.example.com → реальный домен
+#   - /etc/nginx/certs/fullchain.crt и privkey.key → реальные пути к сертификатам
+
 server {
     listen 80;
-    # На боевом сервере заменить _ на реальный домен: server_name techportal.example.com;
-    server_name _;
+    server_name techportal.example.com;
+    # Редирект всего HTTP → HTTPS
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name techportal.example.com;
+    client_max_body_size 20M;
+
+    ssl_certificate     /etc/nginx/certs/fullchain.crt;
+    ssl_certificate_key /etc/nginx/certs/privkey.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
 
     server_tokens off;
     gzip on;
@@ -11,33 +28,36 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
+    # Django API
     location /api/ {
         proxy_pass http://backend:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        # Передаём реальный IP клиента, не позволяем подделать через X-Forwarded-For
+        # $remote_addr — реальный IP, не позволяет обойти rate-limit через X-Forwarded-For
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto https;
     }
 
+    # Django admin — ограничен по IP (только внутренняя сеть)
     location /admin/ {
-        # Ограничить доступом из внутренней сети на боевом сервере:
-        # allow 192.168.0.0/16;
-        # deny all;
+        allow 192.168.0.0/16;
+        allow 10.0.0.0/8;
+        deny all;
         proxy_pass http://backend:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto https;
     }
 
-    # Django staticfiles (collectstatic → /app/staticfiles → volume static_volume → /static)
+    # Статика Django (collectstatic → volume static_volume → /static внутри nginx)
     location /static/ {
         alias /static/;
+        expires 30d;
     }
 
-    # FAQ вложения — принудительное скачивание, не открывать в браузере (XSS через .html/.svg)
-    # Должен быть ДО общего /media/, иначе nginx не применит более специфичный location
+    # FAQ вложения — принудительное скачивание, не открывать в браузере (защита от XSS)
+    # ВАЖНО: должен быть ДО общего /media/
     location /media/faq/ {
         alias /media/faq/;
         add_header Content-Disposition "attachment" always;
@@ -46,13 +66,16 @@ server {
         default_type application/octet-stream;
     }
 
-    # Media файлы — общий каталог (./media монтируется как /media в контейнере nginx)
+    # Медиафайлы
     location /media/ {
         alias /media/;
+        expires 7d;
     }
 
+    # React SPA
     location / {
         root /usr/share/nginx/html;
+        index index.html;
         try_files $uri $uri/ /index.html;
     }
 }
