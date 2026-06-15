@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Form, Button, Typography, message, Spin, Space, Tabs } from 'antd';
+import { Form, Button, Typography, message, Spin, Space, Tabs, Modal } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, useBlocker } from 'react-router-dom';
 import { clientsAPI } from '../api';
 import api from '../api';
 import useAuthStore from '../store/authStore';
@@ -46,6 +46,7 @@ export default function ClientFormPage() {
   const [showProvider2, setShowProvider2]     = useState(false);
   const [activeTab, setActiveTab]   = useState(location.state?.tab || 'info');
   const [isDraft, setIsDraft]       = useState(false);
+  const [isDirty, setIsDirty]       = useState(false);
 
   // ККТ
   const [kktData, setKktData]               = useState([]);
@@ -65,6 +66,24 @@ export default function ClientFormPage() {
   const [selectedClientDetail, setSelectedClientDetail] = useState(null);
   const [selectedToSlot, setSelectedToSlot]         = useState(null);
   const [transferring, setTransferring]             = useState(false);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isDirty && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      Modal.confirm({
+        title: 'Несохранённые изменения',
+        content: 'Данные формы не сохранены. Уйти со страницы?',
+        okText: 'Уйти',
+        cancelText: 'Остаться',
+        onOk: () => blocker.proceed(),
+        onCancel: () => blocker.reset(),
+      });
+    }
+  }, [blocker.state]);
 
   // ─── Cleanup черновика ──────────────────────────────────
   useEffect(() => {
@@ -345,13 +364,13 @@ export default function ClientFormPage() {
     try {
       if (isEdit && !isDraftMode) {
         await clientsAPI.update(id, values);
-        message.success('Клиент обновлён');
+        setIsDirty(false); message.success('Клиент обновлён');
         navigate(`/clients/${id}`);
       } else {
         await clientsAPI.update(id, { ...values, is_draft: false });
         draftIdRef.current = null; setIsDraft(false);
         localStorage.removeItem('pending_draft_id');
-        message.success('Клиент создан');
+        setIsDirty(false); message.success('Клиент создан');
         navigate(`/clients/${id}`);
       }
     } catch { message.error('Ошибка сохранения'); }
@@ -431,7 +450,7 @@ export default function ClientFormPage() {
         onFinish={onFinish}
         onFinishFailed={() => message.error('Адрес обязателен для заполнения')}
         disabled={!canEdit}
-        onValuesChange={(changed) => {
+        onValuesChange={(changed) => { setIsDirty(true);
           if (changed.subnet !== undefined) {
             setMikrotikIP(calcMikrotikIP(changed.subnet, '1'));
             setServerIP(calcMikrotikIP(changed.subnet, '2'));
