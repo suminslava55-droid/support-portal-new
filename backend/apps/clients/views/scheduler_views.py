@@ -935,6 +935,25 @@ def _run_backup_system(task_id, user_id):
         )
         if remove_errors:
             summary += '\nОшибки удаления:\n' + '\n'.join(remove_errors)
+
+        # Очистка устаревших черновиков клиентов (старше 2 часов)
+        from django.utils import timezone as tz
+        from datetime import timedelta
+        from ..models import Client as ClientModel
+        stale_drafts = ClientModel.objects.filter(
+            is_draft=True,
+            created_at__lt=tz.now() - timedelta(hours=2)
+        )
+        drafts_deleted = 0
+        for draft in stale_drafts:
+            for f in draft.files.all():
+                f.file.delete()
+                f.delete()
+            draft.delete()
+            drafts_deleted += 1
+        if drafts_deleted:
+            summary += f'\nУдалено устаревших черновиков: {drafts_deleted}'
+
         _set(status='success', progress=100,
              progress_text=f'Готово. Архив: {_fmt(archive_size)}, время: {elapsed_str}',
              last_run_result=summary)

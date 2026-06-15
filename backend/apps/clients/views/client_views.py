@@ -41,19 +41,6 @@ class ClientViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def get_queryset(self):
-        # Удаляем черновики старше 2 часов (пользователь ушёл не сохранив)
-        from django.utils import timezone
-        from datetime import timedelta
-        stale_drafts = Client.objects.filter(
-            is_draft=True,
-            created_at__lt=timezone.now() - timedelta(hours=2)
-        )
-        for draft in stale_drafts:
-            for f in draft.files.all():
-                f.file.delete()
-                f.delete()
-            draft.delete()
-
         from django.db.models import Prefetch
         from ..models import ClientNote, ClientActivity
         qs = Client.objects.select_related('created_by', 'provider', 'provider2', 'ofd_company').filter(is_draft=False)
