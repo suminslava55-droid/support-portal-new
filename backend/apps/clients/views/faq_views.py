@@ -20,13 +20,30 @@ _FAQ_ALLOWED_TAGS = [
     'span', 'div', 'section', 'hr',
     'sub', 'sup', 'mark',
 ]
-_FAQ_ALLOWED_ATTRS = {
-    '*':   ['class', 'style', 'id'],
-    'a':   ['href', 'title', 'target', 'rel'],
-    'img': ['src', 'alt', 'width', 'height', 'style'],
-    'td':  ['colspan', 'rowspan', 'style'],
-    'th':  ['colspan', 'rowspan', 'style'],
-}
+def _faq_allowed_attrs(tag, name, value):
+    """Кастомный фильтр атрибутов: разрешает только безопасные значения."""
+    # Разрешённые атрибуты по тегам
+    allowed = {
+        '*':   {'class', 'style', 'id'},
+        'a':   {'href', 'title', 'target', 'rel'},
+        'img': {'src', 'alt', 'width', 'height', 'style'},
+        'td':  {'colspan', 'rowspan', 'style'},
+        'th':  {'colspan', 'rowspan', 'style'},
+    }
+    tag_allowed = allowed.get(tag, set()) | allowed.get('*', set())
+    if name not in tag_allowed:
+        return False
+    # Для href и src — запрещаем javascript: и любые data: URI кроме data:image/(png|jpeg|gif|webp)
+    if name in ('href', 'src'):
+        v = value.strip().lower()
+        if v.startswith('javascript:'):
+            return False
+        if v.startswith('data:'):
+            # разрешаем только безопасные растровые форматы без SVG
+            if not (v.startswith('data:image/png') or v.startswith('data:image/jpeg')
+                    or v.startswith('data:image/gif') or v.startswith('data:image/webp')):
+                return False
+    return True
 
 
 def sanitize_faq_content(content: str) -> str:
@@ -36,7 +53,7 @@ def sanitize_faq_content(content: str) -> str:
     return bleach.clean(
         content,
         tags=_FAQ_ALLOWED_TAGS,
-        attributes=_FAQ_ALLOWED_ATTRS,
+        attributes=_faq_allowed_attrs,
         strip=True,
         strip_comments=True,
     )
@@ -655,8 +672,12 @@ class FaqExportView(APIView):
                             from PIL import Image as PILImage
                             import io
                             rel = src.split('/media/')[-1].split('?')[0]
+                            # Явно отклоняем попытки path traversal до вызова realpath
+                            if '..' in rel.split('/'):
+                                img_para.add_run('[Изображение недоступно]')
+                                return
                             path = os.path.realpath(os.path.join('/app/media', rel))
-                            if not path.startswith('/app/media/'):
+                            if not path.startswith('/app/media' + os.sep):
                                 img_para.add_run('[Изображение недоступно]')
                             elif os.path.exists(path):
                                 pil_img = PILImage.open(path)
