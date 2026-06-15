@@ -18,6 +18,5 @@ nginx/default.conf
 *.pyc
 *.pyo
 scheduler_run.sh
-frontend/package-lock.json
 AUDIT_*.md
 CLAUDE.md

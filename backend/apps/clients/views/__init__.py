@@ -12,6 +12,7 @@ from .misc_views import (
     OfdCompanyViewSet,
     ProviderViewSet,
     DashboardStatsView,
+    HealthView,
 )
 
 from .calendar_views import (

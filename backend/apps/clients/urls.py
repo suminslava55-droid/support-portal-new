@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, KassaIpsView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView, FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView, FaqHistoryView
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, KassaIpsView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView, FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView, FaqHistoryView, HealthView
 from .settings_views import SystemSettingsView, TestEmailView, CheckPackagesView
 
 router = DefaultRouter()
@@ -13,6 +13,7 @@ router.register('ofd-companies', OfdCompanyViewSet, basename='ofd-companies')
 router.register('', ClientViewSet, basename='client')
 
 urlpatterns = [
+    path('health/', HealthView.as_view(), name='health'),
     path('rnm-sync/', RnmSyncView.as_view(), name='rnm-sync'),
     path('search/', GlobalSearchView.as_view(), name='global-search'),
     path('dashboard/', DashboardStatsView.as_view(), name='dashboard'),

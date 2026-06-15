@@ -29,17 +29,17 @@ echo "2. СТАТУС КОНТЕЙНЕРОВ"
 echo "$DIVIDER"
 docker compose ps
 
-# ── 3. ИМПОРТЫ В VIEWS.PY ────────────────────────────────────
+# ── 3. ИМПОРТЫ В VIEWS/ ──────────────────────────────────────
 echo ""
 echo "$DIVIDER"
-echo "3. ИМПОРТЫ В VIEWS.PY"
+echo "3. ИМПОРТЫ В VIEWS/"
 echo "$DIVIDER"
 echo "--- Строка импорта сериализаторов ---"
-grep -n "from .serializers\|OfdCompanyWriteSerializer\|OfdCompanySerializer" backend/apps/clients/views.py
+grep -rn "from .serializers\|OfdCompanyWriteSerializer\|OfdCompanySerializer" backend/apps/clients/views/
 echo "--- Количество OfdCompanyViewSet ---"
-grep -c "class OfdCompanyViewSet" backend/apps/clients/views.py
+grep -rc "class OfdCompanyViewSet" backend/apps/clients/views/
 echo "--- ViewSet и его методы ---"
-grep -n "class OfdCompanyViewSet\|get_serializer_class\|OfdCompanyWriteSerializer\|serializer_class" backend/apps/clients/views.py | grep -A5 "OfdCompanyViewSet"
+grep -rn "class OfdCompanyViewSet\|get_serializer_class\|OfdCompanyWriteSerializer\|serializer_class" backend/apps/clients/views/ | grep -A5 "OfdCompanyViewSet"
 
 # ── 4. ПАКЕТЫ ────────────────────────────────────────────────
 echo ""

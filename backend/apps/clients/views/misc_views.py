@@ -1,13 +1,21 @@
 from rest_framework import viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from ..models import Client, KktData, Provider, OfdCompany, ClientActivity, SystemSettings
 from ..serializers import ProviderSerializer, OfdCompanySerializer, OfdCompanyWriteSerializer
 from apps.accounts.permissions import CanEditClient
 from .utils import ping_ip
 
 KNOWN_HOSTS_FILE = '/opt/support-portal/known_hosts'
+
+
+class HealthView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        return Response({'status': 'ok'})
 
 
 def _make_ssh_client(host):
