@@ -25,11 +25,16 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
     pagination_class = None  # Отключаем пагинацию — нужны все записи месяца
 
     def get_queryset(self):
+        from django.utils import timezone
         qs = DutySchedule.objects.select_related('user')
         year = self.request.query_params.get('year')
         month = self.request.query_params.get('month')
         if year and month:
             qs = qs.filter(date__year=year, date__month=month)
+        else:
+            # Без параметров — возвращаем только текущий месяц
+            now = timezone.now()
+            qs = qs.filter(date__year=now.year, date__month=now.month)
         return qs
 
     @action(detail=False, methods=['post'])

@@ -659,8 +659,8 @@ class FaqExportView(APIView):
                             rel = src.split('/media/')[-1].split('?')[0]
                             path = os.path.realpath(os.path.join('/app/media', rel))
                             if not path.startswith('/app/media/'):
-                                continue
-                            if os.path.exists(path):
+                                img_para.add_run('[Изображение недоступно]')
+                            elif os.path.exists(path):
                                 pil_img = PILImage.open(path)
                                 orig_w, orig_h = pil_img.size
                                 dpi = pil_img.info.get('dpi', (96, 96))

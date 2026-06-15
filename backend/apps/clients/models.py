@@ -1,5 +1,6 @@
 import logging
 from django.db import models
+from django.contrib.postgres.indexes import GinIndex
 from apps.accounts.models import User
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ def decrypt_value(value):
 class OfdCompany(models.Model):
     """Компания с ИНН и токеном ОФД"""
     name = models.CharField('Название компании', max_length=200)
-    inn = models.CharField('ИНН', max_length=12)
+    inn = models.CharField('ИНН', max_length=12, unique=True)
     ofd_token_encrypted = models.TextField('Токен ОФД (зашифрован)', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -172,6 +173,10 @@ class Client(models.Model):
         verbose_name = 'Клиент'
         verbose_name_plural = 'Клиенты'
         ordering = ['-created_at']
+        indexes = [
+            GinIndex(fields=['address'], name='client_address_gin_idx', opclasses=['gin_trgm_ops']),
+            GinIndex(fields=['last_name'], name='client_lastname_gin_idx', opclasses=['gin_trgm_ops']),
+        ]
 
     def __str__(self):
         return self.ofd_company.name if self.ofd_company else (self.address or f'Клиент #{self.id}')
@@ -400,6 +405,13 @@ class KktData(models.Model):
         verbose_name = 'Данные ККТ'
         verbose_name_plural = 'Данные ККТ'
         ordering = ['kkt_reg_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['client', 'kkt_reg_id'],
+                condition=models.Q(kkt_reg_id__gt=''),
+                name='unique_kkt_per_client',
+            )
+        ]
 
     def __str__(self):
         return f'ККТ {self.kkt_reg_id} — {self.client}'
@@ -472,6 +484,9 @@ class FaqArticle(models.Model):
         verbose_name = 'Статья FAQ'
         verbose_name_plural = 'Статьи FAQ'
         ordering = ['order', 'created_at']
+        indexes = [
+            GinIndex(fields=['title'], name='faq_title_gin_idx', opclasses=['gin_trgm_ops']),
+        ]
 
     def __str__(self):
         return self.title

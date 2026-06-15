@@ -197,6 +197,17 @@ class OfdCompanyViewSet(viewsets.ModelViewSet):
             return OfdCompanyWriteSerializer
         return OfdCompanySerializer
 
+    def destroy(self, request, *args, **kwargs):
+        company = self.get_object()
+        clients_count = Client.objects.filter(ofd_company=company, is_draft=False).count()
+        if clients_count > 0:
+            return Response(
+                {'error': f'Компания привязана к {clients_count} клиент(ам). '
+                           f'При удалении они потеряют привязку к ОФД.'},
+                status=400
+            )
+        return super().destroy(request, *args, **kwargs)
+
 
 
 

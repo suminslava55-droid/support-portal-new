@@ -438,7 +438,7 @@ def _kkt_queryset(params):
     from django.db.models import Q
     from ..models import KktData
 
-    qs = KktData.objects.select_related('client', 'client__ofd_company').all()
+    qs = KktData.objects.select_related('client', 'client__ofd_company').filter(client__is_draft=False)
 
     search = params.get('search', '').strip() if hasattr(params, 'get') else ''
     if search:
