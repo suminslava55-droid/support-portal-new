@@ -86,7 +86,7 @@ class OfdKktView(APIView):
     POST  /api/clients/{id}/ofd_kkt/  — запросить данные с ОФД (полный поиск по ИНН+адресу)
     PATCH /api/clients/{id}/ofd_kkt/  — быстрое обновление по сохранённым РНМ
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanEditClient]
 
     def get(self, request, pk=None):
         try:
@@ -489,7 +489,7 @@ def _kkt_row(k):
 
 class KktListView(APIView):
     """Глобальный список всех ККТ для страницы «Замена ФН»"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanEditClient]
 
     def get(self, request):
         qs = _kkt_queryset(request.query_params)
