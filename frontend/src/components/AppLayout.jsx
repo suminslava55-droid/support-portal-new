@@ -13,13 +13,7 @@ import api from '../api';
 
 const { Header, Sider, Content } = Layout;
 
-const validatePassword = (_, value) => {
-  if (!value) return Promise.reject('Введите пароль');
-  if (value.length < 8) return Promise.reject('Минимум 8 символов');
-  if (!/[A-Z]/.test(value)) return Promise.reject('Нужна хотя бы одна заглавная буква');
-  if (!/[0-9]/.test(value)) return Promise.reject('Нужна хотя бы одна цифра');
-  return Promise.resolve();
-};
+import { validatePassword } from '../utils/validators';
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);

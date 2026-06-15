@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Typography, Button, Modal, Popover, Spin,
-  Table, Tag, Space, Tooltip, Input, Select, Popconfirm, message,
+  Table, Tag, Space, Tooltip, Input, InputNumber, Select, Popconfirm, message,
   Dropdown, Checkbox, Divider,
 } from 'antd';
 import { LeftOutlined, RightOutlined, BarChartOutlined, DeleteOutlined, SettingOutlined, FileExcelOutlined, DownloadOutlined, SendOutlined, CalendarOutlined } from '@ant-design/icons';
@@ -139,7 +139,7 @@ export default function CalendarPage() {
         hmap[h.date] = { is_holiday: h.is_holiday, note: h.note };
       });
       setHolidays(hmap);
-    } catch {}
+    } catch { message.error('Ошибка загрузки данных календаря'); }
     finally { setLoading(false); }
   }, [year, month]);
 
@@ -157,7 +157,7 @@ export default function CalendarPage() {
         else next[key] = dutyType;
         return next;
       });
-    } catch {}
+    } catch { message.error('Ошибка сохранения дежурства'); }
     finally { setSaving(null); }
   };
 
@@ -218,7 +218,7 @@ export default function CalendarPage() {
         setHolidays(prev => ({ ...prev, [date]: { is_holiday: isHoliday, note } }));
       }
     } catch (e) {
-      console.error('toggle_holiday error:', e?.response?.data || e);
+      message.error('Ошибка: ' + (e?.response?.data?.error || e?.message || 'неизвестная ошибка'));
     }
   };
 
@@ -367,7 +367,11 @@ export default function CalendarPage() {
         {DUTY_TYPES.map(d => (
           <div
             key={d.value}
+            role="button" tabIndex={0}
             onClick={() => handleSetDuty(userId, date, d.value)}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleSetDuty(userId, date, d.value)}
+            aria-label={d.label}
+            aria-pressed={current === d.value}
             style={{
               padding: '6px 10px', borderRadius: 4, marginBottom: 4, cursor: 'pointer',
               background: current === d.value ? d.color : (isDark ? '#1f1f1f' : '#f5f5f5'),
@@ -382,7 +386,10 @@ export default function CalendarPage() {
         ))}
         {current && (
           <div
+            role="button" tabIndex={0}
             onClick={() => handleSetDuty(userId, date, '')}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleSetDuty(userId, date, '')}
+            aria-label="Очистить дежурство"
             style={{
               padding: '5px 10px', borderRadius: 4, cursor: 'pointer',
               background: isDark ? '#2a1215' : '#fff1f0', color: '#ff4d4f',
@@ -744,15 +751,15 @@ export default function CalendarPage() {
         width={360}
       >
         <div style={{ marginBottom: 8 }}>Укажите стоимость дежурства (руб.)</div>
-        <Input
-          type="number"
+        <InputNumber
           min={0}
           placeholder="Например: 2000"
           value={dutyPrice}
-          onChange={e => setDutyPrice(e.target.value)}
+          onChange={val => setDutyPrice(val)}
           onPressEnter={exportDutyExcel}
-          suffix="руб."
+          addonAfter="руб."
           autoFocus
+          style={{ width: '100%' }}
         />
 
       </Modal>
@@ -816,7 +823,10 @@ export default function CalendarPage() {
           {DUTY_TYPES.map(d => (
             <div
               key={d.value}
+              role="button" tabIndex={0}
               onClick={() => handleApplyToSelection(d.value)}
+              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleApplyToSelection(d.value)}
+              aria-label={d.label}
               style={{
                 padding: '8px 12px', borderRadius: 6, cursor: 'pointer',
                 background: d.color, color: d.textColor,
@@ -831,7 +841,10 @@ export default function CalendarPage() {
             </div>
           ))}
           <div
+            role="button" tabIndex={0}
             onClick={() => handleApplyToSelection('')}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleApplyToSelection('')}
+            aria-label="Очистить выбранные дни"
             style={{
               padding: '7px 12px', borderRadius: 6, cursor: 'pointer',
               background: isDark ? '#2a1215' : '#fff1f0', color: '#ff4d4f',

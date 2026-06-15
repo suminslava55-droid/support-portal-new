@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Spin, Tag, Tooltip } from 'antd';
+import { Typography, Spin, Tag, Tooltip, Button, Result } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import useThemeStore from '../store/themeStore';
@@ -200,18 +200,28 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const loadData = () => {
+    setError(null);
+    setLoading(true);
     api.get('/clients/dashboard/')
       .then(({ data }) => setData(data))
-      .catch(() => {})
+      .catch(() => setError('Ошибка загрузки дашборда'))
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadData(); }, []); // eslint-disable-line
 
   if (loading) return (
     <div style={{ textAlign: 'center', padding: 80 }}>
       <Spin size="large" />
     </div>
+  );
+
+  if (error) return (
+    <Result status="error" title={error}
+      extra={<Button type="primary" onClick={loadData}>Повторить</Button>} />
   );
 
   if (!data) return null;
@@ -226,7 +236,7 @@ export default function DashboardPage() {
       <Title level={3} style={{ marginBottom: 20 }}>Дашборд</Title>
 
       {/* ── Метрики ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 10, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }}>
         <MetricCard label="Всего клиентов" value={data.total} sub={`+${data.new_month} за месяц`} />
         <MetricCard label="Активных" value={data.active} sub={`${data.total ? Math.round(data.active / data.total * 100) : 0}%`} valueColor="#3B6D11" />
         <MetricCard label="ФН просрочен" value={data.fn_expired} sub="срок истёк" valueColor="#A32D2D" />

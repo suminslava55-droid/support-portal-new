@@ -95,7 +95,14 @@ export default function SettingsPage() {
     loadPackages();
   }, [sshForm, smtpForm]); // eslint-disable-line
 
-  useEffect(() => { loadTasks(); loadCompanies(); }, []); // eslint-disable-line
+  useEffect(() => {
+    loadTasks();
+    loadCompanies();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (restorePollRef.current) clearInterval(restorePollRef.current);
+    };
+  }, []); // eslint-disable-line
 
   const loadCompanies = async () => {
     try {

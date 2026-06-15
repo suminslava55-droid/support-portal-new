@@ -381,7 +381,11 @@ export default function SettingsScheduler({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '8px 0' }}>
           <div style={{ fontWeight: 500, marginBottom: 4 }}>Выберите область обновления:</div>
           <div
+            role="button" tabIndex={0}
             onClick={() => setRunScope('all')}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setRunScope('all')}
+            aria-pressed={runScope === 'all'}
+            aria-label="Все клиенты"
             style={{
               border: `2px solid ${runScope === 'all' ? '#1677ff' : '#d9d9d9'}`,
               borderRadius: 8, padding: '14px 16px', cursor: 'pointer',
@@ -393,7 +397,11 @@ export default function SettingsScheduler({
             <div style={{ fontSize: 12, color: '#888' }}>Обновить ККТ у всех клиентов всех компаний</div>
           </div>
           <div
+            role="button" tabIndex={0}
             onClick={() => setRunScope('company')}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setRunScope('company')}
+            aria-pressed={runScope === 'company'}
+            aria-label="Отдельная компания"
             style={{
               border: `2px solid ${runScope === 'company' ? '#1677ff' : '#d9d9d9'}`,
               borderRadius: 8, padding: '14px 16px', cursor: 'pointer',

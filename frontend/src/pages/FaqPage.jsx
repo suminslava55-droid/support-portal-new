@@ -48,12 +48,16 @@ function sanitizeHTML(dirty) {
           node.removeAttribute(attr.name);
           return;
         }
-        // Блокируем javascript: в href/src
+        // Блокируем javascript: и data: URI в href/src
         if (['href','src'].includes(attr.name)) {
           const val = attr.value.trim().toLowerCase().replace(/\s/g, '');
-          if (val.startsWith('javascript:') || val.startsWith('data:text')) {
+          if (val.startsWith('javascript:') || val.startsWith('data:text') || val.startsWith('data:image/svg')) {
             node.removeAttribute(attr.name);
           }
+        }
+        // Принудительно добавляем rel="noopener noreferrer" для внешних ссылок
+        if (attr.name === 'target' && attr.value === '_blank') {
+          node.setAttribute('rel', 'noopener noreferrer');
         }
         // Блокируем обработчики событий в style
         if (attr.name === 'style' && /expression\s*\(|javascript:/i.test(attr.value)) {
@@ -683,6 +687,9 @@ export default function FaqPage() {
         if (cats.length > 0) { setSelectedCategory(cats[0].id); loadArticles(cats[0].id, ''); }
         else setLoading(false);
       }
+    }).catch(() => {
+      message.error('Ошибка загрузки категорий');
+      setLoading(false);
     });
   }, []);
 
@@ -760,11 +767,11 @@ export default function FaqPage() {
             <Text style={{ fontSize: 11, fontWeight: 500, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Категории</Text>
             {isAdmin && <Tooltip title="Добавить категорию"><Button size="small" type="text" icon={<PlusOutlined />} onClick={() => setCatModal(true)} /></Tooltip>}
           </div>
-          <div onClick={handleShowAll} style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, background: !selectedCategory && !search ? (isDark ? '#1677ff22' : '#e6f4ff') : 'transparent', color: !selectedCategory && !search ? '#1677ff' : 'inherit' }}>
+          <div role="button" tabIndex={0} onClick={handleShowAll} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleShowAll()} aria-label="Все статьи" style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, background: !selectedCategory && !search ? (isDark ? '#1677ff22' : '#e6f4ff') : 'transparent', color: !selectedCategory && !search ? '#1677ff' : 'inherit' }}>
             <FolderOutlined style={{ marginRight: 6 }} />Все статьи
           </div>
           {categories.map(cat => (
-            <div key={cat.id} onClick={() => handleSelectCategory(cat.id)} style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, background: selectedCategory === cat.id && !search ? (isDark ? '#1677ff22' : '#e6f4ff') : 'transparent', color: selectedCategory === cat.id && !search ? '#1677ff' : 'inherit', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={cat.id} role="button" tabIndex={0} onClick={() => handleSelectCategory(cat.id)} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleSelectCategory(cat.id)} aria-label={cat.name} style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, background: selectedCategory === cat.id && !search ? (isDark ? '#1677ff22' : '#e6f4ff') : 'transparent', color: selectedCategory === cat.id && !search ? '#1677ff' : 'inherit', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FolderOutlined style={{ marginRight: 6 }} />{cat.name}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                 <Tag style={{ margin: 0, fontSize: 10 }}>{cat.articles_count}</Tag>
@@ -895,7 +902,7 @@ export default function FaqPage() {
                 <Empty description="Статей нет. Нажмите «Новая статья» чтобы добавить." style={{ padding: 60 }} />
               ) : (
                 articles.map((art, i) => (
-                  <div key={art.id} onClick={() => { setSelectedArticle(art); setSearchParams({ article: art.id }); }} style={{ padding: '14px 20px', cursor: 'pointer', borderBottom: i < articles.length - 1 ? `0.5px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` : 'none' }}
+                  <div key={art.id} role="button" tabIndex={0} onClick={() => { setSelectedArticle(art); setSearchParams({ article: art.id }); }} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (setSelectedArticle(art), setSearchParams({ article: art.id }))} aria-label={art.title} style={{ padding: '14px 20px', cursor: 'pointer', borderBottom: i < articles.length - 1 ? `0.5px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` : 'none' }}
                     onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#f5f5f5'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >

@@ -78,7 +78,11 @@ export default function SettingsAutomation({
             onChange={handleFileSelect}
           />
           <div
+            role="button"
+            tabIndex={importing ? -1 : 0}
             onClick={() => !importing && fileInputRef.current?.click()}
+            onKeyDown={e => !importing && (e.key === 'Enter' || e.key === ' ') && fileInputRef.current?.click()}
+            aria-label="Выбрать файл для импорта"
             style={{
               border: '2px dashed #d9d9d9',
               borderRadius: 8,

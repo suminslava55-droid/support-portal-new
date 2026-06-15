@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, Link } from 'react-router-dom';
 import { getSearchVariants } from '../utils/keyboardLayout';
-import { clientsAPI, settingsAPI } from '../api';
+import api, { clientsAPI, settingsAPI } from '../api';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
 
@@ -207,11 +207,9 @@ export default function ClientsPage() {
 
   // Load providers for filter
   useEffect(() => {
-    import('../api').then(({ default: api }) => {
-      api.get('/clients/providers/?page_size=1000').then(({ data }) => {
-        setAllProviders(data.results || data);
-      }).catch(() => {});
-    });
+    api.get('/clients/providers/?page_size=1000')
+      .then(({ data }) => setAllProviders(data.results || data))
+      .catch(() => {});
   }, []);
 
   const fetchClients = useCallback(async (page = 1, sf, so) => {
@@ -510,6 +508,7 @@ export default function ClientsPage() {
         columns={columns} dataSource={clients} rowKey="id"
         loading={loading} bordered size="middle"
         onChange={handleTableChange}
+        scroll={{ x: 'max-content' }}
         pagination={{
           ...pagination, showSizeChanger: false,
           showTotal: total => `Всего: ${total}`,

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table, Button, Modal, Form, Input, Select, Switch, Typography, message, Tag, Popconfirm, DatePicker, Space, Checkbox, Tooltip } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, KeyOutlined } from '@ant-design/icons';
 import { usersAPI, rolesAPI } from '../api';
+import { validatePassword } from '../utils/validators';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
@@ -168,15 +169,7 @@ export default function UsersPage() {
             extra="Минимум 8 символов, заглавная буква и цифра"
             rules={[
               ...(editingUser ? [] : [{ required: true, message: 'Введите пароль' }]),
-              {
-                validator(_, value) {
-                  if (!value) return Promise.resolve();
-                  if (value.length < 8) return Promise.reject('Минимум 8 символов');
-                  if (!/[A-Z]/.test(value)) return Promise.reject('Нужна хотя бы одна заглавная буква');
-                  if (!/[0-9]/.test(value)) return Promise.reject('Нужна хотя бы одна цифра');
-                  return Promise.resolve();
-                },
-              },
+              { validator: validatePassword },
             ]}
           >
             <Input.Password />

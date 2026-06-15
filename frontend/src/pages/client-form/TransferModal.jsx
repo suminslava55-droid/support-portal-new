@@ -21,7 +21,12 @@ function SlotCard({ slot, isSelected, onSelect }) {
 
   const card = (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(slot.key)}
+      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onSelect(slot.key)}
+      aria-label={slot.label}
+      aria-pressed={isSelected}
       style={{
         flex: 1,
         border: `2px solid ${isSelected ? '#1677ff' : hasData ? '#52c41a' : '#d9d9d9'}`,

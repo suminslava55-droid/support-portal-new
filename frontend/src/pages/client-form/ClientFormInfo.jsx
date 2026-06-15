@@ -16,7 +16,7 @@ export default function ClientFormInfo({
       <Card title="Основная информация" style={{ marginBottom: 16 }}>
         <Row gutter={16}>
           <Col span={24}>
-            <Form.Item name="address" label="Адрес" rules={[{ required: true, message: '' }]}>
+            <Form.Item name="address" label="Адрес" rules={[{ required: true, message: 'Укажите адрес' }]}>
               <Input.TextArea
                 rows={2}
                 placeholder="г. Новосибирск, ул. Примерная, д. 1"
@@ -73,7 +73,17 @@ export default function ClientFormInfo({
       <Card title="Сеть" style={{ marginBottom: 16 }}>
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item name="subnet" label="Подсеть аптеки">
+            <Form.Item
+              name="subnet"
+              label="Подсеть аптеки"
+              rules={[{
+                validator: (_, value) => {
+                  if (!value) return Promise.resolve();
+                  const cidr = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
+                  return cidr.test(value) ? Promise.resolve() : Promise.reject('Формат: 192.168.1.0/24');
+                },
+              }]}
+            >
               <Input placeholder="10.1.5.0/24" />
             </Form.Item>
           </Col>
@@ -102,12 +112,12 @@ export default function ClientFormInfo({
           </Col>
           <Col span={12}>
             <Form.Item label="Микротик IP">
-              <Input value={mikrotikIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
+              <Input value={mikrotikIP || '—'} disabled />
             </Form.Item>
           </Col>
           <Col span={12}>
             <Form.Item label="Сервер IP">
-              <Input value={serverIP || '—'} disabled style={{ background: '#f5f5f5', color: '#333' }} />
+              <Input value={serverIP || '—'} disabled />
             </Form.Item>
           </Col>
         </Row>

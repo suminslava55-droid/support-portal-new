@@ -21,8 +21,8 @@ export const customTheme = {
     // Нейтральные цвета
     colorText: '#1F2937',
     colorTextSecondary: '#6B7280',
-    colorTextTertiary: '#9CA3AF',
-    
+    colorTextTertiary: '#6B7280',
+
     // Фоны
     colorBgContainer: '#FFFFFF',
     colorBgLayout: '#F9FAFB',
