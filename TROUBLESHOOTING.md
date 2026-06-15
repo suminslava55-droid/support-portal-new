@@ -324,11 +324,17 @@ docker compose exec backend python manage.py migrate --run-syncdb
 
 ### nginx не стартует после git clone
 
-Файл `nginx/default.conf` не хранится в git. После клонирования скопировать из шаблона:
+Файл `nginx/default.conf` хранится в git — он должен появляться после `git clone` автоматически. Если файл всё же отсутствует:
 
 ```bash
-cp /opt/support-portal/nginx/default.conf.example /opt/support-portal/nginx/default.conf
+git checkout -- nginx/default.conf
 docker compose restart nginx
+```
+
+Также проверьте что backend прошёл healthcheck перед nginx:
+```bash
+docker compose ps
+docker compose logs backend --tail=20
 ```
 
 ### Ошибка сборки фронтенда
@@ -336,7 +342,7 @@ docker compose restart nginx
 ```bash
 cd /opt/support-portal/frontend
 rm -rf node_modules
-npm install
+npm ci
 npm run build
 ```
 

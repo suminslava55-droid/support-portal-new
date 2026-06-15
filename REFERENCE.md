@@ -207,6 +207,12 @@ privileged: true
 | `/etc/systemd/system/cron-watch.service` | Служба-наблюдатель |
 | `/var/log/support-portal-scheduler.log` | Лог выполнения cron-заданий |
 
+### Системные endpoints
+
+| Метод | URL | Описание |
+|-------|-----|----------|
+| GET | `/api/clients/health/` | Healthcheck (без аутентификации) — возвращает `{"status":"ok"}` |
+
 ### Endpoints API планировщика
 
 | Метод | URL | Описание |
@@ -340,15 +346,15 @@ support-portal/
 │   ├── styles/
 │   │   └── custom-styles.css         # Кастомные CSS стили
 │   ├── utils/
-│   │   └── keyboardLayout.js         # Конвертация раскладки клавиатуры
+│   │   ├── keyboardLayout.js         # Конвертация раскладки клавиатуры
+│   │   └── validators.js             # validatePassword — общий хелпер валидации пароля
 │   └── api/
 │       ├── axios.js                  # Axios instance с retry logic
 │       ├── auth.js
 │       ├── clients.js
 │       ├── index.js
 │       └── users.js
-├── nginx/default.conf           # Не в git! (см. default.conf.example)
-├── nginx/default.conf.example   # Шаблон — скопировать в default.conf при деплое
+├── nginx/default.conf           # В git (общий шаблон, настроить server_name при необходимости)
 ├── media/
 ├── backups/
 ├── ofd_fetch.sh

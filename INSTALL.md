@@ -21,7 +21,7 @@
 | База данных | PostgreSQL 16 | Хранение данных |
 | Веб-сервер | Nginx | Проксирование, статика |
 | Контейнеризация | Docker + Docker Compose | Изоляция сервисов |
-| Сборка фронтенда | Node.js 18 + npm | Компиляция React на сервере |
+| Сборка фронтенда | Node.js 20 + npm | Компиляция React на сервере |
 | Планировщик | cron (хост) + cron_manager.sh | Регламентные задания |
 
 ---
@@ -88,8 +88,8 @@ apt install nodejs npm -y
 Проверяем версии:
 
 ```bash
-node --version   # v18.x.x или выше
-npm --version    # 9.x.x или выше
+node --version   # v20.x.x или выше
+npm --version    # 10.x.x или выше
 ```
 
 ### 1.8 Установка cron и inotify-tools
@@ -244,13 +244,15 @@ docker compose ps
 
 ## 7. Настраиваем nginx
 
-Шаблон конфигурации nginx хранится в репозитории как `nginx/default.conf.example`. Сам файл `nginx/default.conf` в git не входит (в `.gitignore`) — он специфичен для каждого сервера.
+Файл `nginx/default.conf` хранится в git — nginx стартует сразу после `git clone`.
 
+При необходимости настроить `server_name` или HTTPS:
 ```bash
-cp /opt/support-portal/nginx/default.conf.example /opt/support-portal/nginx/default.conf
-# При необходимости отредактировать server_name, пути к сертификатам и т.д.:
-# nano /opt/support-portal/nginx/default.conf
+nano /opt/support-portal/nginx/default.conf
+docker compose restart nginx
 ```
+
+> **Боевой сервер:** если используется собственный домен или SSL-сертификаты — отредактировать `server_name` и добавить блок `listen 443 ssl` после клонирования.
 
 ---
 
@@ -260,8 +262,10 @@ cp /opt/support-portal/nginx/default.conf.example /opt/support-portal/nginx/defa
 
 ```bash
 cd /opt/support-portal/frontend
-npm install
+npm ci
 ```
+
+> `npm ci` использует `package-lock.json` для воспроизводимой сборки — гарантирует точные версии зависимостей.
 
 ---
 
@@ -406,9 +410,11 @@ cd /opt/support-portal
 - `.env` — ключи и пароли
 - `.scheduler_token` — JWT-токен планировщика
 - `scheduler_run.sh` — скрипт с токеном
-- `nginx/default.conf` — специфичен для каждого сервера (шаблон: `nginx/default.conf.example`)
 - `media/` — загруженные файлы
 - `backups/` — резервные копии
-- `frontend/package-lock.json`
+
+Файлы **в git** (изменились после аудита июнь 2026):
+- `nginx/default.conf` — теперь в git (ранее был в `.gitignore`), nginx стартует сразу после клонирования
+- `frontend/package-lock.json` — теперь в git для воспроизводимых сборок
 
 > ⚠️ **Потеря ENCRYPTION_KEY = потеря всех зашифрованных паролей и токенов ОФД.** Храните резервную копию `.env` отдельно от сервера.
