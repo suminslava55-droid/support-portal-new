@@ -16,7 +16,7 @@ from ..serializers import (
     DutyScheduleSerializer, CustomHolidaySerializer, OfdCompanySerializer, OfdCompanyWriteSerializer,
 )
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
-from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
+from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS, is_admin
 
 
 class DutyScheduleViewSet(viewsets.ModelViewSet):
@@ -39,7 +39,7 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def clear_month(self, request):
-        if not (request.user.is_superuser or (request.user.role and request.user.role.name == 'admin')):
+        if not (is_admin(request.user)):
             return Response({'error': 'Недостаточно прав'}, status=403)
         year = request.data.get('year')
         month = request.data.get('month')
@@ -59,7 +59,7 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def toggle_holiday(self, request):
-        if not (request.user.is_superuser or (hasattr(request.user, 'role') and request.user.role and request.user.role.name == 'admin')):
+        if not (is_admin(request.user)):
             return Response({'error': 'Недостаточно прав'}, status=403)
         date = request.data.get('date')
         is_holiday = request.data.get('is_holiday')
@@ -84,7 +84,7 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
         if not user_id or not date:
             return Response({'error': 'user_id и date обязательны'}, status=400)
 
-        is_admin = request.user.is_superuser or (hasattr(request.user, 'role') and request.user.role and request.user.role.name == 'admin')
+        is_admin = is_admin(request.user)
         if str(user_id) != str(request.user.id) and not is_admin:
             return Response({'error': 'Нет доступа'}, status=403)
 
@@ -104,7 +104,7 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
         Режим 1 (один сотрудник): user_id + dates[]
         Режим 2 (любые ячейки):   cells: [{user_id, date}, ...]
         """
-        is_admin = request.user.is_superuser or (hasattr(request.user, 'role') and request.user.role and request.user.role.name == 'admin')
+        is_admin = is_admin(request.user)
         duty_type = request.data.get('duty_type')
         cells_raw = request.data.get('cells')
 

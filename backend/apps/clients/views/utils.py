@@ -1,5 +1,16 @@
 import subprocess
 
+
+def is_admin(user):
+    """Единственная точка определения 'является ли пользователь администратором'.
+    Использует can_manage_users вместо role.name — не зависит от строкового имени роли.
+    """
+    if user.is_superuser:
+        return True
+    role = getattr(user, 'role', None)
+    return role is not None and getattr(role, 'can_manage_users', False)
+
+
 FIELD_LABELS = {
     'last_name': 'Фамилия',
     'first_name': 'Имя',

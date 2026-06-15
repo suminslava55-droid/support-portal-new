@@ -18,6 +18,7 @@ from ..serializers import (
 from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
 from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
 from .kkt_views import parse_datetime, ofd_request, ofd_get_all_rnm
+from ..task_constants import TaskId, TaskStatus, ALLOWED_TASKS, TASK_NAMES
 
 
 def _safe_log(value):
@@ -29,14 +30,9 @@ def _safe_log(value):
 
 def _get_or_create_task(task_id):
     from ..models import ScheduledTask
-    TASKS = {
-        'update_rnm':        'Обновление данных по РНМ',
-        'fetch_external_ip': 'Получение внешнего IP',
-        'backup_system':     'Резервное копирование',
-    }
     obj, _ = ScheduledTask.objects.get_or_create(
         task_id=task_id,
-        defaults={'name': TASKS.get(task_id, task_id)}
+        defaults={'name': TASK_NAMES.get(task_id, task_id)}
     )
     return obj
 
@@ -93,8 +89,8 @@ class ScheduledTaskRunView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdmin]
 
-    # Разрешённые task_id — защита от запуска произвольных задач
-    ALLOWED_TASKS = {'update_rnm', 'fetch_external_ip', 'backup_system'}
+    # Разрешённые task_id — из task_constants
+    ALLOWED_TASKS = {TaskId.UPDATE_RNM, TaskId.FETCH_EXTERNAL_IP, TaskId.BACKUP_SYSTEM}
 
     def post(self, request):
         import threading
@@ -538,7 +534,7 @@ class ScheduledTaskCronView(APIView):
         return result.stdout.strip(), result.stderr.strip(), result.returncode
 
     # Разрешённые task_id — защита от инъекции \n в crontab (как в ScheduledTaskRunView)
-    ALLOWED_CRON_TASKS = {'update_rnm', 'fetch_external_ip', 'backup_system'}
+    ALLOWED_CRON_TASKS = {TaskId.UPDATE_RNM, TaskId.FETCH_EXTERNAL_IP, TaskId.BACKUP_SYSTEM}
 
     def post(self, request):
         task_id       = request.data.get('task_id', 'update_rnm')

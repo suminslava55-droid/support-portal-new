@@ -35,6 +35,7 @@ def ofd_request(inn, token, search=''):
     возвращает детали по каждому РНМ. Если search — 16 цифр, делает прямой запрос по РНМ.
     """
     script = '/usr/local/bin/ofd_fetch.sh'
+    result = None
     try:
         args = [script, inn, token, search]
         result = subprocess.run(args, capture_output=True, text=True, timeout=900)
@@ -42,12 +43,13 @@ def ofd_request(inn, token, search=''):
             stderr = result.stderr.strip()
             raise Exception(f'Пустой ответ от скрипта. stderr: {stderr}')
         return json.loads(result.stdout)
-    except json.JSONDecodeError:
-        raise Exception(f'Некорректный JSON: {result.stdout[:300]}')
-    except subprocess.TimeoutExpired:
-        raise Exception('Превышено время ожидания (300 сек)')
     except FileNotFoundError:
         raise Exception(f'Скрипт {script} не найден в контейнере')
+    except json.JSONDecodeError:
+        stdout = result.stdout[:300] if result is not None else '(нет вывода)'
+        raise Exception(f'Некорректный JSON от ОФД: {stdout}')
+    except subprocess.TimeoutExpired:
+        raise Exception('Превышено время ожидания (300 сек)')
 
 
 def ofd_get_all_rnm(inn, token, timeout=30):

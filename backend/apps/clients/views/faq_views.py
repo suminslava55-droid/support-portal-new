@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework import serializers
 from ..models import FaqCategory, FaqArticle, FaqFile, FaqArticleHistory
+from .utils import is_admin
 
 # ── Санитайзинг HTML-контента статей FAQ ─────────────────────────────────────
 # Все теги и атрибуты вне этих списков будут удалены (strip=True).
@@ -69,7 +70,7 @@ class FaqArticleSerializer(serializers.ModelSerializer):
         if not request:
             return False
         user = request.user
-        is_admin = user.is_superuser or (hasattr(user, 'role') and user.role and user.role.name == 'admin')
+        is_admin = is_admin(user)
         return is_admin or obj.author_id == user.id
 
 
@@ -83,7 +84,7 @@ class FaqCategoryViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         user = request.user
-        is_admin = user.is_superuser or (hasattr(user, 'role') and user.role and user.role.name == 'admin')
+        is_admin = is_admin(user)
         if not is_admin:
             return Response({'error': 'Только администратор может удалять категории'}, status=403)
         return super().destroy(request, *args, **kwargs)
@@ -142,7 +143,7 @@ class FaqArticleViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         article = self.get_object()
         user = request.user
-        is_admin = user.is_superuser or (hasattr(user, 'role') and user.role and user.role.name == 'admin')
+        is_admin = is_admin(user)
         if not is_admin and article.author_id != user.id:
             return Response({'error': 'Можно удалять только свои статьи'}, status=403)
         return super().destroy(request, *args, **kwargs)
@@ -167,12 +168,9 @@ class FaqFileSerializer(serializers.ModelSerializer):
         return obj.file.url
 
 
-def _is_admin(user):
-    return user.is_superuser or (hasattr(user, 'role') and user.role and user.role.name == 'admin')
-
 def _can_edit_article(user, article):
     """Редактировать статью может автор или администратор."""
-    return _is_admin(user) or article.author_id == user.id
+    return is_admin(user) or article.author_id == user.id
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 МБ
 
