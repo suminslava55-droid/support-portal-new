@@ -2,20 +2,80 @@
 
 ## История изменений
 
-### Июнь 2026
+### Июнь 2026 — Аудит безопасности AUDIT_2026-06-14 (полное устранение)
+
+#### Безопасность (блокеры)
+- **Исправление refresh-токена** (B-1) — URL `/api/auth/token/refresh/` вместо неверного `/api/auth/refresh/`; пользователей перестало выбрасывать на логин
+- **Stored XSS в базе знаний** (B-2) — серверный санитайзинг через `bleach`, клиентский через `DOMPurify`; экспорт PDF тоже защищён
+- **Ограничение типов файлов FAQ** (B-3) — allowlist безопасных расширений; nginx отдаёт вложения только как `attachment` (no inline HTML/SVG)
+- **RCE через task_id** (B-4) — allowlist разрешённых task_id в планировщике, hardening `cron_manager.sh` (strip `\n`)
+- **Bypass rate-limit** (B-5) — nginx передаёт `X-Forwarded-For: $remote_addr` (реальный IP), брутфорс невозможен
+- **nginx/default.conf в git** (B-6) — добавлен `location /static/`, nginx стартует после `git clone`
+- **Транзакция в restore backup** (B-7) — `TRUNCATE + loaddata` в `transaction.atomic()`; БД не остаётся пустой при сбое
+- **Транзакция в bulk-импорте** (B-8) — все клиенты создаются атомарно или ни одного
+- **pg_trgm через миграцию** (B-9) — миграции 0034 (GIN-индексы), fuzzy-поиск надёжен
+
+#### Безопасность (дополнительно)
+- **SSRF в FetchExternalIPView** (S-1) — проверка что mikrotik_ip принадлежит подсети клиента; добавлено разрешение `CanEditClient`
+- **Path traversal в экспорте docx** (S-2) — `os.path.realpath()` для изображений из FAQ
+- **BulkImportClientsView** (S-3) — добавлено разрешение `CanEditClient`
+- **RnmSyncView** (S-4) — добавлено разрешение `IsAdmin`
+- **IDOR в дежурствах** (S-5) — `set_duty`, `bulk_set_duty`, `toggle_holiday` проверяют права администратора
+- **ККТ write-эндпоинты** (S-6) — `OfdKktView`, `KktListView` требуют `CanEditClient`
+- **Argument injection в ping** (S-8) — добавлен `--` перед IP
+
+#### Безопасность (фронтенд)
+- **sanitizeHTML** блокирует `data:image/svg+xml` и добавляет `rel="noopener noreferrer"` (F-14)
+- **Контраст текста** `colorTextTertiary` → `#6B7280` (WCAG AA 4.6:1) (F-5)
+- **Кликабельные `div`** → `role="button"` + `tabIndex` + `onKeyDown` (F-6, WCAG 2.1.1)
+
+#### Надёжность backend
+- **Race condition в планировщике** (A-1) — `select_for_update()` в `transaction.atomic()`
+- **LOGGING в settings.py** (A-2) — структурированные логи в stdout/docker logs
+- **Логирование decrypt_value()** (A-4) — `logger.warning()` вместо тихого `except: return ''`
+- **Cleanup в backup при ошибке** (A-5) — неполные папки удаляются при исключении
+
+#### База данных
+- **UniqueConstraint на KktData** (D-1) — миграция 0036, дубли РНМ невозможны
+- **unique на OfdCompany.inn** (D-2) — миграция 0037
+- **Фильтр is_draft=False в ККТ** (D-7) — черновые клиенты не попадают в список замены ФН
+- **Параметры year/month обязательны** (D-8) — Calendar API без параметров возвращает текущий месяц
+- **select_related + prefetch_related** (D-5, D-11) — устранены N+1 запросы в клиентах
+- **annotate Count** (D-10) — счётчик статей в категориях через один запрос
+- **Защита удаления OfdCompany** (D-6) — нельзя удалить компанию с привязанными клиентами
+
+#### Фронтенд UX
+- **AppLayout** — base64 JPEG 63КБ заменён на `/saint.jpg` (F-1)
+- **Мёртвый код удалён** — `MainLayout.jsx`, `ProtectedRoute.js`, дубли страниц clients/, users/ (F-2)
+- **Навигационный блокировщик** — предупреждение при уходе с несохранённой формой клиента (F-4)
+- **Обработка ошибок API** — DashboardPage error state + кнопка «Повторить»; CalendarPage/FaqPage message.error (F-7, F-8, F-9)
+- **Валидация CIDR** для поля «Подсеть аптеки» (F-11)
+- **Адаптивность** — Dashboard grid auto-fit, таблица клиентов scroll x (F-13)
+- **validatePassword** вынесен в `utils/validators.js`, используется в AppLayout и UsersPage (F-15)
+- **InputNumber** вместо `<input type="number">` в CalendarPage (F-19)
+- **Memory leak** — cleanup `setInterval` при unmount в SettingsPage (F-18)
+
+#### DevOps
+- **Health endpoint** `/api/clients/health/` — без аутентификации (O-3)
+- **docker-compose.yml** — healthcheck для backend, nginx `depends_on: service_healthy` (O-3)
+- **Версии образов зафиксированы** — postgres:16.12, python:3.11.15, nginx:1.29, node:20.19 (O-7)
+- **npm ci** вместо npm install в Dockerfile фронтенда (O-7)
+- **frontend/package-lock.json** добавлен в git (O-5)
+- **.dockerignore** для backend и frontend (O-11)
+- **robots.txt** — запрет индексации поисковиками (O-13)
+- **diagnose.sh** — исправлены пути на `views/` (O-4)
+- **ROLLBACK.md** — инструкция отката (O-8)
+
+---
+
+### Июнь 2026 — Первоначальная настройка аудита
 
 #### Безопасность и надёжность
-- **Санитайзинг HTML** в базе знаний — серверная очистка через `bleach`, клиентская через `DOMPurify`
-- **Ограничение типов файлов** в базе знаний — разрешены только безопасные расширения (.pdf, .docx, .xlsx, .png и др.)
-- **Защита от инъекций** в планировщике заданий — allowlist разрешённых task_id
 - **Подтверждение** при отправке Excel на Email — диалог с адресом получателя
 - **Allowlist доменов** для Email-экспорта — настраивается в Настройки → Учётные записи → SMTP
-- **Исправление refresh-токена** — корректная работа при удалённом access_token
-- **Атомарные транзакции** в bulk-импорте клиентов и восстановлении бэкапа
 - **GIN-индексы** для fuzzy-поиска через миграцию 0034
 
 #### DevOps
-- `nginx/default.conf` перенесён из git в `.gitignore`; шаблон — `nginx/default.conf.example`
 - Исправлен `location /static/` в nginx для раздачи Django staticfiles
 
 ---
