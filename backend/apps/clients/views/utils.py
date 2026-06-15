@@ -39,7 +39,7 @@ STATUS_LABELS = {'active': 'Активен', 'inactive': 'Неактивен'}
 def ping_ip(ip, timeout=5):
     try:
         result = subprocess.run(
-            ['ping', '-c', '1', '-W', str(timeout), '-i', '0.2', ip],
+            ['ping', '-c', '1', '-W', str(timeout), '-i', '0.2', '--', ip],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=timeout + 1

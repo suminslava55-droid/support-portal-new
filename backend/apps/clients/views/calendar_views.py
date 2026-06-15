@@ -54,6 +54,8 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def toggle_holiday(self, request):
+        if not (request.user.is_superuser or (hasattr(request.user, 'role') and request.user.role and request.user.role.name == 'admin')):
+            return Response({'error': 'Недостаточно прав'}, status=403)
         date = request.data.get('date')
         is_holiday = request.data.get('is_holiday')
         note = request.data.get('note', '')
@@ -77,6 +79,10 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
         if not user_id or not date:
             return Response({'error': 'user_id и date обязательны'}, status=400)
 
+        is_admin = request.user.is_superuser or (hasattr(request.user, 'role') and request.user.role and request.user.role.name == 'admin')
+        if str(user_id) != str(request.user.id) and not is_admin:
+            return Response({'error': 'Нет доступа'}, status=403)
+
         if duty_type is None or duty_type == '':
             DutySchedule.objects.filter(user_id=user_id, date=date).delete()
             return Response({'status': 'deleted'})
@@ -93,6 +99,7 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
         Режим 1 (один сотрудник): user_id + dates[]
         Режим 2 (любые ячейки):   cells: [{user_id, date}, ...]
         """
+        is_admin = request.user.is_superuser or (hasattr(request.user, 'role') and request.user.role and request.user.role.name == 'admin')
         duty_type = request.data.get('duty_type')
         cells_raw = request.data.get('cells')
 
@@ -102,6 +109,9 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
                 return Response({'error': 'cells должен быть непустым списком'}, status=400)
             pairs = [(c.get('user_id'), c.get('date')) for c in cells_raw if c.get('user_id') and c.get('date')]
             if not pairs:
+                return Response({'error': 'Нет валидных ячеек'}, status=400)
+            if not is_admin and any(str(uid) != str(request.user.id) for uid, _ in pairs):
+                return Response({'error': 'Нет доступа'}, status=403)
                 return Response({'error': 'Нет валидных ячеек'}, status=400)
 
             if duty_type is None or duty_type == '':
@@ -120,6 +130,8 @@ class DutyScheduleViewSet(viewsets.ModelViewSet):
         dates   = request.data.get('dates', [])
         if not user_id or not dates:
             return Response({'error': 'user_id и dates обязательны'}, status=400)
+        if str(user_id) != str(request.user.id) and not is_admin:
+            return Response({'error': 'Нет доступа'}, status=403)
 
         if duty_type is None or duty_type == '':
             DutySchedule.objects.filter(user_id=user_id, date__in=dates).delete()

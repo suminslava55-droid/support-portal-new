@@ -657,7 +657,9 @@ class FaqExportView(APIView):
                             from PIL import Image as PILImage
                             import io
                             rel = src.split('/media/')[-1].split('?')[0]
-                            path = os.path.join('/app/media', rel)
+                            path = os.path.realpath(os.path.join('/app/media', rel))
+                            if not path.startswith('/app/media/'):
+                                continue
                             if os.path.exists(path):
                                 pil_img = PILImage.open(path)
                                 orig_w, orig_h = pil_img.size

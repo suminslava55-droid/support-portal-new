@@ -44,15 +44,24 @@ def _save_known_hosts(ssh):
 
 
 class FetchExternalIPView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanEditClient]
 
     def post(self, request):
-        import paramiko
+        import paramiko, ipaddress
         mikrotik_ip = request.data.get('mikrotik_ip', '').strip()
         old_external_ip = request.data.get('old_external_ip', '').strip()
+        subnet = request.data.get('subnet', '').strip()
 
         if not mikrotik_ip:
             return Response({'error': 'Микротик IP не передан'}, status=400)
+
+        if subnet:
+            try:
+                net = ipaddress.ip_network(subnet, strict=False)
+                if ipaddress.ip_address(mikrotik_ip) not in net:
+                    return Response({'error': 'IP не соответствует подсети клиента'}, status=400)
+            except ValueError:
+                return Response({'error': 'Некорректный IP или подсеть'}, status=400)
 
         settings_obj = SystemSettings.get()
         if not settings_obj.ssh_user:

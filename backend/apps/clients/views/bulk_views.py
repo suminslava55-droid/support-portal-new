@@ -21,7 +21,7 @@ from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
 
 
 class BulkImportClientsView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanEditClient]
 
     def post(self, request):
         import re

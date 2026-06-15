@@ -635,7 +635,7 @@ SYNC_TASK_ID = 'rnm_sync'
 
 class RnmSyncView(APIView):
     """Запуск сверки РНМ с ОФД и получение результата."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def post(self, request):
         import threading

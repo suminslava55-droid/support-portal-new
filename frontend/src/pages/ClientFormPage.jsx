@@ -280,7 +280,7 @@ export default function ClientFormPage() {
       if (!s.has_ssh_password) { message.error('SSH пароль не задан'); setFetchingIP(false); return; }
       const currentExternalIP = form.getFieldValue('external_ip') || '';
       const { data } = await api.post('/clients/fetch_external_ip/', {
-        mikrotik_ip: mikrotikIPValue, old_external_ip: currentExternalIP,
+        mikrotik_ip: mikrotikIPValue, old_external_ip: currentExternalIP, subnet,
       });
       form.setFieldsValue({ external_ip: data.new_ip });
       if (!data.old_ip) message.success(`Внешний IP получен: ${data.new_ip}`);
