@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11.15-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y libpq-dev gcc iputils-ping curl jq && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .

@@ -1,6 +1,7 @@
 import subprocess
 import json
 import os
+import datetime as dt
 from datetime import datetime
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -53,7 +54,14 @@ class ClientViewSet(viewsets.ModelViewSet):
                 f.delete()
             draft.delete()
 
-        qs = Client.objects.select_related('created_by', 'provider').filter(is_draft=False)
+        from django.db.models import Prefetch
+        from ..models import ClientNote, ClientActivity
+        qs = Client.objects.select_related('created_by', 'provider', 'provider2', 'ofd_company').filter(is_draft=False)
+        if getattr(self, 'action', None) == 'retrieve':
+            qs = qs.prefetch_related(
+                Prefetch('notes', queryset=ClientNote.objects.select_related('author').order_by('-created_at')),
+                Prefetch('activities', queryset=ClientActivity.objects.select_related('user').order_by('-created_at')),
+            )
         providers_param = self.request.query_params.get('provider', '')
         if providers_param:
             from django.db.models import Q
@@ -305,7 +313,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         ws.freeze_panes = 'A2'
         ws.auto_filter.ref = f'A1:{openpyxl.utils.get_column_letter(len(headers))}1'
 
-        filename = f'clients_{__import__("datetime").date.today()}.xlsx'
+        filename = f'clients_{dt.date.today()}.xlsx'
 
         buf = io.BytesIO()
         wb.save(buf)
@@ -331,13 +339,13 @@ class ClientViewSet(viewsets.ModelViewSet):
 
                 from_addr = f'{s.smtp_from_name} <{s.smtp_from_email}>' if s.smtp_from_name else s.smtp_from_email
                 msg = MIMEMultipart()
-                msg['Subject'] = f'Выгрузка клиентов — {__import__("datetime").date.today()}'
+                msg['Subject'] = f'Выгрузка клиентов — {dt.date.today()}'
                 msg['From']    = from_addr
                 msg['To']      = to_email
                 msg.attach(MIMEText(
                     f'<html><body style="font-family:Arial,sans-serif;padding:20px;">'
                     f'<h2 style="color:#1677ff;">Выгрузка клиентов</h2>'
-                    f'<p>Во вложении файл Excel с выгрузкой клиентов на {__import__("datetime").date.today()}.</p>'
+                    f'<p>Во вложении файл Excel с выгрузкой клиентов на {dt.date.today()}.</p>'
                     f'<p style="color:#999;font-size:12px;">Support Portal</p>'
                     f'</body></html>', 'html', 'utf-8'
                 ))

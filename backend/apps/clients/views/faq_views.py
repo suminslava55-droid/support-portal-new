@@ -42,14 +42,11 @@ def sanitize_faq_content(content: str) -> str:
 
 
 class FaqCategorySerializer(serializers.ModelSerializer):
-    articles_count = serializers.SerializerMethodField()
+    articles_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = FaqCategory
         fields = ['id', 'name', 'order', 'articles_count', 'created_at']
-
-    def get_articles_count(self, obj):
-        return obj.articles.count()
 
 
 class FaqArticleSerializer(serializers.ModelSerializer):
@@ -77,9 +74,12 @@ class FaqArticleSerializer(serializers.ModelSerializer):
 
 
 class FaqCategoryViewSet(viewsets.ModelViewSet):
-    queryset = FaqCategory.objects.all()
     serializer_class = FaqCategorySerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        from django.db.models import Count
+        return FaqCategory.objects.annotate(articles_count=Count('articles')).order_by('order', 'id')
 
     def destroy(self, request, *args, **kwargs):
         user = request.user
