@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django_filters',
     'apps.accounts',
     'apps.clients',
+    'apps.comproxy',
 ]
 
 MIDDLEWARE = [

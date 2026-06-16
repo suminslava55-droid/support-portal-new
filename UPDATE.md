@@ -2,6 +2,30 @@
 
 ## История изменений
 
+### Июнь 2026 — ComProxy HUB: удалённое управление кассами
+
+#### ComProxy — приём телеметрии и удалённое обновление ПО/прошивок
+
+- **HUB-сервер** — приём данных от AgentService на кассах (протокол Crystals): handshake, poll, cash_info_report, counters_report, registration_report
+- **Автосопоставление** устройств ComProxy с ККТ по регистрационному номеру (РНМ)
+- **Удалённое обновление** — загрузка пакетов обновлений (ComProxy `.jar`, прошивки `.bin`/`.hex`/`.frm`), отправка задач `update_software` через poll, раздача метаданных и файлов через `/v2/projects/.../patches/...`
+- **Фронтенд** — страница ComProxy с тремя вкладками: Устройства, Обновления, Задачи
+- **Права доступа** — раздел доступен только ролям Администратор и Системный администратор
+- **Аутентификация HUB** — HTTP Basic Auth из `.env` (`COMPROXY_HUB_USER`/`COMPROXY_HUB_PASSWORD`), без хардкода в коде
+
+Новые файлы:
+- `backend/apps/comproxy/` — models, views (HUB), admin_views (API), serializers, authentication, urls
+- `frontend/src/pages/ComProxyDevicesPage.jsx` — интерфейс управления
+- `comproxy/AgentService_ini_analysis.md` — документация протокола AgentService
+
+Новые переменные `.env`:
+```
+COMPROXY_HUB_USER=viki
+COMPROXY_HUB_PASSWORD=Dms6RcU62YhFxKLPKdwYjQBqaZU7V4Wv
+```
+
+---
+
 ### Июнь 2026 — Аудит безопасности AUDIT_2026-06-14 (полное устранение)
 
 #### Безопасность (блокеры)

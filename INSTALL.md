@@ -168,6 +168,10 @@ CORS_ALLOWED_ORIGINS=http://your-ip-or-domain,http://localhost
 
 # Ключ шифрования (для SSH, SMTP паролей и токенов ОФД)
 ENCRYPTION_KEY=CHANGE_ME_FERNET_KEY
+
+# ComProxy HUB (учётные данные AgentService)
+COMPROXY_HUB_USER=viki
+COMPROXY_HUB_PASSWORD=Dms6RcU62YhFxKLPKdwYjQBqaZU7V4Wv
 ```
 
 ### Генерация значений
@@ -190,6 +194,7 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 
 ```bash
 mkdir -p /opt/support-portal/media/faq/images
+mkdir -p /opt/support-portal/media/comproxy/updates
 mkdir -p /opt/support-portal/backups
 ```
 
@@ -294,11 +299,11 @@ docker compose exec backend python manage.py migrate
 docker compose exec backend python create_admin.py
 ```
 
-| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | База знаний | Пользователи | Настройки |
-|------|---------|-----------|---------|----------|----------|------------|-------------|----------|
-| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Связист | Полный | ✅ | 👁 | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | База знаний | ComProxy | Пользователи | Настройки |
+|------|---------|-----------|---------|----------|----------|------------|---------|-------------|----------|
+| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Связист | Полный | ✅ | 👁 | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 
 ---
 

@@ -5,7 +5,7 @@ import {
   SyncOutlined, TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
   WifiOutlined, LockOutlined, BulbOutlined, BulbFilled, CalendarOutlined, BankOutlined,
   SearchOutlined, DashboardOutlined, BookOutlined, MenuOutlined,
-  MenuFoldOutlined, MenuUnfoldOutlined,
+  MenuFoldOutlined, MenuUnfoldOutlined, ApiOutlined,
 } from '@ant-design/icons';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
@@ -47,6 +47,7 @@ export default function AppLayout({ children }) {
   }, [location.state, user?.must_change_password]);
 
   const isAdmin = user?.role_data?.name === 'admin' || user?.is_superuser;
+  const isAdminOrSysadmin = isAdmin || user?.role_data?.name === 'sysadmin';
   const isCommunications = user?.role_data?.name === 'communications';
 
   const menuItems = [
@@ -58,6 +59,7 @@ export default function AppLayout({ children }) {
     { key: '/ofd-companies', icon: <BankOutlined />, label: 'Компании' },
     ...(!isCommunications ? [{ key: '/calendar', icon: <CalendarOutlined />, label: 'Календарь' }] : []),
     { key: '/faq', icon: <BookOutlined />, label: 'База знаний' },
+    ...(isAdminOrSysadmin ? [{ key: '/comproxy', icon: <ApiOutlined />, label: 'ComProxy' }] : []),
     ...(isAdmin ? [{ key: '/users', icon: <UserOutlined />, label: 'Пользователи' }] : []),
     ...(isAdmin ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Настройки' }] : []),
   ];

@@ -96,10 +96,10 @@ class OfdKktView(APIView):
         except Client.DoesNotExist:
             return Response({'error': 'Клиент не найден'}, status=404)
 
-        kkts = client.kkt_data.all()
+        kkts = client.kkt_data.prefetch_related('proxy_devices__telemetry').all()
         data = []
         for k in kkts:
-            data.append({
+            row = {
                 'id': k.id,
                 'kkt_reg_id': k.kkt_reg_id,
                 'serial_number': k.serial_number,
@@ -112,7 +112,25 @@ class OfdKktView(APIView):
 
                 'fiscal_address': k.fiscal_address,
                 'fetched_at': k.fetched_at.isoformat() if k.fetched_at else None,
-            })
+                'proxy': None,
+            }
+            # Добавляем данные ComProxy если есть привязанное устройство
+            proxy_device = k.proxy_devices.first()
+            if proxy_device:
+                telemetry = getattr(proxy_device, 'telemetry', None)
+                row['proxy'] = {
+                    'uuid': proxy_device.uuid,
+                    'comproxy_version': proxy_device.comproxy_version,
+                    'firmware_version': proxy_device.firmware_version,
+                    'ffd_version': proxy_device.ffd_version,
+                    'ip_address': proxy_device.ip_address,
+                    'last_seen_at': proxy_device.last_seen_at.isoformat() if proxy_device.last_seen_at else None,
+                    'shift_status': telemetry.shift_status if telemetry else '',
+                    'shift_exceeded_24h': telemetry.shift_exceeded_24h if telemetry else False,
+                    'kkt_flags_fatal': telemetry.kkt_flags_fatal if telemetry else 0,
+                    'unsent_ofd_count': telemetry.unsent_ofd_count if telemetry else 0,
+                }
+            data.append(row)
         return Response(data)
 
     def post(self, request, pk=None):

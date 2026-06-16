@@ -314,6 +314,67 @@ ls /opt/support-portal/frontend/src/utils/keyboardLayout.js
 
 ---
 
+## Проблемы с ComProxy
+
+### Агент получает 403 на все запросы
+
+Переменные `COMPROXY_HUB_USER` / `COMPROXY_HUB_PASSWORD` не заданы в `.env` или контейнер не подхватил их.
+
+```bash
+# Проверить что переменные в .env
+grep COMPROXY /opt/support-portal/.env
+
+# Проверить что контейнер видит их (restart НЕ перечитывает .env!)
+docker compose exec backend sh -c 'echo $COMPROXY_HUB_USER'
+
+# Если пусто — пересоздать контейнер:
+docker compose up -d backend
+```
+
+> **Важно:** `docker compose restart` не перечитывает `.env`. Нужен `docker compose up -d` для пересоздания контейнера.
+
+### Устройство не появляется в списке
+
+Устройство регистрируется при первом запросе от агента (handshake/poll/cash_info_report). Проверить:
+```bash
+docker compose logs backend --tail=30 | grep -i comproxy
+```
+
+Если запросов нет — проверьте на кассе `AgentService.ini`:
+- `hub_url` должен указывать на адрес сервера
+- После изменения — перезапуск службы `ComProxy` на кассе
+
+### Задача обновления зависла в статусе SENT
+
+Задача переотправляется автоматически через 10 минут (stale threshold в PollView). Для ручного сброса:
+```bash
+docker compose exec backend python manage.py shell -c "
+from apps.comproxy.models import DeviceTask
+stuck = DeviceTask.objects.filter(status='SENT')
+for t in stuck:
+    print(f'{t.task_id} → PENDING')
+    t.status = 'PENDING'
+    t.sent_at = None
+    t.save()
+"
+```
+
+### Агент принял задачу но не скачивает обновление
+
+Проверить что `server_url` в `AgentService.ini` на кассе указывает на адрес сервера (тот же что `hub_url`). Агент строит URL обновления как: `http://<server_url>/v2/projects/{project}/products/{product}/patches/{version}`
+
+Проверить что nginx проксирует `/v2/`:
+```bash
+curl -u viki:PASSWORD http://localhost/v2/projects/CSI/products/Firmware/patches/TEST
+# Должен вернуть {"result": ""}  (пакет не найден — это ОК)
+```
+
+### Раздел ComProxy не виден в меню
+
+Раздел доступен только ролям **Администратор** и **Системный администратор**. Проверьте роль пользователя.
+
+---
+
 ## Прочее
 
 ### Конфликт миграций

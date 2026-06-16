@@ -1,10 +1,87 @@
 import React from 'react';
-import { Card, Space, Button, Tag, Empty, Descriptions, Popconfirm, Typography } from 'antd';
-import { ReloadOutlined, SyncOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Space, Button, Tag, Empty, Descriptions, Popconfirm, Typography, Divider, Tooltip } from 'antd';
+import { ReloadOutlined, SyncOutlined, DeleteOutlined, ApiOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import 'dayjs/locale/ru';
 import { CopyField } from './helpers';
 
+dayjs.extend(relativeTime);
+dayjs.locale('ru');
+
 const { Text } = Typography;
+
+function ShiftTag({ proxy }) {
+  if (!proxy || !proxy.shift_status) return <Text type="secondary">—</Text>;
+  if (proxy.shift_exceeded_24h) {
+    return <Tag color="red">Открыта &gt; 24ч</Tag>;
+  }
+  if (proxy.shift_status === 'OPEN') {
+    return <Tag color="orange">Открыта</Tag>;
+  }
+  return <Tag color="green">Закрыта</Tag>;
+}
+
+function ProxySection({ proxy }) {
+  if (!proxy) {
+    return (
+      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+        <ApiOutlined /> ComProxy не подключён
+      </Text>
+    );
+  }
+
+  const lastSeen = proxy.last_seen_at ? dayjs(proxy.last_seen_at) : null;
+  const isOffline = lastSeen && dayjs().diff(lastSeen, 'minute') > 5;
+
+  return (
+    <>
+      <Divider orientation="left" orientationMargin={0} style={{ margin: '12px 0 8px' }}>
+        <Space size={4}>
+          <ApiOutlined />
+          <Text type="secondary" style={{ fontSize: 13 }}>ComProxy</Text>
+          {isOffline && <Tag color="default">офлайн</Tag>}
+        </Space>
+      </Divider>
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2, md: 3, lg: 3 }}>
+        <Descriptions.Item label="ComProxy">
+          <Tag color="blue">{proxy.comproxy_version || '—'}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="Прошивка">
+          <Tag color="cyan">{proxy.firmware_version || '—'}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="ФФД">
+          {proxy.ffd_version || '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Смена">
+          <ShiftTag proxy={proxy} />
+        </Descriptions.Item>
+        <Descriptions.Item label="IP">
+          {proxy.ip_address || '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Последний отклик">
+          {lastSeen ? (
+            <Tooltip title={lastSeen.format('DD.MM.YYYY HH:mm:ss')}>
+              <Text type={isOffline ? 'secondary' : undefined}>
+                {lastSeen.fromNow()}
+              </Text>
+            </Tooltip>
+          ) : '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Не отправлено в ОФД">
+          {proxy.unsent_ofd_count > 0
+            ? <Tag color="warning">{proxy.unsent_ofd_count}</Tag>
+            : <Tag color="green">0</Tag>}
+        </Descriptions.Item>
+        {proxy.kkt_flags_fatal > 0 && (
+          <Descriptions.Item label="Фатальные ошибки" span={3}>
+            <Tag color="red">Есть фатальные ошибки (flags: {proxy.kkt_flags_fatal})</Tag>
+          </Descriptions.Item>
+        )}
+      </Descriptions>
+    </>
+  );
+}
 
 export default function ClientDetailKkt({ kktData, kktFetching, kktRefreshing, fetchKktFromOfd, refreshKktByRnm, deleteKkt }) {
   return (
@@ -105,6 +182,7 @@ export default function ClientDetailKkt({ kktData, kktFetching, kktRefreshing, f
                 </Descriptions.Item>
               )}
             </Descriptions>
+            <ProxySection proxy={kkt.proxy} />
           </Card>
         ))
       )}

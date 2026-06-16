@@ -96,3 +96,24 @@ export const settingsAPI = {
   testEmail: (toEmail) => api.post('/clients/system-settings/test-email/', { to_email: toEmail }),
   checkPackages: () => api.get('/clients/system-settings/check-packages/'),
 };
+
+export const comproxyAPI = {
+  getDevices: (params) => api.get('/comproxy/devices/', { params }),
+  getDevice: (uuid) => api.get(`/comproxy/devices/${uuid}/`),
+  matchDevice: (uuid, kktDataId) => api.post(`/comproxy/devices/${uuid}/match/`, { kkt_data_id: kktDataId }),
+  unmatchDevice: (uuid) => api.post(`/comproxy/devices/${uuid}/unmatch/`),
+  getStats: () => api.get('/comproxy/stats/'),
+
+  // Обновления
+  getUpdates: (params) => api.get('/comproxy/updates/', { params }),
+  uploadUpdate: (formData) => api.post('/comproxy/updates/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  updatePackage: (id, data) => api.patch(`/comproxy/updates/${id}/`, data),
+  deleteUpdate: (id) => api.delete(`/comproxy/updates/${id}/`),
+  deployUpdate: (id, data) => api.post(`/comproxy/updates/${id}/deploy/`, data),
+
+  // Задачи
+  getTasks: (params) => api.get('/comproxy/tasks/', { params }),
+  cancelTask: (taskId) => api.post(`/comproxy/tasks/${taskId}/cancel/`),
+};

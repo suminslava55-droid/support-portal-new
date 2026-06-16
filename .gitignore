@@ -20,3 +20,4 @@ nginx/default.conf
 scheduler_run.sh
 AUDIT_*.md
 CLAUDE.md
+/comproxy/

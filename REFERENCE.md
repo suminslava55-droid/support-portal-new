@@ -80,6 +80,33 @@
 - **Конвертация раскладки** — автоматически распознаёт латиницу набранную в русской раскладке (jvcr → Омск)
 - Минимум 2 символа, задержка 400мс, до 20 результатов каждого типа
 
+### 📡 ComProxy (Администратор и Системный администратор)
+- Раздел доступен только пользователям с ролями «Администратор» и «Системный администратор»
+- Приём телеметрии от касс через протокол Crystals AgentService (HUB)
+- Автосопоставление устройств с ККТ по регистрационному номеру (РНМ)
+- Удалённое обновление ПО ComProxy и прошивок ФР через механизм задач
+
+**Три вкладки:**
+
+| Вкладка | Содержимое |
+|---------|------------|
+| Устройства | Список устройств ComProxy с телеметрией, фильтрация, ручная привязка к ККТ |
+| Обновления | Каталог пакетов обновлений (загрузка файлов, отправка на устройства) |
+| Задачи | Очередь задач обновления (статусы PENDING → SENT → SUCCESS/ERROR) |
+
+**Типы обновлений:**
+
+| Тип | Расширения файлов | Что обновляет |
+|-----|-------------------|---------------|
+| COMPROXY | `.jar` | ПО ComProxy (Java-приложение) |
+| FIRMWARE | `.bin`, `.hex`, `.frm`, `.jar` | Прошивка фискального регистратора |
+
+**Протокол AgentService (HUB-эндпоинты):**
+- Аутентификация: HTTP Basic Auth (credentials из `.env`: `COMPROXY_HUB_USER` / `COMPROXY_HUB_PASSWORD`)
+- На кассе в `AgentService.ini`: `hub_url` и `server_url` указывают на адрес сервера
+- Агент опрашивает сервер каждые ~60 сек (poll), получает задачи, отправляет телеметрию
+- Подробная документация протокола: `comproxy/AgentService_ini_analysis.md`
+
 ### ⚙️ Настройки (только Администратор)
 Страница разделена на 4 вкладки:
 
@@ -237,6 +264,35 @@ privileged: true
 | POST | `/api/clients/faq-articles/{id}/images/` | Загрузка изображения в текст |
 | POST | `/api/clients/faq-articles/{id}/import/` | Импорт из .docx/.pdf |
 
+### Endpoints API ComProxy (admin, только Администратор/Сисадмин)
+
+| Метод | URL | Описание |
+|-------|-----|----------|
+| GET | `/api/comproxy/devices/` | Список устройств (фильтры: search, matched, shift_exceeded) |
+| GET | `/api/comproxy/devices/{uuid}/` | Детали устройства |
+| POST | `/api/comproxy/devices/{uuid}/match/` | Ручная привязка устройства к ККТ |
+| POST | `/api/comproxy/devices/{uuid}/unmatch/` | Отвязать устройство от ККТ |
+| GET | `/api/comproxy/stats/` | Статистика (всего, привязано, смена >24ч, ошибки) |
+| GET | `/api/comproxy/updates/` | Каталог обновлений (фильтр по product_type) |
+| POST | `/api/comproxy/updates/` | Загрузка пакета обновления (multipart/form-data) |
+| GET | `/api/comproxy/updates/{id}/` | Детали пакета обновления |
+| PATCH | `/api/comproxy/updates/{id}/` | Редактирование метаданных пакета |
+| DELETE | `/api/comproxy/updates/{id}/` | Удаление (если нет активных задач) |
+| POST | `/api/comproxy/updates/{id}/deploy/` | Отправить обновление на устройства |
+| GET | `/api/comproxy/tasks/` | Список задач (фильтр по status, device_uuid) |
+| POST | `/api/comproxy/tasks/{task_id}/cancel/` | Отменить PENDING задачу |
+
+### Endpoints HUB AgentService (Basic Auth, для касс)
+
+| Метод | URL | Описание |
+|-------|-----|----------|
+| POST | `/printers/v1/handshake/v2` | Рукопожатие (регистрация устройства) |
+| POST | `/printers/v1/poll/v3` | Опрос задач + отправка результатов |
+| POST | `/printers/v1/cash_info_report/v2` | Телеметрия — полный снимок кассы |
+| POST | `/printers/v1/counters_report/v2` | Телеметрия — счётчики и флаги ФР |
+| POST | `/printers/v1/registration_report/v1` | Отчёт о фискальной регистрации |
+| GET | `/v2/projects/{p}/products/{pr}/patches/{v}` | Метаданные пакета обновления (для AgentService) |
+
 ---
 
 ## Массовая загрузка клиентов (Автоматизация)
@@ -281,6 +337,16 @@ support-portal/
 ├── backend/
 │   ├── apps/
 │   │   ├── accounts/             # Пользователи, роли, JWT
+│   │   ├── comproxy/
+│   │   │   ├── models.py         # ProxyDevice, ProxyTelemetry, UpdatePackage, DeviceTask
+│   │   │   ├── views.py          # HUB-эндпоинты AgentService (Handshake, Poll, CashInfo, Counters, PatchMetadata)
+│   │   │   ├── admin_views.py    # Admin API: CRUD обновлений, deploy задач, список задач
+│   │   │   ├── admin_urls.py     # /api/comproxy/* маршруты для фронтенда
+│   │   │   ├── update_urls.py    # /v2/projects/.../patches/... для AgentService
+│   │   │   ├── serializers.py    # ProxyDevice*, UpdatePackage*, DeviceTask* сериализаторы
+│   │   │   ├── authentication.py # HubBasicAuthentication (Basic Auth из .env)
+│   │   │   ├── admin.py          # Регистрация моделей в Django Admin
+│   │   │   └── migrations/
 │   │   └── clients/
 │   │       ├── models.py         # Client, Provider, OfdCompany, KktData, ScheduledTask,
 │   │       │                     # FaqCategory, FaqArticle, FaqFile, DutySchedule
@@ -334,6 +400,7 @@ support-portal/
 │   │   │   ├── SettingsAutomation.jsx
 │   │   │   ├── SettingsScheduler.jsx
 │   │   │   └── SettingsDiagnostics.jsx
+│   │   ├── ComProxyDevicesPage.jsx    # ComProxy: устройства, обновления, задачи (3 вкладки)
 │   │   ├── SearchPage.jsx            # Глобальный поиск с fuzzy
 │   │   ├── UsersPage.jsx
 │   │   └── ProvidersPage.jsx
@@ -431,8 +498,8 @@ docker compose restart backend
 
 ## Роли и доступ
 
-| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | База знаний | Пользователи | Настройки |
-|------|---------|-----------|---------|----------|----------|------------|-------------|----------|
-| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ (+ удаление любых) | ✅ | ✅ |
-| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Связист | Полный | ✅ | 👁 | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | База знаний | ComProxy | Пользователи | Настройки |
+|------|---------|-----------|---------|----------|----------|------------|---------|-------------|----------|
+| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ (+ удаление любых) | ✅ | ✅ | ✅ |
+| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Связист | Полный | ✅ | 👁 | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |

@@ -24,6 +24,7 @@ const OfdCompaniesPage = lazy(() => import('./pages/OfdCompaniesPage'));
 const FnReplacementPage= lazy(() => import('./pages/FnReplacementPage'));
 const SearchPage       = lazy(() => import('./pages/SearchPage'));
 const FaqPage          = lazy(() => import('./pages/FaqPage'));
+const ComProxyDevicesPage = lazy(() => import('./pages/ComProxyDevicesPage'));
 
 dayjs.locale('ru');
 
@@ -43,6 +44,13 @@ function RequireAdmin({ children }) {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role_data?.name === 'admin' || user?.is_superuser;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
+function RequireAdminOrSysadmin({ children }) {
+  const user = useAuthStore((s) => s.user);
+  const allowed = user?.role_data?.name === 'admin' || user?.role_data?.name === 'sysadmin' || user?.is_superuser;
+  if (!allowed) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
@@ -146,6 +154,7 @@ export default function App() {
             <Route path="/ofd-companies" element={<RequireAuth><OfdCompaniesPage /></RequireAuth>} />
             <Route path="/fn-replacement" element={<RequireAuth><FnReplacementPage /></RequireAuth>} />
             <Route path="/faq" element={<RequireAuth><FaqPage /></RequireAuth>} />
+            <Route path="/comproxy" element={<RequireAuth><RequireAdminOrSysadmin><ComProxyDevicesPage /></RequireAdminOrSysadmin></RequireAuth>} />
             <Route path="/settings" element={<RequireAuth><RequireAdmin><SettingsPage /></RequireAdmin></RequireAuth>} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
