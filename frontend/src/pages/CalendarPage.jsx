@@ -157,7 +157,7 @@ export default function CalendarPage() {
         else next[key] = dutyType;
         return next;
       });
-    } catch { message.error('Ошибка сохранения дежурства'); }
+    } catch (e) { message.error(e?.response?.data?.error || 'Ошибка сохранения дежурства'); }
     finally { setSaving(null); }
   };
 
@@ -203,8 +203,8 @@ export default function CalendarPage() {
         return next;
       });
       message.success(`Применено к ${cells.length} ${cells.length === 1 ? 'ячейке' : cells.length < 5 ? 'ячейкам' : 'ячейкам'}`);
-    } catch {
-      message.error('Ошибка при сохранении');
+    } catch (e) {
+      message.error(e?.response?.data?.error || 'Ошибка при сохранении');
     }
   };
 
