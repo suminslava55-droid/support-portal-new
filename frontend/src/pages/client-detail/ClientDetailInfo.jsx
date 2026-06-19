@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, Descriptions, Space, Button, Tag, Tooltip, Typography, Spin } from 'antd';
 import { GlobalOutlined, SyncOutlined } from '@ant-design/icons';
-import { CopyField, PingStatus, copyToClipboard } from './helpers';
+import { CopyField, PingStatus, copyToClipboard, formatPhone } from './helpers';
 import { message } from 'antd';
 
 const { Text } = Typography;
@@ -54,7 +54,7 @@ export default function ClientDetailInfo({ client, pingResults, pinging, checkPi
           <Descriptions.Item label="Адрес" span={2}>{client.address || '—'}</Descriptions.Item>
           <Descriptions.Item label="Компания">{client.company || '—'}</Descriptions.Item>
           <Descriptions.Item label="ИНН"><CopyField value={client.inn} /></Descriptions.Item>
-          <Descriptions.Item label="Телефон"><CopyField value={client.phone} /></Descriptions.Item>
+          <Descriptions.Item label="Телефон"><CopyField value={client.phone}>{formatPhone(client.phone)}</CopyField></Descriptions.Item>
           <Descriptions.Item label="ICCID"><CopyField value={client.iccid} /></Descriptions.Item>
           <Descriptions.Item label="Email"><CopyField value={client.email} /></Descriptions.Item>
           <Descriptions.Item label="Код аптеки (UT)"><CopyField value={client.pharmacy_code} /></Descriptions.Item>
