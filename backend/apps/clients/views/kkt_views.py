@@ -507,6 +507,137 @@ def _kkt_row(k):
     }
 
 
+TSPIOT_PORT = 51077
+
+# Соединения из /status/{id} — порядок и человекочитаемые названия
+TSPIOT_CONN_LABELS = [
+    ('gismt', 'ГИС МТ'),
+    ('lmController', 'ЛМ Контроллер'),
+    ('lm', 'ЛМ ЧЗ'),
+    ('lmInternet', 'ЛМ Интернет'),
+    ('lmServers', 'ЛМ Серверы'),
+    ('esp', 'ЭСП'),
+    ('clientSoftware', 'Клиентское ПО'),
+]
+
+
+def _tspiot_fetch(base, path, timeout=5):
+    """Один GET к драйверу ТС ПИоТ, возвращает распарсенный JSON."""
+    import urllib.request
+    req = urllib.request.Request(f'{base}{path}', headers={'User-Agent': 'support-portal/1.0'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode('utf-8'))
+
+
+def _parse_os_info(os_info):
+    """osInfo отдаётся с обфусцированными ключами — парсим по значениям."""
+    os_name, os_arch = '', ''
+    archs = {'amd64', 'x86', 'x86_64', 'arm64', 'i386'}
+    for v in (os_info or {}).values():
+        s = str(v).replace('\r', '').replace('\n', '').strip()
+        if not s:
+            continue
+        if s.lower() in archs:
+            os_arch = s
+        elif ('Windows' in s or 'Linux' in s or 'Version' in s) and len(s) > len(os_name):
+            os_name = s
+    os_name = (os_name.replace('Microsoft ', '')
+                      .replace('[Version ', '')
+                      .replace(']', '')
+                      .strip())
+    return os_name, os_arch
+
+
+class KktTsPiotView(APIView):
+    """
+    GET /api/clients/{pk}/ofd_kkt/{kkt_id}/tspiot/
+    Живой опрос драйвера ТС ПИоТ на устройстве ComProxy (порт 51077). В БД ничего не пишется.
+    """
+    permission_classes = [IsAuthenticated, CanEditClient]
+
+    def get(self, request, pk=None, kkt_id=None):
+        try:
+            kkt = KktData.objects.get(pk=kkt_id, client_id=pk)
+        except KktData.DoesNotExist:
+            return Response({'available': False, 'error': 'ККТ не найдена'}, status=404)
+
+        proxy = kkt.proxy_devices.first()
+        if not proxy or not proxy.ip_address:
+            return Response({'available': False, 'error': 'ComProxy не привязан или адрес не определён'}, status=400)
+
+        serial = kkt.serial_number
+        if not serial:
+            return Response({'available': False, 'error': 'У ККТ не задан серийный номер'}, status=400)
+
+        base = f'http://{proxy.ip_address}:{TSPIOT_PORT}/api/v1'
+
+        # instances/info — ключевой запрос; если недоступен, считаем драйвер недоступным
+        try:
+            info = _tspiot_fetch(base, f'/instances/info/{serial}')
+        except Exception as e:
+            return Response({'available': False, 'error': f'Драйвер ТС ПИоТ недоступен: {e}'}, status=502)
+
+        # Остальные запросы — не критичны: если упадут, отдаём что собрали
+        def safe(path):
+            try:
+                return _tspiot_fetch(base, path)
+            except Exception:
+                return None
+
+        lm = safe(f'/instances/lm/{serial}') or {}
+        dkkt = safe('/dkktList') or {}
+        st = safe(f'/status/{serial}') or {}
+
+        # dkktVersion — ищем ККТ по серийному номеру
+        dkkt_version = ''
+        for item in (dkkt.get('kkt') or []):
+            if str(item.get('kktSerial', '')).strip() == str(serial).strip():
+                dkkt_version = (item.get('dkktVersion') or '').strip()
+                break
+
+        licenses = info.get('licenses') or []
+        lic = licenses[0] if licenses else None
+        lm_status = lm.get('lmStatus') or {}
+        os_name, os_arch = _parse_os_info(lm.get('osInfo'))
+
+        # Все соединения системы из /status/{id}
+        connections = []
+        for key, label in TSPIOT_CONN_LABELS:
+            c = st.get(key)
+            if not isinstance(c, dict):
+                continue
+            item = {
+                'key': key,
+                'label': label,
+                'code': c.get('code'),
+                'error': c.get('error', ''),
+                'last_connection': c.get('lastConnection', ''),
+            }
+            if key == 'clientSoftware':
+                item['name'] = c.get('name', '')
+                item['version'] = c.get('version', '')
+            connections.append(item)
+
+        return Response({
+            'available': True,
+            'state': info.get('state', ''),
+            'controller_version': info.get('version', ''),
+            'license': {
+                'active': lic.get('isActive'),
+                'active_till': lic.get('activeTill', ''),
+                'last_sync': lic.get('lastSync', ''),
+            } if lic else None,
+            'dkkt_version': dkkt_version,
+            'os': os_name,
+            'os_arch': os_arch,
+            'lm_status': lm_status.get('status', ''),
+            'lm_last_sync': lm_status.get('lastSync'),  # epoch (мс) — обновление БД ЛМ ЧЗ
+            'operation_mode': lm_status.get('operationMode', ''),
+            'lm_version': lm_status.get('version', ''),
+            'connections': connections,
+        })
+
+
 class KktListView(APIView):
     """Глобальный список всех ККТ для страницы «Замена ФН»"""
     permission_classes = [IsAuthenticated, CanEditClient]

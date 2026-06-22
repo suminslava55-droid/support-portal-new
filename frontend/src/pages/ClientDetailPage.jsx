@@ -245,6 +245,7 @@ export default function ClientDetailPage() {
       label: '🧾 ККТ',
       children: (
         <ClientDetailKkt
+          clientId={id}
           kktData={kktData}
           kktFetching={kktFetching}
           kktRefreshing={kktRefreshing}

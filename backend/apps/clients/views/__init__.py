@@ -21,6 +21,7 @@ from .calendar_views import (
 
 from .kkt_views import (
     OfdKktView,
+    KktTsPiotView,
     KktListView,
     KktExportView,
 )

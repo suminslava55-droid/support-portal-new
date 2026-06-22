@@ -1,10 +1,11 @@
-import React from 'react';
-import { Card, Space, Button, Tag, Empty, Descriptions, Popconfirm, Typography, Divider, Tooltip } from 'antd';
-import { ReloadOutlined, SyncOutlined, DeleteOutlined, ApiOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, Space, Button, Tag, Empty, Descriptions, Popconfirm, Typography, Divider, Tooltip, Collapse, Spin } from 'antd';
+import { ReloadOutlined, SyncOutlined, DeleteOutlined, ApiOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
 import { CopyField } from './helpers';
+import api from '../../api';
 
 dayjs.extend(relativeTime);
 dayjs.locale('ru');
@@ -83,7 +84,142 @@ function ProxySection({ proxy }) {
   );
 }
 
-export default function ClientDetailKkt({ kktData, kktFetching, kktRefreshing, fetchKktFromOfd, refreshKktByRnm, deleteKkt }) {
+function ConnRow({ c }) {
+  const ok = c.code === 0;
+  let note = c.error || '';
+  if (!note && c.key === 'clientSoftware' && !c.name) {
+    note = 'клиент не подключён';
+  }
+  const tip = note || 'ок';
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+      <Text style={{ minWidth: 130, display: 'inline-block' }}>{c.label}</Text>
+      <Tooltip title={tip}>
+        <Tag color={ok ? 'green' : 'red'} style={{ cursor: 'help' }}>{ok ? 'OK' : 'Ошибка'}</Tag>
+      </Tooltip>
+      {c.last_connection && (
+        <Text type="secondary" style={{ fontSize: 11 }}>{c.last_connection}</Text>
+      )}
+    </div>
+  );
+}
+
+function TsPiotSection({ clientId, kkt }) {
+  const hasProxy = !!(kkt.proxy && kkt.proxy.ip_address);
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    if (!hasProxy) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get(`/clients/${clientId}/ofd_kkt/${kkt.id}/tspiot/`);
+      setData(res.data);
+    } catch (e) {
+      setData(null);
+      setError(e?.response?.data?.error || 'Драйвер ТС ПИоТ недоступен');
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId, kkt.id, hasProxy]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!hasProxy) {
+    return (
+      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+        <SafetyCertificateOutlined /> ТС ПИоТ — нет адреса (ComProxy не подключён)
+      </Text>
+    );
+  }
+
+  const headerStatus = loading
+    ? <Spin size="small" />
+    : error
+      ? <Tag color="default">недоступен</Tag>
+      : data
+        ? <Tag color={data.state === 'Зарегистрирован' ? 'green' : 'orange'}>{data.state || '—'}</Tag>
+        : null;
+
+  const lic = data && data.license;
+  const licTill = lic && lic.active_till && dayjs(lic.active_till);
+  const licExpiring = licTill && licTill.isValid() && licTill.isBefore(dayjs().add(30, 'day'));
+
+  const items = [{
+    key: 'tspiot',
+    label: (
+      <Space size={6}>
+        <SafetyCertificateOutlined />
+        <Text type="secondary" style={{ fontSize: 13 }}>ТС ПИоТ</Text>
+        {headerStatus}
+      </Space>
+    ),
+    extra: (
+      <Button
+        size="small"
+        type="text"
+        icon={<ReloadOutlined />}
+        loading={loading}
+        onClick={(e) => { e.stopPropagation(); load(); }}
+      />
+    ),
+    children: error ? (
+      <Text type="danger" style={{ fontSize: 12 }}>{error}</Text>
+    ) : !data ? (
+      <Spin size="small" />
+    ) : (
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2, md: 3, lg: 3 }}>
+        <Descriptions.Item label="Состояние">{data.state || '—'}</Descriptions.Item>
+        <Descriptions.Item label="ЛМ Контроллер">
+          <Tag color="blue">{data.controller_version || '—'}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="ЛМ ЧЗ">
+          <Tag color="geekblue">{data.lm_version || '—'}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="dkktVersion">
+          <Tag color="cyan">{data.dkkt_version || '—'}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="ЛМ ЧЗ status">
+          <Tooltip title={`Обновление БД ЛМ ЧЗ${data.lm_last_sync ? ': ' + dayjs(Number(data.lm_last_sync)).format('DD.MM.YYYY HH:mm:ss') : ''}`}>
+            <Tag color={data.lm_status === 'ready' ? 'green' : 'orange'} style={{ cursor: 'help' }}>{data.lm_status || '—'}</Tag>
+          </Tooltip>
+        </Descriptions.Item>
+        <Descriptions.Item label="Режим">
+          <Tag color={data.operation_mode === 'active' ? 'green' : 'default'}>{data.operation_mode || '—'}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="ОС" span={2}>
+          {data.os ? `${data.os}${data.os_arch ? ', ' + data.os_arch : ''}` : '—'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Лицензия">
+          {lic ? (
+            <Tooltip title={lic.last_sync ? `Посл. синхронизация: ${lic.last_sync}` : ''}>
+              <Tag
+                color={!lic.active ? 'red' : licExpiring ? 'orange' : 'green'}
+                style={{ whiteSpace: 'normal', maxWidth: '100%', lineHeight: 1.3 }}
+              >
+                {lic.active ? 'активна' : 'неактивна'}
+                {lic.active_till ? ` · до ${licTill && licTill.isValid() ? licTill.format('DD.MM.YYYY') : lic.active_till}` : ''}
+              </Tag>
+            </Tooltip>
+          ) : '—'}
+        </Descriptions.Item>
+        {data.connections && data.connections.length > 0 && (
+          <Descriptions.Item label="Соединения" span={3}>
+            <Space direction="vertical" size={2} style={{ width: '100%' }}>
+              {data.connections.map((c) => <ConnRow key={c.key} c={c} />)}
+            </Space>
+          </Descriptions.Item>
+        )}
+      </Descriptions>
+    ),
+  }];
+
+  return <Collapse ghost size="small" style={{ marginTop: 4 }} items={items} />;
+}
+
+export default function ClientDetailKkt({ clientId, kktData, kktFetching, kktRefreshing, fetchKktFromOfd, refreshKktByRnm, deleteKkt }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -183,6 +319,7 @@ export default function ClientDetailKkt({ kktData, kktFetching, kktRefreshing, f
               )}
             </Descriptions>
             <ProxySection proxy={kkt.proxy} />
+            <TsPiotSection clientId={clientId} kkt={kkt} />
           </Card>
         ))
       )}
