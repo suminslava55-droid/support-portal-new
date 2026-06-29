@@ -7,14 +7,12 @@
 import json
 import re
 import datetime
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import paramiko
 
 from apps.clients.models import Client, SystemSettings
 from apps.clients.views.utils import ping_ip
-from apps.clients.views.misc_views import _make_ssh_client, _save_known_hosts
 
 OUTPUT_PATH = '/app/kassa_ips.json'
 KASSA_CMD = (
@@ -24,8 +22,16 @@ KASSA_CMD = (
     'else={:put "$i -> not found"}}'
 )
 
-# known_hosts — общий файл, защищаем от одновременной записи из потоков
-_known_hosts_lock = threading.Lock()
+
+def _make_ssh_client():
+    """
+    SSH-клиент для разового массового опроса: доверяем ключу при первом
+    подключении в памяти, НЕ читаем и НЕ пишем общий known_hosts.
+    Это исключает гонку и порчу файла при параллельных потоках.
+    """
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    return ssh
 
 settings_obj = SystemSettings.get()
 if not settings_obj.ssh_user or not settings_obj.ssh_password_encrypted:
@@ -63,11 +69,9 @@ def probe(client):
             return entry
 
         try:
-            ssh = _make_ssh_client(mikrotik_ip)
+            ssh = _make_ssh_client()
             ssh.connect(mikrotik_ip, username=ssh_user, password=ssh_password,
                         timeout=10, port=22)
-            with _known_hosts_lock:
-                _save_known_hosts(ssh)
             _, stdout, _ = ssh.exec_command(KASSA_CMD, timeout=15)
             output = stdout.read().decode('utf-8', errors='replace').strip()
             ssh.close()
