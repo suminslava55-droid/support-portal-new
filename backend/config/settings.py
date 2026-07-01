@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.clients',
     'apps.comproxy',
+    'apps.pcmgmt',
 ]
 
 MIDDLEWARE = [

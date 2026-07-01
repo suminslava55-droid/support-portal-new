@@ -9,7 +9,8 @@ class CheckPackagesView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
-        packages = ['cryptography', 'paramiko', 'openpyxl', 'docx', 'pdfminer', 'fitz', 'bleach']
+        packages = ['cryptography', 'paramiko', 'openpyxl', 'docx', 'pdfminer', 'fitz',
+                    'bleach', 'winrm', 'impacket']
         result = {}
         for pkg in packages:
             try:
@@ -40,6 +41,8 @@ class SystemSettingsView(APIView):
             'smtp_use_ssl': s.smtp_use_ssl,
             'smtp_use_tls': s.smtp_use_tls,
             'has_smtp_password': bool(s.smtp_password_encrypted),
+            'winrm_user': s.winrm_user,
+            'has_winrm_password': bool(s.winrm_password_encrypted),
             'timezone_offset': s.timezone_offset,
             'allowed_email_domains': s.allowed_email_domains,
         })
@@ -61,6 +64,11 @@ class SystemSettingsView(APIView):
             s.allowed_email_domains = ''
             s.save()
             return Response({'message': 'SMTP данные очищены'})
+        elif section == 'winrm':
+            s.winrm_user = ''
+            s.winrm_password_encrypted = ''
+            s.save()
+            return Response({'message': 'УЗ Windows очищена'})
         else:
             s.ssh_user = ''
             s.ssh_password_encrypted = ''
@@ -96,6 +104,16 @@ class SystemSettingsView(APIView):
                 'smtp_use_tls': s.smtp_use_tls,
                 'has_smtp_password': bool(s.smtp_password_encrypted),
                 'allowed_email_domains': s.allowed_email_domains,
+            })
+        elif section == 'winrm':
+            s.winrm_user = request.data.get('winrm_user', s.winrm_user)
+            winrm_password = request.data.get('winrm_password', '')
+            if winrm_password and winrm_password != '••••••••':
+                s.set_winrm_password(winrm_password)
+            s.save()
+            return Response({
+                'winrm_user': s.winrm_user,
+                'has_winrm_password': bool(s.winrm_password_encrypted),
             })
         elif section == 'general':
             s.timezone_offset = int(request.data.get('timezone_offset', s.timezone_offset) or 0)

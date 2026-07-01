@@ -5,7 +5,7 @@ import {
   SyncOutlined, TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
   WifiOutlined, LockOutlined, BulbOutlined, BulbFilled, CalendarOutlined, BankOutlined,
   SearchOutlined, DashboardOutlined, BookOutlined, MenuOutlined,
-  MenuFoldOutlined, MenuUnfoldOutlined, ApiOutlined,
+  MenuFoldOutlined, MenuUnfoldOutlined, ApiOutlined, DesktopOutlined,
 } from '@ant-design/icons';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
@@ -60,6 +60,7 @@ export default function AppLayout({ children }) {
     ...(!isCommunications ? [{ key: '/calendar', icon: <CalendarOutlined />, label: 'Календарь' }] : []),
     { key: '/faq', icon: <BookOutlined />, label: 'База знаний' },
     ...(isAdminOrSysadmin ? [{ key: '/comproxy', icon: <ApiOutlined />, label: 'ComProxy' }] : []),
+    ...(isAdmin ? [{ key: '/pc-management', icon: <DesktopOutlined />, label: 'Управление ПК аптек' }] : []),
     ...(isAdmin ? [{ key: '/users', icon: <UserOutlined />, label: 'Пользователи' }] : []),
     ...(isAdmin ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Настройки' }] : []),
   ];

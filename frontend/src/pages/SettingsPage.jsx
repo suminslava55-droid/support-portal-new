@@ -18,11 +18,14 @@ const { Title } = Typography;
 export default function SettingsPage() {
   const [sshForm]  = Form.useForm();
   const [smtpForm] = Form.useForm();
+  const [winrmForm] = Form.useForm();
   const [loading, setLoading]           = useState(true);
   const [savingSsh, setSavingSsh]       = useState(false);
   const [savingSmtp, setSavingSmtp]     = useState(false);
+  const [savingWinrm, setSavingWinrm]   = useState(false);
   const [hasSSHPassword, setHasSSHPassword]   = useState(false);
   const [hasSMTPPassword, setHasSMTPPassword] = useState(false);
+  const [hasWinrmPassword, setHasWinrmPassword] = useState(false);
   const [useSsl, setUseSsl]             = useState(true);
   const [useTls, setUseTls]             = useState(false);
   const [testEmailModal, setTestEmailModal] = useState(false);
@@ -72,6 +75,8 @@ export default function SettingsPage() {
         const { data } = await settingsAPI.get();
         sshForm.setFieldsValue({ ssh_user: data.ssh_user });
         setHasSSHPassword(data.has_ssh_password);
+        winrmForm.setFieldsValue({ winrm_user: data.winrm_user });
+        setHasWinrmPassword(data.has_winrm_password);
         smtpForm.setFieldsValue({
           smtp_host:       data.smtp_host,
           smtp_port:       data.smtp_port || 465,
@@ -94,7 +99,7 @@ export default function SettingsPage() {
     };
     load();
     loadPackages();
-  }, [sshForm, smtpForm]); // eslint-disable-line
+  }, [sshForm, smtpForm, winrmForm]); // eslint-disable-line
 
   useEffect(() => {
     loadTasks();
@@ -170,6 +175,29 @@ export default function SettingsPage() {
       smtpForm.resetFields();
       smtpForm.setFieldsValue({ smtp_port: 465, smtp_use_ssl: true, smtp_use_tls: false, allowed_email_domains: '' });
       message.success('SMTP данные очищены');
+    } catch (e) {
+      message.error(e.response?.data?.error || e.response?.data?.detail || 'Ошибка очистки');
+    }
+  };
+
+  const onSaveWinrm = async (values) => {
+    setSavingWinrm(true);
+    try {
+      const { data } = await settingsAPI.save({ ...values, section: 'winrm' });
+      setHasWinrmPassword(data.has_winrm_password);
+      winrmForm.setFieldsValue({ winrm_password: '' });
+      message.success('УЗ Windows сохранена');
+    } catch (e) {
+      message.error(e.response?.data?.error || e.response?.data?.detail || 'Ошибка сохранения');
+    } finally { setSavingWinrm(false); }
+  };
+
+  const handleClearWinrm = async () => {
+    try {
+      await settingsAPI.clear('winrm');
+      setHasWinrmPassword(false);
+      winrmForm.setFieldsValue({ winrm_user: '', winrm_password: '' });
+      message.success('УЗ Windows очищена');
     } catch (e) {
       message.error(e.response?.data?.error || e.response?.data?.detail || 'Ошибка очистки');
     }
@@ -395,15 +423,15 @@ export default function SettingsPage() {
       label: <Space><SettingOutlined />Учётные записи</Space>,
       children: (
         <SettingsAccounts
-          sshForm={sshForm} smtpForm={smtpForm}
-          hasSSHPassword={hasSSHPassword} hasSMTPPassword={hasSMTPPassword}
+          sshForm={sshForm} smtpForm={smtpForm} winrmForm={winrmForm}
+          hasSSHPassword={hasSSHPassword} hasSMTPPassword={hasSMTPPassword} hasWinrmPassword={hasWinrmPassword}
           useSsl={useSsl} useTls={useTls}
-          savingSsh={savingSsh} savingSmtp={savingSmtp}
+          savingSsh={savingSsh} savingSmtp={savingSmtp} savingWinrm={savingWinrm}
           testEmailModal={testEmailModal} setTestEmailModal={setTestEmailModal}
           testEmail={testEmail} setTestEmail={setTestEmail}
           sendingTest={sendingTest}
-          onSaveSsh={onSaveSsh} onSaveSmtp={onSaveSmtp}
-          handleClearSsh={handleClearSsh} handleClearSmtp={handleClearSmtp}
+          onSaveSsh={onSaveSsh} onSaveSmtp={onSaveSmtp} onSaveWinrm={onSaveWinrm}
+          handleClearSsh={handleClearSsh} handleClearSmtp={handleClearSmtp} handleClearWinrm={handleClearWinrm}
           handleSslChange={handleSslChange} handleTlsChange={handleTlsChange}
           handleTestEmail={handleTestEmail}
         />

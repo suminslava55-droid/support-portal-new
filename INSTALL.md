@@ -278,7 +278,7 @@ npm ci
 
 ```bash
 docker compose exec backend python -c "
-import cryptography, paramiko, openpyxl, docx, pdfminer, fitz, bleach
+import cryptography, paramiko, openpyxl, docx, pdfminer, fitz, bleach, winrm, impacket
 print('Все пакеты OK')
 "
 ```
@@ -286,9 +286,11 @@ print('Все пакеты OK')
 Если какой-то пакет отсутствует:
 
 ```bash
-docker compose exec backend pip install cryptography paramiko openpyxl python-docx pdfminer.six PyMuPDF bleach --break-system-packages
+docker compose exec backend pip install cryptography paramiko openpyxl python-docx pdfminer.six PyMuPDF bleach pywinrm impacket --break-system-packages
 docker compose restart backend
 ```
+
+> `pywinrm` и `impacket` нужны для раздела «Управление ПК аптек» (удалённое выполнение скриптов и копирование файлов на ПК аптек).
 
 ---
 
@@ -299,11 +301,11 @@ docker compose exec backend python manage.py migrate
 docker compose exec backend python create_admin.py
 ```
 
-| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | База знаний | ComProxy | Пользователи | Настройки |
-|------|---------|-----------|---------|----------|----------|------------|---------|-------------|----------|
-| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Связист | Полный | ✅ | 👁 | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Роль | Клиенты | Провайдеры | Компании | Замена ФН | Календарь | База знаний | ComProxy | Управление ПК аптек | Пользователи | Настройки |
+|------|---------|-----------|---------|----------|----------|------------|---------|--------------------|-------------|----------|
+| Администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Системный администратор | Полный | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Связист | Полный | ✅ | 👁 | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 ---
 

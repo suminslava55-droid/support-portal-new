@@ -5,21 +5,21 @@ import {
 } from 'antd';
 import {
   SaveOutlined, EyeInvisibleOutlined, EyeTwoTone,
-  SettingOutlined, DeleteOutlined, MailOutlined, SendOutlined,
+  SettingOutlined, DeleteOutlined, MailOutlined, SendOutlined, DesktopOutlined,
 } from '@ant-design/icons';
 
 const { Text } = Typography;
 
 export default function SettingsAccounts({
-  sshForm, smtpForm,
-  hasSSHPassword, hasSMTPPassword,
+  sshForm, smtpForm, winrmForm,
+  hasSSHPassword, hasSMTPPassword, hasWinrmPassword,
   useSsl, useTls,
-  savingSsh, savingSmtp,
+  savingSsh, savingSmtp, savingWinrm,
   testEmailModal, setTestEmailModal,
   testEmail, setTestEmail,
   sendingTest,
-  onSaveSsh, onSaveSmtp,
-  handleClearSsh, handleClearSmtp,
+  onSaveSsh, onSaveSmtp, onSaveWinrm,
+  handleClearSsh, handleClearSmtp, handleClearWinrm,
   handleSslChange, handleTlsChange,
   handleTestEmail,
 }) {
@@ -57,6 +57,51 @@ export default function SettingsAccounts({
               title="Очистить SSH данные?"
               description="Логин и пароль будут удалены из базы данных"
               onConfirm={handleClearSsh}
+              okText="Очистить" okType="danger" cancelText="Отмена"
+            >
+              <Button danger icon={<DeleteOutlined />}>Очистить</Button>
+            </Popconfirm>
+          </Space>
+        </Card>
+      </Form>
+
+      {/* УЗ Windows для подключения к ПК аптек */}
+      <Form form={winrmForm} layout="vertical" onFinish={onSaveWinrm}>
+        <Card title={<Space><DesktopOutlined style={{ color: '#1677ff' }} /><span>УЗ для подключения к ПК аптек</span></Space>}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
+            Учётная запись Windows-администратора для удалённого выполнения скриптов (WinRM/WMI)
+            и копирования файлов (SMB) на серверы и кассы аптек.
+          </Text>
+          <Form.Item name="winrm_user" label="Пользователь Windows">
+            <Input placeholder="admin2" autoComplete="off" />
+          </Form.Item>
+          <Form.Item
+            name="winrm_password"
+            label={
+              <span>
+                Пароль{' '}
+                {hasWinrmPassword && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    (пароль уже задан — введите новый чтобы изменить)
+                  </Text>
+                )}
+              </span>
+            }
+          >
+            <Input.Password
+              placeholder={hasWinrmPassword ? '••••••••' : 'Введите пароль'}
+              autoComplete="new-password"
+              iconRender={(v) => (v ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+            />
+          </Form.Item>
+          <Space>
+            <Button type="primary" htmlType="submit" loading={savingWinrm} icon={<SaveOutlined />}>
+              Сохранить
+            </Button>
+            <Popconfirm
+              title="Очистить УЗ Windows?"
+              description="Логин и пароль будут удалены из базы данных"
+              onConfirm={handleClearWinrm}
               okText="Очистить" okType="danger" cancelText="Отмена"
             >
               <Button danger icon={<DeleteOutlined />}>Очистить</Button>

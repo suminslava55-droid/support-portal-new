@@ -314,6 +314,17 @@ class SystemSettings(models.Model):
     def set_smtp_password(self, value):
         self.smtp_password_encrypted = encrypt_value(value)
 
+    # УЗ Windows для подключения к ПК аптек (WinRM / SMB / WMI)
+    winrm_user = models.CharField('Windows пользователь', max_length=100, blank=True)
+    winrm_password_encrypted = models.TextField('Windows пароль (зашифрован)', blank=True)
+
+    @property
+    def winrm_password(self):
+        return decrypt_value(self.winrm_password_encrypted)
+
+    def set_winrm_password(self, value):
+        self.winrm_password_encrypted = encrypt_value(value)
+
     # Разрешённые домены для отправки экспортов по email.
     # Пустое значение = ограничений нет.
     # Формат: "company.ru,company2.ru,company3.ru"

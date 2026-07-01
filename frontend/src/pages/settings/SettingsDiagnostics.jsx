@@ -26,7 +26,9 @@ export default function SettingsDiagnostics({ packages, packagesLoading, loadPac
             { key: 'pdfminer',    label: 'pdfminer.six',  desc: 'Импорт текста из PDF в базу знаний' },
             { key: 'fitz',        label: 'PyMuPDF',       desc: 'Импорт картинок из PDF в базу знаний' },
             { key: 'bleach',      label: 'bleach',         desc: 'Санитизация HTML в базе знаний' },
-          ].map(({ key, label, desc }) => (
+            { key: 'winrm',       label: 'pywinrm',       desc: 'Выполнение скриптов на ПК аптек (WinRM)', pip: 'pywinrm' },
+            { key: 'impacket',    label: 'impacket',       desc: 'Копирование файлов (SMB) и WMI-fallback на ПК аптек' },
+          ].map(({ key, label, desc, pip }) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {packages[key]
                 ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
@@ -35,7 +37,7 @@ export default function SettingsDiagnostics({ packages, packagesLoading, loadPac
               <Text type="secondary" style={{ fontSize: 12 }}>{desc}</Text>
               {!packages[key] && (
                 <Text type="danger" style={{ fontSize: 12, marginLeft: 'auto' }}>
-                  pip install {key}
+                  pip install {pip || key}
                 </Text>
               )}
             </div>

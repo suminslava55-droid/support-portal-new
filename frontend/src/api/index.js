@@ -117,3 +117,15 @@ export const comproxyAPI = {
   getTasks: (params) => api.get('/comproxy/tasks/', { params }),
   cancelTask: (taskId) => api.post(`/comproxy/tasks/${taskId}/cancel/`),
 };
+
+export const pcMgmtAPI = {
+  listClients: (params) => api.get('/pcmgmt/clients/', { params }),
+  listJobs: () => api.get('/pcmgmt/jobs/'),
+  getJob: (id) => api.get(`/pcmgmt/jobs/${id}/`),
+  createJob: (formData) => api.post('/pcmgmt/jobs/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  cancelJob: (id) => api.post(`/pcmgmt/jobs/${id}/cancel/`),
+  repeatJob: (id) => api.post(`/pcmgmt/jobs/${id}/repeat/`),
+  companies: () => api.get('/clients/ofd-companies/'),
+};
