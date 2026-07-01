@@ -91,13 +91,16 @@ function ClientsTab({ selectedIds, setSelectedIds, targetMode, setTargetMode }) 
         <Button icon={<ReloadOutlined />} onClick={fetchClients}>Обновить</Button>
       </Space>
 
-      <div style={{ marginBottom: 8 }}>
-        <Text strong>Выбрано: {selectedIds.length}</Text>{' '}
+      <Space style={{ marginBottom: 8 }} wrap>
+        <Button size="small" type="primary" ghost
+          onClick={() => setSelectedIds(clients.map((c) => c.id))}>
+          Выбрать всех ({clients.length})
+        </Button>
+        <Button size="small" disabled={!selectedIds.length}
+          onClick={() => setSelectedIds([])}>Снять выделение</Button>
+        <Text strong>Выбрано: {selectedIds.length}</Text>
         <Text type="secondary">· режим «{MODE_LABEL[targetMode]}»</Text>
-        {selectedIds.length > 0 && (
-          <Button type="link" size="small" onClick={() => setSelectedIds([])}>сбросить</Button>
-        )}
-      </div>
+      </Space>
 
       <Table
         size="small"
@@ -109,8 +112,14 @@ function ClientsTab({ selectedIds, setSelectedIds, targetMode, setTargetMode }) 
           selectedRowKeys: selectedIds,
           onChange: setSelectedIds,
           preserveSelectedRowKeys: true,
+          selections: [Table.SELECTION_ALL, Table.SELECTION_INVERT, Table.SELECTION_NONE],
         }}
-        pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['50', '100', '200'] }}
+        pagination={{
+          defaultPageSize: 50,
+          showSizeChanger: true,
+          pageSizeOptions: ['50', '100', '200', '500'],
+          showTotal: (total) => `Всего: ${total}`,
+        }}
         scroll={{ y: 460 }}
       />
     </div>
