@@ -12,6 +12,25 @@ from .serializers import PcJobListSerializer, PcJobDetailSerializer
 from . import executor
 
 
+def _chain_jobs(job):
+    """Все прогоны одной цепочки (корень + все повторы), по времени создания."""
+    root = job
+    seen = set()
+    while root.repeat_of_id and root.repeat_of_id not in seen:
+        seen.add(root.id)
+        root = root.repeat_of
+    out, stack, visited = [], [root], set()
+    while stack:
+        j = stack.pop()
+        if j.id in visited:
+            continue
+        visited.add(j.id)
+        out.append(j)
+        stack.extend(list(j.repeats.all()))
+    out.sort(key=lambda x: x.created_at)
+    return out
+
+
 class PcClientsView(APIView):
     """Лёгкий список клиентов для выбора целей (адрес, компания, IP сервера)."""
     permission_classes = [IsAuthenticated, IsAdmin]
@@ -110,7 +129,11 @@ class PcJobDetailView(APIView):
             job = PcJob.objects.prefetch_related('targets').get(pk=pk)
         except PcJob.DoesNotExist:
             return Response({'error': 'Задание не найдено'}, status=404)
-        return Response(PcJobDetailSerializer(job).data)
+        data = PcJobDetailSerializer(job).data
+        chain = _chain_jobs(job)
+        data['runs'] = PcJobDetailSerializer(chain, many=True).data
+        data['current_run_id'] = job.id
+        return Response(data)
 
 
 class PcJobCancelView(APIView):
@@ -137,16 +160,20 @@ class PcJobRepeatView(APIView):
         except PcJob.DoesNotExist:
             return Response({'error': 'Задание не найдено'}, status=404)
 
+        # Повтор всегда отталкивается от последнего прогона цепочки,
+        # чтобы учесть успехи всех предыдущих прогонов.
+        latest = _chain_jobs(src)[-1]
+
         job = PcJob.objects.create(
-            job_type=src.job_type,
-            script_kind=src.script_kind,
-            script_text=src.script_text,
-            file=src.file,  # переиспользуем тот же загруженный файл
-            dest_path=src.dest_path,
-            target_mode=src.target_mode,
-            client_ids=src.client_ids,
+            job_type=latest.job_type,
+            script_kind=latest.script_kind,
+            script_text=latest.script_text,
+            file=latest.file,  # переиспользуем тот же загруженный файл
+            dest_path=latest.dest_path,
+            target_mode=latest.target_mode,
+            client_ids=latest.client_ids,
             created_by=request.user,
-            repeat_of=src,  # пропустить ПК, где уже успешно выполнено
+            repeat_of=latest,  # пропустить ПК, где уже успешно выполнено
         )
         t = threading.Thread(target=executor.run_job, args=(job.id,), daemon=True)
         t.start()

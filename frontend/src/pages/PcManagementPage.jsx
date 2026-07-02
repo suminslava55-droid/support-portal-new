@@ -294,6 +294,44 @@ function TasksTab({ selectedIds, targetMode }) {
         <Text code style={{ cursor: 'pointer' }}>{v.split('\n')[0].slice(0, 80) || '(пусто)'}</Text></Tooltip> : '—' },
   ];
 
+  // Тело одного прогона (для вкладок в «Подробно»)
+  const renderRun = (run) => (
+    <>
+      <Descriptions size="small" column={3} bordered style={{ marginBottom: 12 }}>
+        <Descriptions.Item label="Статус">{JOB_STATUS_TAG[run.status]}</Descriptions.Item>
+        <Descriptions.Item label="Режим">{run.target_mode_display}</Descriptions.Item>
+        <Descriptions.Item label="Прогресс">{run.progress}%</Descriptions.Item>
+        <Descriptions.Item label="Всего">{run.total_targets}</Descriptions.Item>
+        <Descriptions.Item label="Успех">{run.ok_targets}</Descriptions.Item>
+        <Descriptions.Item label="Ошибок">{run.err_targets}</Descriptions.Item>
+        <Descriptions.Item label="Кем">{run.created_by_name || '—'}</Descriptions.Item>
+        <Descriptions.Item label="Создано" span={2}>{fmtDate(run.created_at)}</Descriptions.Item>
+      </Descriptions>
+
+      {run.job_type === 'run_script' ? (
+        <div style={{ marginBottom: 12 }}>
+          <Text strong><FileTextOutlined /> Скрипт ({run.script_kind === 'cmd' ? 'cmd' : 'PowerShell'}):</Text>
+          <pre style={{ background: 'rgba(0,0,0,0.04)', padding: 12, borderRadius: 6,
+            maxHeight: 220, overflow: 'auto', margin: '6px 0 0', whiteSpace: 'pre-wrap',
+            fontFamily: 'monospace', fontSize: 13 }}>{run.script_text || '(пусто)'}</pre>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 12 }}>
+          <Text strong><FileTextOutlined /> Копирование файла:</Text>
+          <div style={{ marginTop: 6 }}>
+            <Tag color="blue">{run.filename || 'файл'}</Tag>
+            <Text type="secondary"> → </Text>
+            <Text code>{run.dest_path}</Text>
+          </div>
+        </div>
+      )}
+
+      <Text strong>Цели ({(run.targets || []).length}):</Text>
+      <Table size="small" rowKey="id" columns={targetColumns} style={{ marginTop: 6 }}
+        dataSource={run.targets || []} pagination={{ pageSize: 50 }} scroll={{ y: 340 }} />
+    </>
+  );
+
   return (
     <div>
       <Alert
@@ -389,43 +427,28 @@ function TasksTab({ selectedIds, targetMode }) {
         ] : null}
         width={1000}
       >
-        {detail && (
-          <>
-            <Descriptions size="small" column={3} bordered style={{ marginBottom: 12 }}>
-              <Descriptions.Item label="Статус">{JOB_STATUS_TAG[detail.status]}</Descriptions.Item>
-              <Descriptions.Item label="Режим">{detail.target_mode_display}</Descriptions.Item>
-              <Descriptions.Item label="Прогресс">{detail.progress}%</Descriptions.Item>
-              <Descriptions.Item label="Всего">{detail.total_targets}</Descriptions.Item>
-              <Descriptions.Item label="Успех">{detail.ok_targets}</Descriptions.Item>
-              <Descriptions.Item label="Ошибок">{detail.err_targets}</Descriptions.Item>
-              <Descriptions.Item label="Кем">{detail.created_by_name || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Создано" span={2}>{fmtDate(detail.created_at)}</Descriptions.Item>
-            </Descriptions>
-
-            {detail.job_type === 'run_script' ? (
-              <div style={{ marginBottom: 12 }}>
-                <Text strong><FileTextOutlined /> Скрипт ({detail.script_kind === 'cmd' ? 'cmd' : 'PowerShell'}):</Text>
-                <pre style={{ background: 'rgba(0,0,0,0.04)', padding: 12, borderRadius: 6,
-                  maxHeight: 220, overflow: 'auto', margin: '6px 0 0', whiteSpace: 'pre-wrap',
-                  fontFamily: 'monospace', fontSize: 13 }}>{detail.script_text || '(пусто)'}</pre>
-              </div>
-            ) : (
-              <div style={{ marginBottom: 12 }}>
-                <Text strong><FileTextOutlined /> Копирование файла:</Text>
-                <div style={{ marginTop: 6 }}>
-                  <Tag color="blue">{detail.filename || 'файл'}</Tag>
-                  <Text type="secondary"> → </Text>
-                  <Text code>{detail.dest_path}</Text>
-                </div>
-              </div>
-            )}
-
-            <Text strong>Цели ({(detail.targets || []).length}):</Text>
-            <Table size="small" rowKey="id" columns={targetColumns} style={{ marginTop: 6 }}
-              dataSource={detail.targets || []} pagination={{ pageSize: 50 }}
-              scroll={{ y: 360 }} />
-          </>
-        )}
+        {detail && (() => {
+          const runs = (detail.runs && detail.runs.length) ? detail.runs : [detail];
+          if (runs.length <= 1) return renderRun(runs[0]);
+          const activeKey = String(detail.current_run_id ?? runs[runs.length - 1].id);
+          return (
+            <Tabs
+              defaultActiveKey={activeKey}
+              items={runs.map((r, i) => ({
+                key: String(r.id),
+                label: (
+                  <span>
+                    Прогон {i + 1}{' '}
+                    {r.err_targets > 0
+                      ? <Tag color="error" style={{ marginInlineEnd: 0 }}>{r.ok_targets}/{r.total_targets}</Tag>
+                      : <Tag color="success" style={{ marginInlineEnd: 0 }}>{r.ok_targets}/{r.total_targets}</Tag>}
+                  </span>
+                ),
+                children: renderRun(r),
+              }))}
+            />
+          );
+        })()}
       </Modal>
     </div>
   );
