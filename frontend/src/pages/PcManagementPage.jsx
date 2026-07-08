@@ -297,6 +297,10 @@ function TasksTab({ selectedIds, targetMode }) {
   // Тело одного прогона (для вкладок в «Подробно»)
   const renderRun = (run) => (
     <>
+      {run.error_message && (
+        <Alert type={run.status === 'error' ? 'error' : 'warning'} showIcon
+          style={{ marginBottom: 12 }} message={run.error_message} />
+      )}
       <Descriptions size="small" column={3} bordered style={{ marginBottom: 12 }}>
         <Descriptions.Item label="Статус">{JOB_STATUS_TAG[run.status]}</Descriptions.Item>
         <Descriptions.Item label="Режим">{run.target_mode_display}</Descriptions.Item>

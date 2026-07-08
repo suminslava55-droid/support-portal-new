@@ -60,6 +60,7 @@ class PcJob(models.Model):
     ok_targets = models.PositiveIntegerField('Успешно', default=0)
     err_targets = models.PositiveIntegerField('Ошибок', default=0)
     cancel_requested = models.BooleanField('Запрошена отмена', default=False)
+    error_message = models.TextField('Сообщение', blank=True)
 
     created_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField('Создано', auto_now_add=True)

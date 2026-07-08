@@ -366,8 +366,10 @@ def run_job(job_id):
 
     if not win_user or not win_pwd:
         job.status = PcJob.STATUS_ERROR
+        job.error_message = ('Не задана УЗ Windows. Заполните её в '
+                             'Настройки → Учётные записи → «УЗ для подключения к ПК аптек».')
         job.finished_at = timezone.now()
-        job.save(update_fields=['status', 'finished_at'])
+        job.save(update_fields=['status', 'error_message', 'finished_at'])
         return
 
     mode = job.target_mode
@@ -418,8 +420,14 @@ def run_job(job_id):
     if not targets:
         job.status = PcJob.STATUS_DONE
         job.progress = 100
+        if want_kassa and not want_server:
+            job.error_message = ('Не найдено ни одной доступной кассы. Проверьте SSH-доступ '
+                                 'к Микротику (Настройки → Учётные записи → SSH) и что кассы '
+                                 'получили DHCP-аренды kassa1..6.')
+        else:
+            job.error_message = 'Нет целей: у выбранных клиентов не определились IP (нет подсети).'
         job.finished_at = timezone.now()
-        job.save(update_fields=['status', 'progress', 'finished_at'])
+        job.save(update_fields=['status', 'progress', 'error_message', 'finished_at'])
         return
 
     local_file = job.file.path if (job.job_type == PcJob.TYPE_COPY and job.file) else None

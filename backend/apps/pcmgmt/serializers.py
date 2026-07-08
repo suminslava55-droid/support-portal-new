@@ -24,7 +24,7 @@ class PcJobListSerializer(serializers.ModelSerializer):
         fields = ['id', 'job_type', 'job_type_display', 'script_kind', 'target_mode',
                   'target_mode_display', 'dest_path', 'filename', 'status', 'status_display',
                   'progress', 'total_targets', 'done_targets', 'ok_targets', 'err_targets',
-                  'created_by_name', 'created_at', 'finished_at']
+                  'error_message', 'created_by_name', 'created_at', 'finished_at']
 
     def get_created_by_name(self, obj):
         return obj.created_by.full_name if obj.created_by else ''
