@@ -87,8 +87,7 @@ class FaqArticleSerializer(serializers.ModelSerializer):
         if not request:
             return False
         user = request.user
-        is_admin = is_admin(user)
-        return is_admin or obj.author_id == user.id
+        return is_admin(user) or obj.author_id == user.id
 
 
 class FaqCategoryViewSet(viewsets.ModelViewSet):
@@ -100,9 +99,7 @@ class FaqCategoryViewSet(viewsets.ModelViewSet):
         return FaqCategory.objects.annotate(articles_count=Count('articles')).order_by('order', 'id')
 
     def destroy(self, request, *args, **kwargs):
-        user = request.user
-        is_admin = is_admin(user)
-        if not is_admin:
+        if not is_admin(request.user):
             return Response({'error': 'Только администратор может удалять категории'}, status=403)
         return super().destroy(request, *args, **kwargs)
 
@@ -160,8 +157,7 @@ class FaqArticleViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         article = self.get_object()
         user = request.user
-        is_admin = is_admin(user)
-        if not is_admin and article.author_id != user.id:
+        if not is_admin(user) and article.author_id != user.id:
             return Response({'error': 'Можно удалять только свои статьи'}, status=403)
         return super().destroy(request, *args, **kwargs)
 
@@ -267,7 +263,7 @@ class FaqFileDeleteView(APIView):
             faq_file = FaqFile.objects.get(pk=file_id)
         except FaqFile.DoesNotExist:
             return Response({'error': 'Файл не найден'}, status=404)
-        if not _is_admin(request.user) and faq_file.uploaded_by_id != request.user.id:
+        if not is_admin(request.user) and faq_file.uploaded_by_id != request.user.id:
             return Response({'error': 'Нет прав для удаления'}, status=403)
         faq_file.file.delete(save=False)
         faq_file.delete()
