@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Tabs, Table, Select, Input, Radio, Button, Modal, Form, message, Tag,
   Typography, Space, Progress, Upload, Alert, Tooltip, Descriptions,
@@ -30,6 +30,96 @@ const TARGET_STATUS_TAG = {
   unreachable: <Tag color="orange">Недоступен</Tag>,
   skipped: <Tag>Пропущено</Tag>,
 };
+
+const TARGET_STATUS_LABEL = {
+  pending: 'Ожидает',
+  running: 'Выполняется',
+  success: 'Успех',
+  error: 'Ошибка',
+  unreachable: 'Недоступен',
+  skipped: 'Пропущено',
+};
+
+// Колонки таблицы целей (не зависят от состояния — на уровне модуля)
+const targetColumns = [
+  { title: 'Адрес', dataIndex: 'client_address', ellipsis: true },
+  { title: 'Роль', dataIndex: 'role', width: 90 },
+  { title: 'IP', dataIndex: 'ip', width: 130 },
+  { title: 'Транспорт', dataIndex: 'transport', width: 100, render: (t) => t ? <Tag>{t}</Tag> : '—' },
+  { title: 'Статус', dataIndex: 'status', width: 120, render: (s) => TARGET_STATUS_TAG[s] || s },
+  { title: 'Код', dataIndex: 'exit_code', width: 70, render: (v) => (v ?? '') === '' ? '—' : v },
+  { title: 'Результат', dataIndex: 'result_message',
+    render: (v) => v ? <Tooltip title={<pre style={{ whiteSpace: 'pre-wrap', maxHeight: 300, overflow: 'auto', margin: 0 }}>{v}</pre>}>
+      <Text code style={{ cursor: 'pointer' }}>{v.split('\n')[0].slice(0, 80) || '(пусто)'}</Text></Tooltip> : '—' },
+];
+
+// ───────────────────────────────────────────────────────────────────────────
+// Тело одного прогона задания + фильтр целей по статусу
+// ───────────────────────────────────────────────────────────────────────────
+function RunPanel({ run }) {
+  const [statusFilter, setStatusFilter] = useState(undefined);
+  const targets = run.targets || [];
+
+  // Доступные статусы с количеством — только те, что реально есть в прогоне
+  const statusOptions = useMemo(() => {
+    const counts = {};
+    targets.forEach((t) => { counts[t.status] = (counts[t.status] || 0) + 1; });
+    return Object.keys(counts).map((s) => ({
+      value: s,
+      label: `${TARGET_STATUS_LABEL[s] || s} (${counts[s]})`,
+    }));
+  }, [targets]);
+
+  const filteredTargets = statusFilter
+    ? targets.filter((t) => t.status === statusFilter)
+    : targets;
+
+  return (
+    <>
+      {run.error_message && (
+        <Alert type={run.status === 'error' ? 'error' : 'warning'} showIcon
+          style={{ marginBottom: 12 }} message={run.error_message} />
+      )}
+      <Descriptions size="small" column={3} bordered style={{ marginBottom: 12 }}>
+        <Descriptions.Item label="Статус">{JOB_STATUS_TAG[run.status]}</Descriptions.Item>
+        <Descriptions.Item label="Режим">{run.target_mode_display}</Descriptions.Item>
+        <Descriptions.Item label="Прогресс">{run.progress}%</Descriptions.Item>
+        <Descriptions.Item label="Всего">{run.total_targets}</Descriptions.Item>
+        <Descriptions.Item label="Успех">{run.ok_targets}</Descriptions.Item>
+        <Descriptions.Item label="Ошибок">{run.err_targets}</Descriptions.Item>
+        <Descriptions.Item label="Кем">{run.created_by_name || '—'}</Descriptions.Item>
+        <Descriptions.Item label="Создано" span={2}>{fmtDate(run.created_at)}</Descriptions.Item>
+      </Descriptions>
+
+      {run.job_type === 'run_script' ? (
+        <div style={{ marginBottom: 12 }}>
+          <Text strong><FileTextOutlined /> Скрипт ({run.script_kind === 'cmd' ? 'cmd' : 'PowerShell'}):</Text>
+          <pre style={{ background: 'rgba(0,0,0,0.04)', padding: 12, borderRadius: 6,
+            maxHeight: 220, overflow: 'auto', margin: '6px 0 0', whiteSpace: 'pre-wrap',
+            fontFamily: 'monospace', fontSize: 13 }}>{run.script_text || '(пусто)'}</pre>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 12 }}>
+          <Text strong><FileTextOutlined /> Копирование файла:</Text>
+          <div style={{ marginTop: 6 }}>
+            <Tag color="blue">{run.filename || 'файл'}</Tag>
+            <Text type="secondary"> → </Text>
+            <Text code>{run.dest_path}</Text>
+          </div>
+        </div>
+      )}
+
+      <Space style={{ marginBottom: 6 }} wrap>
+        <Text strong>Статус:</Text>
+        <Select allowClear size="small" placeholder="Фильтр по статусу" style={{ width: 220 }}
+          value={statusFilter} onChange={setStatusFilter} options={statusOptions} />
+        {statusFilter && <Text type="secondary">Показано: {filteredTargets.length}</Text>}
+      </Space>
+      <Table size="small" rowKey="id" columns={targetColumns} style={{ marginTop: 6 }}
+        dataSource={filteredTargets} pagination={{ pageSize: 50 }} scroll={{ y: 340 }} />
+    </>
+  );
+}
 
 const fmtDate = (s) => (s ? new Date(s).toLocaleString('ru-RU') : '—');
 
@@ -282,60 +372,6 @@ function TasksTab({ selectedIds, targetMode }) {
     ) },
   ];
 
-  const targetColumns = [
-    { title: 'Адрес', dataIndex: 'client_address', ellipsis: true },
-    { title: 'Роль', dataIndex: 'role', width: 90 },
-    { title: 'IP', dataIndex: 'ip', width: 130 },
-    { title: 'Транспорт', dataIndex: 'transport', width: 100, render: (t) => t ? <Tag>{t}</Tag> : '—' },
-    { title: 'Статус', dataIndex: 'status', width: 120, render: (s) => TARGET_STATUS_TAG[s] || s },
-    { title: 'Код', dataIndex: 'exit_code', width: 70, render: (v) => (v ?? '') === '' ? '—' : v },
-    { title: 'Результат', dataIndex: 'result_message',
-      render: (v) => v ? <Tooltip title={<pre style={{ whiteSpace: 'pre-wrap', maxHeight: 300, overflow: 'auto', margin: 0 }}>{v}</pre>}>
-        <Text code style={{ cursor: 'pointer' }}>{v.split('\n')[0].slice(0, 80) || '(пусто)'}</Text></Tooltip> : '—' },
-  ];
-
-  // Тело одного прогона (для вкладок в «Подробно»)
-  const renderRun = (run) => (
-    <>
-      {run.error_message && (
-        <Alert type={run.status === 'error' ? 'error' : 'warning'} showIcon
-          style={{ marginBottom: 12 }} message={run.error_message} />
-      )}
-      <Descriptions size="small" column={3} bordered style={{ marginBottom: 12 }}>
-        <Descriptions.Item label="Статус">{JOB_STATUS_TAG[run.status]}</Descriptions.Item>
-        <Descriptions.Item label="Режим">{run.target_mode_display}</Descriptions.Item>
-        <Descriptions.Item label="Прогресс">{run.progress}%</Descriptions.Item>
-        <Descriptions.Item label="Всего">{run.total_targets}</Descriptions.Item>
-        <Descriptions.Item label="Успех">{run.ok_targets}</Descriptions.Item>
-        <Descriptions.Item label="Ошибок">{run.err_targets}</Descriptions.Item>
-        <Descriptions.Item label="Кем">{run.created_by_name || '—'}</Descriptions.Item>
-        <Descriptions.Item label="Создано" span={2}>{fmtDate(run.created_at)}</Descriptions.Item>
-      </Descriptions>
-
-      {run.job_type === 'run_script' ? (
-        <div style={{ marginBottom: 12 }}>
-          <Text strong><FileTextOutlined /> Скрипт ({run.script_kind === 'cmd' ? 'cmd' : 'PowerShell'}):</Text>
-          <pre style={{ background: 'rgba(0,0,0,0.04)', padding: 12, borderRadius: 6,
-            maxHeight: 220, overflow: 'auto', margin: '6px 0 0', whiteSpace: 'pre-wrap',
-            fontFamily: 'monospace', fontSize: 13 }}>{run.script_text || '(пусто)'}</pre>
-        </div>
-      ) : (
-        <div style={{ marginBottom: 12 }}>
-          <Text strong><FileTextOutlined /> Копирование файла:</Text>
-          <div style={{ marginTop: 6 }}>
-            <Tag color="blue">{run.filename || 'файл'}</Tag>
-            <Text type="secondary"> → </Text>
-            <Text code>{run.dest_path}</Text>
-          </div>
-        </div>
-      )}
-
-      <Text strong>Цели ({(run.targets || []).length}):</Text>
-      <Table size="small" rowKey="id" columns={targetColumns} style={{ marginTop: 6 }}
-        dataSource={run.targets || []} pagination={{ pageSize: 50 }} scroll={{ y: 340 }} />
-    </>
-  );
-
   return (
     <div>
       <Alert
@@ -433,7 +469,7 @@ function TasksTab({ selectedIds, targetMode }) {
       >
         {detail && (() => {
           const runs = (detail.runs && detail.runs.length) ? detail.runs : [detail];
-          if (runs.length <= 1) return renderRun(runs[0]);
+          if (runs.length <= 1) return <RunPanel run={runs[0]} />;
           const activeKey = String(detail.current_run_id ?? runs[runs.length - 1].id);
           return (
             <Tabs
@@ -448,7 +484,7 @@ function TasksTab({ selectedIds, targetMode }) {
                       : <Tag color="success" style={{ marginInlineEnd: 0 }}>{r.ok_targets}/{r.total_targets}</Tag>}
                   </span>
                 ),
-                children: renderRun(r),
+                children: <RunPanel run={r} />,
               }))}
             />
           );

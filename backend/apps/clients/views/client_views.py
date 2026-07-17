@@ -52,11 +52,16 @@ class ClientViewSet(viewsets.ModelViewSet):
         providers_param = self.request.query_params.get('provider', '')
         if providers_param:
             from django.db.models import Q
-            provider_ids = [p.strip() for p in providers_param.split(',') if p.strip().isdigit()]
+            tokens = [p.strip() for p in providers_param.split(',') if p.strip()]
+            provider_ids = [t for t in tokens if t.isdigit()]
+            include_none = 'none' in tokens
+            q = Q()
             if provider_ids:
-                qs = qs.filter(
-                    Q(provider__id__in=provider_ids) | Q(provider2__id__in=provider_ids)
-                )
+                q |= Q(provider__id__in=provider_ids) | Q(provider2__id__in=provider_ids)
+            if include_none:
+                q |= Q(provider__isnull=True) & Q(provider2__isnull=True)
+            if q:
+                qs = qs.filter(q)
         return qs
 
     def get_object_including_draft(self):

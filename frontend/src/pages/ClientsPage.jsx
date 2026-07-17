@@ -434,7 +434,10 @@ export default function ClientsPage() {
           maxTagCount={2}
           value={providerFilter}
           onChange={v => setProviderFilter(v || [])}
-          options={allProviders.map(p => ({ value: p.id, label: p.name }))}
+          options={[
+            { value: 'none', label: 'Без провайдера' },
+            ...allProviders.map(p => ({ value: p.id, label: p.name })),
+          ]}
           filterOption={(input, option) =>
             (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
           }

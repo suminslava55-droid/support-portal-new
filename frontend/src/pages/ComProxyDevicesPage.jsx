@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Typography, Table, Tag, Input, Space, Button, Select, Card,
   Statistic, Row, Col, Modal, message, Tooltip, Popconfirm,
@@ -21,6 +22,25 @@ dayjs.extend(relativeTime);
 dayjs.locale('ru');
 
 const { Title, Text } = Typography;
+
+/* ─── Компараторы для сортировки таблицы устройств ── */
+
+// Строки (с учётом чисел внутри — версии, РНМ), пустые в конец
+const strCmp = (a, b) => (a || '').localeCompare(b || '', 'ru', { numeric: true });
+// Числа, отсутствующие значения — в начало
+const numCmp = (a, b) => (a ?? -1) - (b ?? -1);
+// Даты
+const dateCmp = (a, b) => new Date(a || 0) - new Date(b || 0);
+// Адрес устройства (клиентский, иначе фискальный)
+const addrOf = (r) => r.client_address || r.fiscal_address || '';
+// Ранг состояния смены для сортировки
+const shiftRank = (r) => {
+  const t = r.telemetry;
+  if (!t || !t.shift_status) return 0;
+  if (t.shift_exceeded_24h) return 3;
+  if (t.shift_status === 'OPEN') return 2;
+  return 1;
+};
 
 /* ─── Модалка привязки к ККТ ─────────────────────── */
 
@@ -256,6 +276,7 @@ function DevicesTab() {
   const [search, setSearch] = useState('');
   const [matchedFilter, setMatchedFilter] = useState(undefined);
   const [shiftFilter, setShiftFilter] = useState(undefined);
+  const [companyFilter, setCompanyFilter] = useState(undefined);
   const [matchModal, setMatchModal] = useState({ visible: false, device: null });
   const [selectedUuids, setSelectedUuids] = useState([]);
   const [deployModal, setDeployModal] = useState({ visible: false, uuids: [], all: false });
@@ -292,6 +313,18 @@ function DevicesTab() {
     }
   };
 
+  // Список ЮЛ для фильтра — из загруженных устройств
+  const companyOptions = useMemo(() => {
+    const set = new Set(devices.map((d) => d.client_company).filter(Boolean));
+    return [...set].sort((a, b) => a.localeCompare(b, 'ru')).map((c) => ({ label: c, value: c }));
+  }, [devices]);
+
+  // Отфильтрованный по ЮЛ список для таблицы (сортировка — средствами Table)
+  const displayedDevices = useMemo(
+    () => (companyFilter ? devices.filter((d) => d.client_company === companyFilter) : devices),
+    [devices, companyFilter],
+  );
+
   const columns = [
     {
       title: 'Устройство', dataIndex: 'uuid', width: 110,
@@ -303,34 +336,51 @@ function DevicesTab() {
     },
     {
       title: 'РНМ', dataIndex: 'registry_number', width: 180,
+      sorter: (a, b) => strCmp(a.registry_number, b.registry_number),
       render: (v) => v || <Text type="secondary">—</Text>,
     },
     {
       title: 'Модель', dataIndex: 'kkt_name', width: 140, ellipsis: true,
+      sorter: (a, b) => strCmp(a.kkt_name, b.kkt_name),
       render: (v) => v || '—',
     },
     {
       title: 'Адрес', key: 'address', ellipsis: true,
-      render: (_, r) => r.client_address || r.fiscal_address || <Text type="secondary">—</Text>,
+      sorter: (a, b) => strCmp(addrOf(a), addrOf(b)),
+      render: (_, r) => {
+        const addr = addrOf(r);
+        if (!addr) return <Text type="secondary">—</Text>;
+        if (r.is_matched && r.client_id) {
+          return (
+            <Link to={`/clients/${r.client_id}`} state={{ tab: 'kkt' }}>{addr}</Link>
+          );
+        }
+        return addr;
+      },
     },
     {
       title: 'Компания', dataIndex: 'client_company', width: 150, ellipsis: true,
+      sorter: (a, b) => strCmp(a.client_company, b.client_company),
       render: (v) => v || <Text type="secondary">—</Text>,
     },
     {
       title: 'ComProxy', dataIndex: 'comproxy_version', width: 90,
+      sorter: (a, b) => strCmp(a.comproxy_version, b.comproxy_version),
       render: (v) => v ? <Tag color="blue">{v}</Tag> : '—',
     },
     {
       title: 'Прошивка', dataIndex: 'firmware_version', width: 100,
+      sorter: (a, b) => strCmp(a.firmware_version, b.firmware_version),
       render: (v) => v ? <Tag color="cyan">{v}</Tag> : '—',
     },
     {
       title: 'ФФД', dataIndex: 'ffd_version', width: 60,
+      sorter: (a, b) => strCmp(a.ffd_version, b.ffd_version),
       render: (v) => v || '—',
     },
     {
       title: 'Смена', key: 'shift', width: 120,
+      sorter: (a, b) => shiftRank(a) - shiftRank(b),
       render: (_, r) => {
         const t = r.telemetry;
         if (!t || !t.shift_status) return <Text type="secondary">—</Text>;
@@ -341,6 +391,7 @@ function DevicesTab() {
     },
     {
       title: 'Не отпр. ОФД', key: 'unsent_ofd', width: 100,
+      sorter: (a, b) => numCmp(a.telemetry?.unsent_ofd_count, b.telemetry?.unsent_ofd_count),
       render: (_, r) => {
         const count = r.telemetry?.unsent_ofd_count;
         if (count === undefined || count === null) return <Text type="secondary">—</Text>;
@@ -350,6 +401,7 @@ function DevicesTab() {
     },
     {
       title: 'Последний отклик', dataIndex: 'last_seen_at', width: 140,
+      sorter: (a, b) => dateCmp(a.last_seen_at, b.last_seen_at),
       render: (v) => {
         if (!v) return '—';
         const d = dayjs(v);
@@ -423,6 +475,12 @@ function DevicesTab() {
               { label: 'Привязанные', value: 'true' },
               { label: 'Не привязанные', value: 'false' },
             ]} />
+          <Select placeholder="ЮЛ (компания)" allowClear showSearch style={{ width: 240 }}
+            value={companyFilter} onChange={setCompanyFilter}
+            options={companyOptions}
+            filterOption={(input, option) =>
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            } />
           <Button type={shiftFilter ? 'primary' : 'default'} danger={shiftFilter}
             icon={<WarningOutlined />} onClick={() => setShiftFilter(!shiftFilter)}>
             Смена &gt; 24ч
@@ -437,7 +495,7 @@ function DevicesTab() {
           )}
           <Button icon={<CloudUploadOutlined />}
             onClick={() => setDeployModal({ visible: true, uuids: [], all: true })}>
-            Обновить все
+            Выполнить задание
           </Button>
           <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
             Обновить
@@ -446,7 +504,7 @@ function DevicesTab() {
       </div>
 
       <Table
-        dataSource={devices}
+        dataSource={displayedDevices}
         columns={columns}
         rowKey="uuid"
         loading={loading}
@@ -698,7 +756,7 @@ export default function ComProxyDevicesPage() {
         },
         {
           key: 'tasks',
-          label: 'Задачи',
+          label: 'Результат',
           children: <TasksTab />,
         },
       ]} />
