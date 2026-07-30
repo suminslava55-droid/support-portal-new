@@ -19,13 +19,16 @@ export default function SettingsPage() {
   const [sshForm]  = Form.useForm();
   const [smtpForm] = Form.useForm();
   const [winrmForm] = Form.useForm();
+  const [regimeForm] = Form.useForm();
   const [loading, setLoading]           = useState(true);
   const [savingSsh, setSavingSsh]       = useState(false);
   const [savingSmtp, setSavingSmtp]     = useState(false);
   const [savingWinrm, setSavingWinrm]   = useState(false);
+  const [savingRegime, setSavingRegime] = useState(false);
   const [hasSSHPassword, setHasSSHPassword]   = useState(false);
   const [hasSMTPPassword, setHasSMTPPassword] = useState(false);
   const [hasWinrmPassword, setHasWinrmPassword] = useState(false);
+  const [hasRegimePassword, setHasRegimePassword] = useState(false);
   const [useSsl, setUseSsl]             = useState(true);
   const [useTls, setUseTls]             = useState(false);
   const [testEmailModal, setTestEmailModal] = useState(false);
@@ -77,6 +80,8 @@ export default function SettingsPage() {
         setHasSSHPassword(data.has_ssh_password);
         winrmForm.setFieldsValue({ winrm_user: data.winrm_user });
         setHasWinrmPassword(data.has_winrm_password);
+        regimeForm.setFieldsValue({ regime_user: data.regime_user });
+        setHasRegimePassword(data.has_regime_password);
         smtpForm.setFieldsValue({
           smtp_host:       data.smtp_host,
           smtp_port:       data.smtp_port || 465,
@@ -99,7 +104,7 @@ export default function SettingsPage() {
     };
     load();
     loadPackages();
-  }, [sshForm, smtpForm, winrmForm]); // eslint-disable-line
+  }, [sshForm, smtpForm, winrmForm, regimeForm]); // eslint-disable-line
 
   useEffect(() => {
     loadTasks();
@@ -198,6 +203,29 @@ export default function SettingsPage() {
       setHasWinrmPassword(false);
       winrmForm.setFieldsValue({ winrm_user: '', winrm_password: '' });
       message.success('УЗ Windows очищена');
+    } catch (e) {
+      message.error(e.response?.data?.error || e.response?.data?.detail || 'Ошибка очистки');
+    }
+  };
+
+  const onSaveRegime = async (values) => {
+    setSavingRegime(true);
+    try {
+      const { data } = await settingsAPI.save({ ...values, section: 'regime' });
+      setHasRegimePassword(data.has_regime_password);
+      regimeForm.setFieldsValue({ regime_password: '' });
+      message.success('УЗ Regime сохранена');
+    } catch (e) {
+      message.error(e.response?.data?.error || e.response?.data?.detail || 'Ошибка сохранения');
+    } finally { setSavingRegime(false); }
+  };
+
+  const handleClearRegime = async () => {
+    try {
+      await settingsAPI.clear('regime');
+      setHasRegimePassword(false);
+      regimeForm.setFieldsValue({ regime_user: '', regime_password: '' });
+      message.success('УЗ Regime очищена');
     } catch (e) {
       message.error(e.response?.data?.error || e.response?.data?.detail || 'Ошибка очистки');
     }
@@ -423,15 +451,15 @@ export default function SettingsPage() {
       label: <Space><SettingOutlined />Учётные записи</Space>,
       children: (
         <SettingsAccounts
-          sshForm={sshForm} smtpForm={smtpForm} winrmForm={winrmForm}
-          hasSSHPassword={hasSSHPassword} hasSMTPPassword={hasSMTPPassword} hasWinrmPassword={hasWinrmPassword}
+          sshForm={sshForm} smtpForm={smtpForm} winrmForm={winrmForm} regimeForm={regimeForm}
+          hasSSHPassword={hasSSHPassword} hasSMTPPassword={hasSMTPPassword} hasWinrmPassword={hasWinrmPassword} hasRegimePassword={hasRegimePassword}
           useSsl={useSsl} useTls={useTls}
-          savingSsh={savingSsh} savingSmtp={savingSmtp} savingWinrm={savingWinrm}
+          savingSsh={savingSsh} savingSmtp={savingSmtp} savingWinrm={savingWinrm} savingRegime={savingRegime}
           testEmailModal={testEmailModal} setTestEmailModal={setTestEmailModal}
           testEmail={testEmail} setTestEmail={setTestEmail}
           sendingTest={sendingTest}
-          onSaveSsh={onSaveSsh} onSaveSmtp={onSaveSmtp} onSaveWinrm={onSaveWinrm}
-          handleClearSsh={handleClearSsh} handleClearSmtp={handleClearSmtp} handleClearWinrm={handleClearWinrm}
+          onSaveSsh={onSaveSsh} onSaveSmtp={onSaveSmtp} onSaveWinrm={onSaveWinrm} onSaveRegime={onSaveRegime}
+          handleClearSsh={handleClearSsh} handleClearSmtp={handleClearSmtp} handleClearWinrm={handleClearWinrm} handleClearRegime={handleClearRegime}
           handleSslChange={handleSslChange} handleTlsChange={handleTlsChange}
           handleTestEmail={handleTestEmail}
         />

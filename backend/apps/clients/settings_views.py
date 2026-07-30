@@ -43,6 +43,8 @@ class SystemSettingsView(APIView):
             'has_smtp_password': bool(s.smtp_password_encrypted),
             'winrm_user': s.winrm_user,
             'has_winrm_password': bool(s.winrm_password_encrypted),
+            'regime_user': s.regime_user,
+            'has_regime_password': bool(s.regime_password_encrypted),
             'timezone_offset': s.timezone_offset,
             'allowed_email_domains': s.allowed_email_domains,
         })
@@ -69,6 +71,11 @@ class SystemSettingsView(APIView):
             s.winrm_password_encrypted = ''
             s.save()
             return Response({'message': 'УЗ Windows очищена'})
+        elif section == 'regime':
+            s.regime_user = ''
+            s.regime_password_encrypted = ''
+            s.save()
+            return Response({'message': 'УЗ Regime очищена'})
         else:
             s.ssh_user = ''
             s.ssh_password_encrypted = ''
@@ -114,6 +121,16 @@ class SystemSettingsView(APIView):
             return Response({
                 'winrm_user': s.winrm_user,
                 'has_winrm_password': bool(s.winrm_password_encrypted),
+            })
+        elif section == 'regime':
+            s.regime_user = request.data.get('regime_user', s.regime_user)
+            regime_password = request.data.get('regime_password', '')
+            if regime_password and regime_password != '••••••••':
+                s.set_regime_password(regime_password)
+            s.save()
+            return Response({
+                'regime_user': s.regime_user,
+                'has_regime_password': bool(s.regime_password_encrypted),
             })
         elif section == 'general':
             s.timezone_offset = int(request.data.get('timezone_offset', s.timezone_offset) or 0)

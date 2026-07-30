@@ -77,6 +77,7 @@ class OfdCompany(models.Model):
     name = models.CharField('Название компании', max_length=200)
     inn = models.CharField('ИНН', max_length=12, unique=True)
     ofd_token_encrypted = models.TextField('Токен ОФД (зашифрован)', blank=True)
+    chz_token_encrypted = models.TextField('Токен ЧЗ (зашифрован)', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -94,6 +95,13 @@ class OfdCompany(models.Model):
 
     def set_ofd_token(self, value):
         self.ofd_token_encrypted = encrypt_value(value)
+
+    @property
+    def chz_token(self):
+        return decrypt_value(self.chz_token_encrypted)
+
+    def set_chz_token(self, value):
+        self.chz_token_encrypted = encrypt_value(value)
 
 
 class Client(models.Model):
@@ -324,6 +332,17 @@ class SystemSettings(models.Model):
 
     def set_winrm_password(self, value):
         self.winrm_password_encrypted = encrypt_value(value)
+
+    # УЗ для подключения к Regime (ЛМ ЧЗ) — Basic Auth
+    regime_user = models.CharField('Пользователь Regime', max_length=100, blank=True)
+    regime_password_encrypted = models.TextField('Пароль Regime (зашифрован)', blank=True)
+
+    @property
+    def regime_password(self):
+        return decrypt_value(self.regime_password_encrypted)
+
+    def set_regime_password(self, value):
+        self.regime_password_encrypted = encrypt_value(value)
 
     # Разрешённые домены для отправки экспортов по email.
     # Пустое значение = ограничений нет.

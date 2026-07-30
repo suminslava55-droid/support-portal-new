@@ -49,6 +49,7 @@ export default function OfdCompaniesPage() {
       name: company.name,
       inn: company.inn,
       ofd_token: '',
+      chz_token: '',
     });
     setModalOpen(true);
   };
@@ -63,10 +64,14 @@ export default function OfdCompaniesPage() {
         name: values.name,
         inn: values.inn,
       };
-      // Токен передаём только если он введён
+      // Токены передаём только если они введены
       const token = values.ofd_token;
       if (token && token.trim()) {
         payload.ofd_token = token.trim();
+      }
+      const chzToken = values.chz_token;
+      if (chzToken && chzToken.trim()) {
+        payload.chz_token = chzToken.trim();
       }
       if (editingCompany) {
         await api.patch(`/clients/ofd-companies/${editingCompany.id}/`, payload);
@@ -119,6 +124,15 @@ export default function OfdCompaniesPage() {
       title: 'Токен ОФД',
       dataIndex: 'has_token',
       key: 'has_token',
+      align: 'center',
+      render: (hasToken) => hasToken
+        ? <Tag icon={<CheckCircleOutlined />} color="success">Задан</Tag>
+        : <Tag icon={<CloseCircleOutlined />} color="error">Не задан</Tag>,
+    },
+    {
+      title: 'Токен ЧЗ',
+      dataIndex: 'has_chz_token',
+      key: 'has_chz_token',
       align: 'center',
       render: (hasToken) => hasToken
         ? <Tag icon={<CheckCircleOutlined />} color="success">Задан</Tag>
@@ -224,6 +238,27 @@ export default function OfdCompaniesPage() {
           >
             <Input.Password
               placeholder={editingCompany?.has_token ? '••••••••••••••••' : 'Введите токен ОФД'}
+              autoComplete="new-password"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="chz_token"
+            label={
+              <Space>
+                <KeyOutlined />
+                Токен ЧЗ
+                {editingCompany?.has_chz_token && (
+                  <Tag color="success" style={{ fontSize: 11 }}>уже задан</Tag>
+                )}
+              </Space>
+            }
+            extra={editingCompany?.has_chz_token
+              ? 'Оставьте пустым чтобы не менять текущий токен'
+              : 'Токен «Честного знака» для инициализации ЛМ на сервере аптеки'}
+          >
+            <Input.Password
+              placeholder={editingCompany?.has_chz_token ? '••••••••••••••••' : 'Введите токен ЧЗ'}
               autoComplete="new-password"
             />
           </Form.Item>

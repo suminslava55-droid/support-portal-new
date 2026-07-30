@@ -6,20 +6,21 @@ import {
 import {
   SaveOutlined, EyeInvisibleOutlined, EyeTwoTone,
   SettingOutlined, DeleteOutlined, MailOutlined, SendOutlined, DesktopOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 
 const { Text } = Typography;
 
 export default function SettingsAccounts({
-  sshForm, smtpForm, winrmForm,
-  hasSSHPassword, hasSMTPPassword, hasWinrmPassword,
+  sshForm, smtpForm, winrmForm, regimeForm,
+  hasSSHPassword, hasSMTPPassword, hasWinrmPassword, hasRegimePassword,
   useSsl, useTls,
-  savingSsh, savingSmtp, savingWinrm,
+  savingSsh, savingSmtp, savingWinrm, savingRegime,
   testEmailModal, setTestEmailModal,
   testEmail, setTestEmail,
   sendingTest,
-  onSaveSsh, onSaveSmtp, onSaveWinrm,
-  handleClearSsh, handleClearSmtp, handleClearWinrm,
+  onSaveSsh, onSaveSmtp, onSaveWinrm, onSaveRegime,
+  handleClearSsh, handleClearSmtp, handleClearWinrm, handleClearRegime,
   handleSslChange, handleTlsChange,
   handleTestEmail,
 }) {
@@ -102,6 +103,51 @@ export default function SettingsAccounts({
               title="Очистить УЗ Windows?"
               description="Логин и пароль будут удалены из базы данных"
               onConfirm={handleClearWinrm}
+              okText="Очистить" okType="danger" cancelText="Отмена"
+            >
+              <Button danger icon={<DeleteOutlined />}>Очистить</Button>
+            </Popconfirm>
+          </Space>
+        </Card>
+      </Form>
+
+      {/* УЗ для подключения к Regime (ЛМ ЧЗ) */}
+      <Form form={regimeForm} layout="vertical" onFinish={onSaveRegime}>
+        <Card title={<Space><SafetyCertificateOutlined style={{ color: '#1677ff' }} /><span>УЗ для подключения к Regime</span></Space>}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
+            Basic Auth для инициализации локального модуля «Честный знак» (ЛМ ЧЗ) на серверах аптек
+            (порт 5995, эндпоинт /api/v2/init).
+          </Text>
+          <Form.Item name="regime_user" label="Пользователь Regime">
+            <Input placeholder="admin" autoComplete="off" />
+          </Form.Item>
+          <Form.Item
+            name="regime_password"
+            label={
+              <span>
+                Пароль{' '}
+                {hasRegimePassword && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    (пароль уже задан — введите новый чтобы изменить)
+                  </Text>
+                )}
+              </span>
+            }
+          >
+            <Input.Password
+              placeholder={hasRegimePassword ? '••••••••' : 'Введите пароль'}
+              autoComplete="new-password"
+              iconRender={(v) => (v ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+            />
+          </Form.Item>
+          <Space>
+            <Button type="primary" htmlType="submit" loading={savingRegime} icon={<SaveOutlined />}>
+              Сохранить
+            </Button>
+            <Popconfirm
+              title="Очистить УЗ Regime?"
+              description="Логин и пароль будут удалены из базы данных"
+              onConfirm={handleClearRegime}
               okText="Очистить" okType="danger" cancelText="Отмена"
             >
               <Button danger icon={<DeleteOutlined />}>Очистить</Button>

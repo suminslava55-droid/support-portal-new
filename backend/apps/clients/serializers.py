@@ -44,41 +44,52 @@ class ProviderSerializer(serializers.ModelSerializer):
 
 
 class OfdCompanySerializer(serializers.ModelSerializer):
-    """Сериализатор для списка и отображения (токен не раскрываем)"""
+    """Сериализатор для списка и отображения (токены не раскрываем)"""
     has_token = serializers.SerializerMethodField()
+    has_chz_token = serializers.SerializerMethodField()
 
     class Meta:
         model = OfdCompany
-        fields = ['id', 'name', 'inn', 'has_token', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'inn', 'has_token', 'has_chz_token', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
     def get_has_token(self, obj):
         return bool(obj.ofd_token_encrypted)
 
+    def get_has_chz_token(self, obj):
+        return bool(obj.chz_token_encrypted)
+
 
 class OfdCompanyWriteSerializer(serializers.ModelSerializer):
-    """Сериализатор для создания/редактирования с токеном"""
+    """Сериализатор для создания/редактирования с токенами"""
     ofd_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    chz_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = OfdCompany
-        fields = ['id', 'name', 'inn', 'ofd_token']
+        fields = ['id', 'name', 'inn', 'ofd_token', 'chz_token']
 
     def create(self, validated_data):
         token = validated_data.pop('ofd_token', '')
+        chz_token = validated_data.pop('chz_token', '')
         company = OfdCompany(**validated_data)
         if token:
             company.set_ofd_token(token)
+        if chz_token:
+            company.set_chz_token(chz_token)
         company.save()
         return company
 
     def update(self, instance, validated_data):
         token = validated_data.pop('ofd_token', None)
+        chz_token = validated_data.pop('chz_token', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        # Обновляем токен только если он явно передан и не пустой
+        # Обновляем токены только если они явно переданы и не пустые
         if token:
             instance.set_ofd_token(token)
+        if chz_token:
+            instance.set_chz_token(chz_token)
         instance.save()
         return instance
 
