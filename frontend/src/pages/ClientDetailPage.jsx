@@ -15,6 +15,8 @@ import useAuthStore from '../store/authStore';
 import ClientDetailInfo      from './client-detail/ClientDetailInfo';
 import ClientDetailProviders from './client-detail/ClientDetailProviders';
 import ClientDetailKkt       from './client-detail/ClientDetailKkt';
+import ClientDetailChz       from './client-detail/ClientDetailChz';
+import ChzIcon               from '../components/ChzIcon';
 import { ActivityIcon, getFileIcon, formatSize } from './client-detail/helpers';
 
 const { Title, Text } = Typography;
@@ -254,6 +256,11 @@ export default function ClientDetailPage() {
           deleteKkt={deleteKkt}
         />
       ),
+    },
+    {
+      key: 'chz',
+      label: <span><ChzIcon size={15} style={{ marginRight: 6 }} />ЧЗ</span>,
+      children: <ClientDetailChz clientId={id} />,
     },
   ];
 

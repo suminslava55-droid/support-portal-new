@@ -638,6 +638,113 @@ class KktTsPiotView(APIView):
         })
 
 
+CHZ_PORT = 5995
+
+
+class ClientChzView(APIView):
+    """
+    GET /api/clients/{pk}/chz/
+    Живой опрос локального модуля «Честный знак» (ЛМ ЧЗ) на сервере аптеки
+    (Сервер IP : порт 5995, эндпоинт /api/v2/status). В БД ничего не пишется.
+    Запрос только по требованию: при открытии вкладки и по кнопке «Обновить».
+    """
+    permission_classes = [IsAuthenticated, CanEditClient]
+
+    def get(self, request, pk=None):
+        try:
+            client = Client.objects.get(pk=pk)
+        except Client.DoesNotExist:
+            return Response({'available': False, 'error': 'Клиент не найден'}, status=404)
+
+        server_ip = client.server_ip
+        if not server_ip:
+            return Response({'available': False, 'error': 'Не задана подсеть аптеки (нет Сервер IP)'}, status=400)
+
+        base = f'http://{server_ip}:{CHZ_PORT}/api/v2'
+        try:
+            data = _tspiot_fetch(base, '/status')
+        except Exception as e:
+            return Response({'available': False, 'error': f'ЛМ ЧЗ недоступен ({server_ip}:{CHZ_PORT}): {e}'}, status=502)
+
+        return Response({
+            'available': True,
+            'server_ip': server_ip,
+            'version': data.get('version', ''),
+            'status': data.get('status', ''),
+            'service_url': data.get('serviceUrl', ''),
+            'operation_mode': data.get('operationMode', ''),
+            'last_update': data.get('lastUpdate'),
+            'last_sync': data.get('lastSync'),
+        })
+
+    def post(self, request, pk=None):
+        """
+        Инициализация ЛМ ЧЗ: POST server_ip:5995/api/v2/init
+        Basic Auth — УЗ Regime из настроек системы; тело — токен ЧЗ компании клиента.
+        """
+        import base64
+        import urllib.request
+        import urllib.error
+
+        try:
+            client = Client.objects.get(pk=pk)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=404)
+
+        server_ip = client.server_ip
+        if not server_ip:
+            return Response({'error': 'Не задана подсеть аптеки (нет Сервер IP)'}, status=400)
+
+        if not client.ofd_company:
+            return Response({'error': 'У клиента не выбрана компания'}, status=400)
+
+        token = client.ofd_company.chz_token
+        if not token:
+            return Response({'error': f'У компании «{client.ofd_company.name}» не задан Токен ЧЗ. Укажите его в разделе «Компании».'}, status=400)
+
+        s = SystemSettings.get()
+        if not s.regime_user or not s.regime_password_encrypted:
+            return Response({'error': 'Не заданы УЗ для подключения к Regime. Укажите их в «Настройки → Учётные записи».'}, status=400)
+
+        url = f'http://{server_ip}:{CHZ_PORT}/api/v2/init'
+        body = json.dumps({'token': token}).encode('utf-8')
+        auth = base64.b64encode(f'{s.regime_user}:{s.regime_password}'.encode('utf-8')).decode('ascii')
+        req = urllib.request.Request(url, data=body, method='POST', headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Basic {auth}',
+            'User-Agent': 'support-portal/1.0',
+        })
+
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                raw = r.read().decode('utf-8', errors='replace')
+                code = r.status
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode('utf-8', errors='replace') if hasattr(e, 'read') else ''
+            if e.code in (401, 403):
+                return Response({'error': f'ЛМ ЧЗ отклонил авторизацию (HTTP {e.code}) — проверьте УЗ Regime. {detail[:300]}'}, status=502)
+            return Response({'error': f'ЛМ ЧЗ вернул ошибку HTTP {e.code}: {detail[:300]}'}, status=502)
+        except Exception as e:
+            return Response({'error': f'ЛМ ЧЗ недоступен ({server_ip}:{CHZ_PORT}): {e}'}, status=502)
+
+        try:
+            parsed = json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            parsed = {'raw': raw[:300]}
+
+        ClientActivity.objects.create(
+            client=client, user=request.user,
+            action=f'Инициализация ЛМ ЧЗ\nСервер: {server_ip}:{CHZ_PORT}\nКомпания: {client.ofd_company.name}'
+        )
+
+        return Response({
+            'success': True,
+            'http_status': code,
+            'result': parsed,
+            'message': 'Запрос инициализации отправлен',
+        })
+
+
 class KktListView(APIView):
     """Глобальный список всех ККТ для страницы «Замена ФН»"""
     permission_classes = [IsAuthenticated, CanEditClient]
