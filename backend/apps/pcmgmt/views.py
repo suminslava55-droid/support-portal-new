@@ -87,7 +87,8 @@ class PcJobListCreateView(APIView):
         if not client_ids:
             return Response({'error': 'Не выбрано ни одного клиента'}, status=400)
 
-        job = PcJob(job_type=job_type, target_mode=target_mode, client_ids=client_ids,
+        name = (d.get('name') or '').strip()[:200]
+        job = PcJob(name=name, job_type=job_type, target_mode=target_mode, client_ids=client_ids,
                     created_by=request.user)
 
         if job_type == PcJob.TYPE_SCRIPT:
@@ -165,6 +166,7 @@ class PcJobRepeatView(APIView):
         latest = _chain_jobs(src)[-1]
 
         job = PcJob.objects.create(
+            name=latest.name,
             job_type=latest.job_type,
             script_kind=latest.script_kind,
             script_text=latest.script_text,

@@ -10,7 +10,6 @@ import {
 import { pcMgmtAPI } from '../api';
 
 const { Title, Text, Paragraph } = Typography;
-const { TextArea } = Input;
 
 const MODE_LABEL = { server: 'Сервер', kassa: 'Кассы', both: 'Сервер + кассы' };
 
@@ -54,6 +53,84 @@ const targetColumns = [
 ];
 
 // ───────────────────────────────────────────────────────────────────────────
+// Подсветка синтаксиса PowerShell/cmd — без внешних зависимостей
+// ───────────────────────────────────────────────────────────────────────────
+const CE_COLORS = { cm: '#6a737d', st: '#22863a', va: '#e36209', pa: '#6f42c1', kw: '#d73a49', nu: '#005cc5', la: '#005cc5' };
+const PS_RE = /(<#[\s\S]*?#>|#[^\n]*)|("(?:[^"`]|`[\s\S])*"|'(?:[^']|'')*')|(\$(?:\{[^}]*\}|[A-Za-z_][\w:]*)|\$[$?^])|(-[A-Za-z][A-Za-z0-9]*)|\b(if|elseif|else|switch|foreach|for|while|do|function|filter|workflow|return|try|catch|finally|throw|param|begin|process|end|in|break|continue|class|enum|using|default|exit)\b|\b(\d+(?:\.\d+)?)\b/gi;
+const PS_GRP = ['cm', 'st', 'va', 'pa', 'kw', 'nu'];
+const CMD_RE = /(^[ \t]*(?:rem\b[^\n]*|::[^\n]*))|("[^"\n]*")|(%[^%\n]*%|%%[A-Za-z])|(\/[A-Za-z?]+)|\b(set|echo|if|else|for|goto|call|exit|do|in|not|exist|defined|errorlevel|start|pushd|popd|copy|xcopy|del|move|type|pause|setlocal|endlocal|net|sc|reg|netsh|winrm)\b|(^[ \t]*:[A-Za-z_]\w*)/gim;
+const CMD_GRP = ['cm', 'st', 'va', 'pa', 'kw', 'la'];
+
+const ceEsc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function ceHighlight(code, lang) {
+  const re = lang === 'cmd' ? CMD_RE : PS_RE;
+  const grp = lang === 'cmd' ? CMD_GRP : PS_GRP;
+  re.lastIndex = 0;
+  let out = '', last = 0, m;
+  while ((m = re.exec(code)) !== null) {
+    if (m.index > last) out += ceEsc(code.slice(last, m.index));
+    let cls = 'kw';
+    for (let g = 1; g <= grp.length; g++) if (m[g] != null) { cls = grp[g - 1]; break; }
+    out += `<span style="color:${CE_COLORS[cls]}">${ceEsc(m[0])}</span>`;
+    last = re.lastIndex;
+    if (m.index === re.lastIndex) re.lastIndex++;
+  }
+  out += ceEsc(code.slice(last));
+  return out;
+}
+
+const CE_FONT = { fontFamily: 'Consolas, "Courier New", monospace', fontSize: 13, lineHeight: '1.5', tabSize: 2 };
+// Общий бокс для textarea и <pre> — размеры/шрифт/отступы должны совпадать пиксель-в-пиксель
+const CE_BOX = {
+  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, margin: 0, padding: 10, border: 0,
+  boxSizing: 'border-box', whiteSpace: 'pre', wordWrap: 'normal', overflowWrap: 'normal', ...CE_FONT,
+};
+
+// Редактор кода: прозрачная textarea поверх подсвеченного <pre>. Без переноса строк —
+// длинные строки прокручиваются по горизонтали. Совместим с antd Form (value/onChange).
+function CodeEditor({ value = '', onChange, language = 'powershell', placeholder = '', height = 300 }) {
+  const taRef = useRef(null);
+  const preRef = useRef(null);
+
+  const sync = () => {
+    if (preRef.current && taRef.current) {
+      preRef.current.scrollTop = taRef.current.scrollTop;
+      preRef.current.scrollLeft = taRef.current.scrollLeft;
+    }
+  };
+
+  const html = useMemo(() => {
+    if (!value) return `<span style="color:#bbb">${ceEsc(placeholder)}</span>`;
+    return ceHighlight(value, language) + (value.endsWith('\n') ? '\n' : '');
+  }, [value, language, placeholder]);
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const el = e.target;
+      const s = el.selectionStart, en = el.selectionEnd;
+      onChange && onChange(value.slice(0, s) + '  ' + value.slice(en));
+      requestAnimationFrame(() => { try { el.selectionStart = el.selectionEnd = s + 2; } catch { /* ignore */ } });
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', height, minHeight: 140, resize: 'vertical', overflow: 'hidden',
+      border: '1px solid #d9d9d9', borderRadius: 6, background: '#fff' }}>
+      <pre ref={preRef} aria-hidden="true"
+        style={{ ...CE_BOX, overflow: 'hidden', color: '#24292e', pointerEvents: 'none' }}
+        dangerouslySetInnerHTML={{ __html: html }} />
+      <textarea ref={taRef} value={value} spellCheck={false} wrap="off"
+        onChange={(e) => onChange && onChange(e.target.value)}
+        onScroll={sync} onKeyDown={onKeyDown}
+        style={{ ...CE_BOX, overflow: 'auto', resize: 'none', outline: 'none',
+          background: 'transparent', color: 'transparent', caretColor: '#24292e' }} />
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Тело одного прогона задания + фильтр целей по статусу
 // ───────────────────────────────────────────────────────────────────────────
 function RunPanel({ run }) {
@@ -95,8 +172,9 @@ function RunPanel({ run }) {
         <div style={{ marginBottom: 12 }}>
           <Text strong><FileTextOutlined /> Скрипт ({run.script_kind === 'cmd' ? 'cmd' : 'PowerShell'}):</Text>
           <pre style={{ background: 'rgba(0,0,0,0.04)', padding: 12, borderRadius: 6,
-            maxHeight: 220, overflow: 'auto', margin: '6px 0 0', whiteSpace: 'pre-wrap',
-            fontFamily: 'monospace', fontSize: 13 }}>{run.script_text || '(пусто)'}</pre>
+            maxHeight: 260, overflow: 'auto', margin: '6px 0 0', whiteSpace: 'pre',
+            fontFamily: 'Consolas, "Courier New", monospace', fontSize: 13, lineHeight: 1.5 }}
+            dangerouslySetInnerHTML={{ __html: ceHighlight(run.script_text || '(пусто)', run.script_kind === 'cmd' ? 'cmd' : 'powershell') }} />
         </div>
       ) : (
         <div style={{ marginBottom: 12 }}>
@@ -126,7 +204,7 @@ const fmtDate = (s) => (s ? new Date(s).toLocaleString('ru-RU') : '—');
 // ───────────────────────────────────────────────────────────────────────────
 // Вкладка «Клиенты» — выбор аптек + режим цели (хранится в родителе)
 // ───────────────────────────────────────────────────────────────────────────
-function ClientsTab({ selectedIds, setSelectedIds, targetMode, setTargetMode }) {
+function ClientsTab({ selectedIds, setSelectedIds, targetMode, setTargetMode, onNewTask }) {
   const [clients, setClients] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [companyFilter, setCompanyFilter] = useState(undefined);
@@ -182,6 +260,11 @@ function ClientsTab({ selectedIds, setSelectedIds, targetMode, setTargetMode }) 
       </Space>
 
       <Space style={{ marginBottom: 8 }} wrap>
+        {selectedIds.length > 0 && (
+          <Button size="small" type="primary" icon={<PlusOutlined />} onClick={onNewTask}>
+            Новое задание ({selectedIds.length})
+          </Button>
+        )}
         <Button size="small" type="primary" ghost
           onClick={() => setSelectedIds(clients.map((c) => c.id))}>
           Выбрать всех ({clients.length})
@@ -219,13 +302,14 @@ function ClientsTab({ selectedIds, setSelectedIds, targetMode, setTargetMode }) 
 // ───────────────────────────────────────────────────────────────────────────
 // Вкладка «Задания» — запуск + история + live-статус + drill-in
 // ───────────────────────────────────────────────────────────────────────────
-function TasksTab({ selectedIds, targetMode }) {
+function TasksTab({ selectedIds, targetMode, openCreateSignal }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
   const jobType = Form.useWatch('job_type', form) || 'run_script';
+  const scriptKind = Form.useWatch('script_kind', form) || 'powershell';
   const [file, setFile] = useState(null);
   const [detail, setDetail] = useState(null);
   const pollRef = useRef(null);
@@ -253,6 +337,11 @@ function TasksTab({ selectedIds, targetMode }) {
     const t = setInterval(fetchJobs, 2500);
     return () => clearInterval(t);
   }, [jobs, fetchJobs]);
+
+  // Открытие формы создания по сигналу с вкладки «Клиенты»
+  useEffect(() => {
+    if (openCreateSignal) { setFile(null); setOpen(true); }
+  }, [openCreateSignal]);
 
   // Загрузка скрипта из файла в поле ввода
   const loadScriptFromFile = async (f) => {
@@ -282,6 +371,7 @@ function TasksTab({ selectedIds, targetMode }) {
         setSubmitting(true);
         try {
           const fd = new FormData();
+          fd.append('name', (values.name || '').trim());
           fd.append('job_type', values.job_type);
           fd.append('target_mode', targetMode);
           fd.append('client_ids', JSON.stringify(selectedIds));
@@ -351,6 +441,8 @@ function TasksTab({ selectedIds, targetMode }) {
 
   const columns = [
     { title: '#', dataIndex: 'id', width: 60 },
+    { title: 'Название', dataIndex: 'name', width: 220, ellipsis: true,
+      render: (v) => v ? <Text strong>{v}</Text> : <Text type="secondary">—</Text> },
     { title: 'Тип', dataIndex: 'job_type_display', width: 150 },
     { title: 'Режим', dataIndex: 'target_mode_display', width: 130 },
     { title: 'Статус', dataIndex: 'status', width: 130, render: (s) => JOB_STATUS_TAG[s] || s },
@@ -389,7 +481,7 @@ function TasksTab({ selectedIds, targetMode }) {
       </Space>
 
       <Table size="small" rowKey="id" loading={loading} columns={columns} dataSource={jobs}
-        pagination={{ pageSize: 20 }} scroll={{ x: 1150 }} />
+        pagination={{ pageSize: 20 }} scroll={{ x: 1370 }} />
 
       {/* Модалка создания */}
       <Modal
@@ -399,10 +491,13 @@ function TasksTab({ selectedIds, targetMode }) {
         onOk={submit}
         okText="Запустить"
         okButtonProps={{ loading: submitting, icon: <PlayCircleOutlined /> }}
-        width={680}
+        width={900}
         destroyOnClose
       >
         <Form form={form} layout="vertical" initialValues={{ job_type: 'run_script', script_kind: 'powershell' }}>
+          <Form.Item name="name" label="Название задания">
+            <Input placeholder="Напр. «Открыть порты SMB/WinRM на кассах»" maxLength={200} allowClear />
+          </Form.Item>
           <Form.Item name="job_type" label="Тип задания">
             <Select options={[
               { value: 'run_script', label: 'Выполнить скрипт' },
@@ -432,7 +527,7 @@ function TasksTab({ selectedIds, targetMode }) {
               >
                 <Form.Item name="script_text" noStyle
                   rules={[{ required: true, message: 'Введите скрипт или загрузите из файла' }]}>
-                  <TextArea rows={10} placeholder="hostname" style={{ fontFamily: 'monospace' }} />
+                  <CodeEditor language={scriptKind} placeholder="hostname" />
                 </Form.Item>
               </Form.Item>
             </>
@@ -456,7 +551,7 @@ function TasksTab({ selectedIds, targetMode }) {
 
       {/* Модалка «Подробно» — параметры задания + цели */}
       <Modal
-        title={detail ? `Задание #${detail.id} — ${detail.job_type_display}` : ''}
+        title={detail ? `Задание #${detail.id}${detail.name ? ` — ${detail.name}` : ''} — ${detail.job_type_display}` : ''}
         open={!!detail}
         onCancel={closeDetail}
         footer={detail ? [
@@ -498,16 +593,24 @@ function TasksTab({ selectedIds, targetMode }) {
 export default function PcManagementPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [targetMode, setTargetMode] = useState('server');
+  const [activeTab, setActiveTab] = useState('clients');
+  const [createSignal, setCreateSignal] = useState(0);
+
+  // С вкладки «Клиенты»: перейти на «Задания» и сразу открыть форму создания
+  const goCreateTask = () => {
+    setActiveTab('tasks');
+    setCreateSignal((n) => n + 1);
+  };
 
   const items = [
     {
       key: 'clients', label: 'Клиенты',
       children: <ClientsTab selectedIds={selectedIds} setSelectedIds={setSelectedIds}
-        targetMode={targetMode} setTargetMode={setTargetMode} />,
+        targetMode={targetMode} setTargetMode={setTargetMode} onNewTask={goCreateTask} />,
     },
     {
       key: 'tasks', label: 'Задания',
-      children: <TasksTab selectedIds={selectedIds} targetMode={targetMode} />,
+      children: <TasksTab selectedIds={selectedIds} targetMode={targetMode} openCreateSignal={createSignal} />,
     },
   ];
 
@@ -517,7 +620,7 @@ export default function PcManagementPage() {
       <Paragraph type="secondary">
         Удалённое выполнение PowerShell/cmd-скриптов и копирование файлов на серверы и кассы аптек.
       </Paragraph>
-      <Tabs defaultActiveKey="clients" items={items} />
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} />
     </div>
   );
 }

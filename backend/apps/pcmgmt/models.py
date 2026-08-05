@@ -45,6 +45,7 @@ class PcJob(models.Model):
         (STATUS_ERROR, 'Ошибка'),
     ]
 
+    name = models.CharField('Название', max_length=200, blank=True)
     job_type = models.CharField('Тип', max_length=20, choices=TYPE_CHOICES)
     script_kind = models.CharField('Вид скрипта', max_length=20, choices=KIND_CHOICES, blank=True)
     script_text = models.TextField('Текст скрипта', blank=True)

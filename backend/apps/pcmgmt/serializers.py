@@ -21,7 +21,7 @@ class PcJobListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PcJob
-        fields = ['id', 'job_type', 'job_type_display', 'script_kind', 'target_mode',
+        fields = ['id', 'name', 'job_type', 'job_type_display', 'script_kind', 'target_mode',
                   'target_mode_display', 'dest_path', 'filename', 'status', 'status_display',
                   'progress', 'total_targets', 'done_targets', 'ok_targets', 'err_targets',
                   'error_message', 'created_by_name', 'created_at', 'finished_at']
