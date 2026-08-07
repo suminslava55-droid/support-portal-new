@@ -23,6 +23,7 @@ from .kkt_views import (
     OfdKktView,
     KktTsPiotView,
     ClientChzView,
+    ClientChzRestartView,
     KktListView,
     KktExportView,
 )

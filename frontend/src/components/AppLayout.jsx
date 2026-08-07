@@ -60,7 +60,7 @@ export default function AppLayout({ children }) {
     ...(!isCommunications ? [{ key: '/calendar', icon: <CalendarOutlined />, label: 'Календарь' }] : []),
     { key: '/faq', icon: <BookOutlined />, label: 'База знаний' },
     ...(isAdminOrSysadmin ? [{ key: '/comproxy', icon: <ApiOutlined />, label: 'ComProxy' }] : []),
-    ...(isAdmin ? [{ key: '/pc-management', icon: <DesktopOutlined />, label: 'Управление ПК аптек' }] : []),
+    ...(isAdminOrSysadmin ? [{ key: '/pc-management', icon: <DesktopOutlined />, label: 'Управление ПК аптек' }] : []),
     ...(isAdmin ? [{ key: '/users', icon: <UserOutlined />, label: 'Пользователи' }] : []),
     ...(isAdmin ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Настройки' }] : []),
   ];

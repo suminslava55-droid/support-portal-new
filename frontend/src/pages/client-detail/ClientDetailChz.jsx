@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Descriptions, Tag, Button, Space, Typography, Spin, Alert, Tooltip, Popconfirm, message } from 'antd';
-import { ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { ReloadOutlined, ThunderboltOutlined, RedoOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
@@ -95,9 +95,10 @@ function SyncHealth({ status, lastSync }) {
   );
 }
 
-export default function ClientDetailChz({ clientId }) {
+export default function ClientDetailChz({ clientId, canRestart }) {
   const [loading, setLoading]           = useState(false);
   const [initializing, setInitializing] = useState(false);
+  const [restarting, setRestarting]     = useState(false);
   const [data, setData]                 = useState(null);
   const [error, setError]               = useState('');
 
@@ -131,6 +132,23 @@ export default function ClientDetailChz({ clientId }) {
     }
   };
 
+  const doRestart = async () => {
+    setRestarting(true);
+    try {
+      const res = await api.post(`/clients/${clientId}/chz/restart/`);
+      message.success(res.data?.message || 'Задание на перезагрузку службы ЧЗ создано', 6);
+    } catch (e) {
+      message.error(e?.response?.data?.error || 'Ошибка запуска перезагрузки', 6);
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  // Проблема с ЧЗ: ЛМ недоступен (ошибка запроса) или статус не «ready».
+  // Кнопку перезагрузки показываем только при проблеме и только тем, кто может (админы).
+  const hasProblem = !!error || (!!data && data.status !== 'ready');
+  const showRestart = canRestart && hasProblem;
+
   const st   = data ? (STATUS_MAP[data.status] || { label: data.status || '—', color: 'default' }) : null;
   const mode = data ? (MODE_MAP[data.operation_mode] || { label: data.operation_mode || '—', color: 'default' }) : null;
 
@@ -144,6 +162,20 @@ export default function ClientDetailChz({ clientId }) {
       }
       extra={
         <Space>
+          {showRestart && (
+            <Popconfirm
+              title="Перезагрузить службу ЧЗ на сервере аптеки?"
+              description="Служба regime (и yenisei) будет остановлена и запущена заново на сервере аптеки через «Управление ПК аптек». Займёт ~40–60 секунд."
+              onConfirm={doRestart}
+              okText="Перезагрузить"
+              cancelText="Отмена"
+              okButtonProps={{ danger: true, loading: restarting }}
+            >
+              <Button danger icon={<RedoOutlined />} loading={restarting}>
+                Перезагрузить службу ЧЗ
+              </Button>
+            </Popconfirm>
+          )}
           <Popconfirm
             title="Инициализировать ЛМ ЧЗ?"
             description="На сервер аптеки будет отправлена команда для инициализации локального модуля."

@@ -26,6 +26,8 @@ export default function ClientDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const permissions = useAuthStore((s) => s.permissions);
+  const user = useAuthStore((s) => s.user);
+  const canRemoteMgmt = !!user && (user.is_superuser || ['admin', 'sysadmin'].includes(user.role_data?.name));
 
   const [client, setClient]           = useState(null);
   const [loading, setLoading]         = useState(true);
@@ -260,7 +262,7 @@ export default function ClientDetailPage() {
     {
       key: 'chz',
       label: <span><ChzIcon size={15} style={{ marginRight: 6 }} />ЧЗ</span>,
-      children: <ClientDetailChz clientId={id} />,
+      children: <ClientDetailChz clientId={id} canRestart={canRemoteMgmt} />,
     },
   ];
 

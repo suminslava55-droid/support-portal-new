@@ -15,7 +15,7 @@ from ..serializers import (
     ClientNoteSerializer, CustomFieldDefinitionSerializer, ProviderSerializer, ClientFileSerializer,
     DutyScheduleSerializer, CustomHolidaySerializer, OfdCompanySerializer, OfdCompanyWriteSerializer,
 )
-from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin
+from apps.accounts.permissions import CanEditClient, CanManageCustomFields, IsAdmin, IsAdminOrSysadmin
 from .utils import ping_ip, build_change_log, FIELD_LABELS, STATUS_LABELS
 
 
@@ -742,6 +742,110 @@ class ClientChzView(APIView):
             'http_status': code,
             'result': parsed,
             'message': 'Запрос инициализации отправлен',
+        })
+
+
+# PowerShell перезагрузки службы ЧЗ на сервере аптеки (PS 2.0 / Win7-совместимо).
+# Порядок: стоп regime → стоп yenisei (принудительно если зависли) → пауза 30с →
+# старт regime (yenisei поднимается как зависимость; на всякий случай стартуем и её).
+CHZ_RESTART_PS = r'''$ErrorActionPreference = 'Continue'
+
+function Stop-Svc([string]$name) {
+  $s = Get-Service -Name $name -ErrorAction SilentlyContinue
+  if (-not $s) { Write-Output ("[{0}] service not found" -f $name); return }
+  if ($s.Status -eq 'Stopped') { Write-Output ("[{0}] already stopped" -f $name); return }
+  Write-Output ("[{0}] stopping..." -f $name)
+  Stop-Service -Name $name -Force -ErrorAction SilentlyContinue
+  for ($i = 0; $i -lt 15; $i++) {
+    Start-Sleep -Seconds 1
+    $s.Refresh()
+    if ($s.Status -eq 'Stopped') { break }
+  }
+  $s.Refresh()
+  if ($s.Status -ne 'Stopped') {
+    Write-Output ("[{0}] hung - killing process" -f $name)
+    $w = Get-WmiObject Win32_Service -Filter ("Name='{0}'" -f $name) -ErrorAction SilentlyContinue
+    if ($w -and $w.ProcessId -gt 0) { Stop-Process -Id $w.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+    $s.Refresh()
+  }
+  Write-Output ("[{0}] status: {1}" -f $name, $s.Status)
+}
+
+# 1) Stop regime, then yenisei
+Stop-Svc 'regime'
+Stop-Svc 'yenisei'
+
+# 2) Wait 30 seconds
+Write-Output 'Pause 30 sec...'
+Start-Sleep -Seconds 30
+
+# 3) Start regime (yenisei starts as dependency)
+Write-Output 'Starting regime...'
+Start-Service -Name 'regime' -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 5
+
+# Safety: if yenisei did not autostart - start it explicitly
+$y = Get-Service -Name 'yenisei' -ErrorAction SilentlyContinue
+if ($y -and $y.Status -ne 'Running') {
+  Write-Output 'yenisei did not autostart - starting explicitly'
+  Start-Service -Name 'yenisei' -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 3
+}
+
+$r = Get-Service -Name 'regime' -ErrorAction SilentlyContinue
+$y = Get-Service -Name 'yenisei' -ErrorAction SilentlyContinue
+$rs = 'no service'; if ($r) { $rs = "$($r.Status)" }
+$ys = 'no service'; if ($y) { $ys = "$($y.Status)" }
+Write-Output ("RESULT: regime = {0}, yenisei = {1}" -f $rs, $ys)
+'''
+
+
+class ClientChzRestartView(APIView):
+    """
+    POST /api/clients/{pk}/chz/restart/
+    Удалённая перезагрузка службы ЧЗ (regime/yenisei) на сервере аптеки —
+    создаёт задание pcmgmt (PowerShell, режим «сервер»), которое идёт по WinRM/WMI.
+    Для администраторов и системных администраторов (как и «Управление ПК аптек»).
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrSysadmin]
+
+    def post(self, request, pk=None):
+        import threading
+        from apps.pcmgmt.models import PcJob
+        from apps.pcmgmt import executor
+
+        try:
+            client = Client.objects.get(pk=pk)
+        except Client.DoesNotExist:
+            return Response({'error': 'Клиент не найден'}, status=404)
+
+        if not client.server_ip:
+            return Response({'error': 'Не задана подсеть аптеки (нет Сервер IP)'}, status=400)
+
+        addr = client.address or f'клиент #{client.id}'
+        job = PcJob(
+            name=f'Перезагрузка службы ЧЗ — {addr}',
+            job_type=PcJob.TYPE_SCRIPT,
+            script_kind=PcJob.KIND_PS,
+            script_text=CHZ_RESTART_PS,
+            target_mode=PcJob.MODE_SERVER,
+            client_ids=[client.id],
+            created_by=request.user,
+        )
+        job.save()
+
+        ClientActivity.objects.create(
+            client=client, user=request.user,
+            action=f'Перезагрузка службы ЧЗ (regime/yenisei)\nСервер: {client.server_ip}\nЗадание ПК аптек: #{job.id}'
+        )
+
+        threading.Thread(target=executor.run_job, args=(job.id,), daemon=True).start()
+
+        return Response({
+            'success': True,
+            'job_id': job.id,
+            'message': f'Задание на перезагрузку службы ЧЗ создано (№{job.id}). Ход выполнения — в разделе «Управление ПК аптек».',
         })
 
 

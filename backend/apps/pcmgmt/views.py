@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdminOrSysadmin
 from apps.clients.models import Client
 from .models import PcJob, PcJobTarget
 from .serializers import PcJobListSerializer, PcJobDetailSerializer
@@ -33,7 +33,7 @@ def _chain_jobs(job):
 
 class PcClientsView(APIView):
     """Лёгкий список клиентов для выбора целей (адрес, компания, IP сервера)."""
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated, IsAdminOrSysadmin]
 
     def get(self, request):
         qs = (Client.objects.filter(is_draft=False)
@@ -58,7 +58,7 @@ class PcClientsView(APIView):
 
 
 class PcJobListCreateView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated, IsAdminOrSysadmin]
 
     def get(self, request):
         qs = PcJob.objects.select_related('created_by').all()[:200]
@@ -123,7 +123,7 @@ class PcJobListCreateView(APIView):
 
 
 class PcJobDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated, IsAdminOrSysadmin]
 
     def get(self, request, pk):
         try:
@@ -138,7 +138,7 @@ class PcJobDetailView(APIView):
 
 
 class PcJobCancelView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated, IsAdminOrSysadmin]
 
     def post(self, request, pk):
         try:
@@ -153,7 +153,7 @@ class PcJobCancelView(APIView):
 
 class PcJobRepeatView(APIView):
     """Повторный запуск задания с теми же параметрами."""
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated, IsAdminOrSysadmin]
 
     def post(self, request, pk):
         try:

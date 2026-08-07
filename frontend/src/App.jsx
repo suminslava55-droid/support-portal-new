@@ -156,7 +156,7 @@ export default function App() {
             <Route path="/fn-replacement" element={<RequireAuth><FnReplacementPage /></RequireAuth>} />
             <Route path="/faq" element={<RequireAuth><FaqPage /></RequireAuth>} />
             <Route path="/comproxy" element={<RequireAuth><RequireAdminOrSysadmin><ComProxyDevicesPage /></RequireAdminOrSysadmin></RequireAuth>} />
-            <Route path="/pc-management" element={<RequireAuth><RequireAdmin><PcManagementPage /></RequireAdmin></RequireAuth>} />
+            <Route path="/pc-management" element={<RequireAuth><RequireAdminOrSysadmin><PcManagementPage /></RequireAdminOrSysadmin></RequireAuth>} />
             <Route path="/settings" element={<RequireAuth><RequireAdmin><SettingsPage /></RequireAdmin></RequireAuth>} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
