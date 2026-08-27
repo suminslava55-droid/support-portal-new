@@ -1,3 +1,5 @@
+import html
+import re
 import bleach
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -90,9 +92,31 @@ class FaqArticleSerializer(serializers.ModelSerializer):
         return is_admin(user) or obj.author_id == user.id
 
 
+class FaqArticleListSerializer(FaqArticleSerializer):
+    """Облегчённый сериализатор для списка статей.
+
+    Вместо полного HTML (в импортированных из .docx статьях это сотни килобайт
+    из-за картинок в base64) отдаёт только короткое текстовое превью. Полный
+    текст фронтенд запрашивает при открытии конкретной статьи.
+    """
+    excerpt = serializers.SerializerMethodField()
+
+    class Meta(FaqArticleSerializer.Meta):
+        fields = [f for f in FaqArticleSerializer.Meta.fields if f != 'content'] + ['excerpt']
+
+    def get_excerpt(self, obj):
+        raw = obj.content or ''
+        # Картинки убираем первыми: у base64-вставок тело тега весит сотни КБ
+        raw = re.sub(r'<(img|svg)\b[^>]*>', ' ', raw, flags=re.IGNORECASE)
+        text = re.sub(r'<[^>]*>', ' ', raw[:5000])
+        text = html.unescape(text)
+        return re.sub(r'\s+', ' ', text).strip()[:200]
+
+
 class FaqCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = FaqCategorySerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None  # Отключаем пагинацию — в базе знаний нужны все категории
 
     def get_queryset(self):
         from django.db.models import Count
@@ -107,6 +131,13 @@ class FaqCategoryViewSet(viewsets.ModelViewSet):
 class FaqArticleViewSet(viewsets.ModelViewSet):
     serializer_class = FaqArticleSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None  # Отключаем пагинацию — список статей категории показывается целиком
+
+    def get_serializer_class(self):
+        # В списке — без полного HTML, только превью (см. FaqArticleListSerializer)
+        if self.action == 'list':
+            return FaqArticleListSerializer
+        return FaqArticleSerializer
 
     def get_queryset(self):
         qs = FaqArticle.objects.select_related('author', 'category')

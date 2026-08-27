@@ -643,6 +643,7 @@ export default function FaqPage() {
   const [loading, setLoading]           = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedArticle, setSelectedArticle]   = useState(null);
+  const [articleLoading, setArticleLoading]     = useState(false);
   const [editing, setEditing]           = useState(false);
   const [editingArticle, setEditingArticle]     = useState(null);
   const [search, setSearch]             = useState('');
@@ -667,6 +668,19 @@ export default function FaqPage() {
       const { data } = await api.get('/clients/faq-articles/', { params });
       setArticles(data.results || data);
     } finally { setLoading(false); }
+  };
+
+  // В списке приходит только превью — полный текст статьи догружаем при открытии
+  const openArticle = async id => {
+    setSearchParams({ article: id });
+    setArticleLoading(true);
+    try {
+      const { data } = await api.get(`/clients/faq-articles/${id}/`);
+      setSelectedArticle(data);
+    } catch {
+      message.error('Ошибка загрузки статьи');
+      setSearchParams({});
+    } finally { setArticleLoading(false); }
   };
 
   useEffect(() => {
@@ -701,7 +715,12 @@ export default function FaqPage() {
 
   const handleSelectCategory = id => { setSelectedCategory(id); setSearch(''); setSelectedArticle(null); loadArticles(id, ''); };
   const handleShowAll = () => { setSelectedCategory(null); setSearch(''); setSelectedArticle(null); loadArticles(null, ''); };
-  const handleSaveArticle = () => { setEditing(false); setEditingArticle(null); loadArticles(selectedCategory, search); loadCategories(); };
+  const handleSaveArticle = () => {
+    setEditing(false); setEditingArticle(null);
+    loadArticles(selectedCategory, search); loadCategories();
+    // Открытая статья могла измениться — перечитываем, иначе показывался бы старый текст
+    if (selectedArticle) openArticle(selectedArticle.id);
+  };
 
   const handleDeleteArticle = async id => {
     try {
@@ -788,7 +807,9 @@ export default function FaqPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Input prefix={<SearchOutlined />} placeholder="Поиск по статьям..." allowClear value={search} onChange={e => handleSearch(e.target.value)} />
 
-          {selectedArticle ? (
+          {articleLoading ? (
+            <div style={{ ...cardStyle, textAlign: 'center', padding: 60 }}><Spin /></div>
+          ) : selectedArticle ? (
             <div style={{ ...cardStyle, padding: 24 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
                 <div>
@@ -902,7 +923,7 @@ export default function FaqPage() {
                 <Empty description="Статей нет. Нажмите «Новая статья» чтобы добавить." style={{ padding: 60 }} />
               ) : (
                 articles.map((art, i) => (
-                  <div key={art.id} role="button" tabIndex={0} onClick={() => { setSelectedArticle(art); setSearchParams({ article: art.id }); }} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (setSelectedArticle(art), setSearchParams({ article: art.id }))} aria-label={art.title} style={{ padding: '14px 20px', cursor: 'pointer', borderBottom: i < articles.length - 1 ? `0.5px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` : 'none' }}
+                  <div key={art.id} role="button" tabIndex={0} onClick={() => openArticle(art.id)} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && openArticle(art.id)} aria-label={art.title} style={{ padding: '14px 20px', cursor: 'pointer', borderBottom: i < articles.length - 1 ? `0.5px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` : 'none' }}
                     onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : '#f5f5f5'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
@@ -916,7 +937,7 @@ export default function FaqPage() {
                         {(!selectedCategory || search) && <Tag style={{ margin: 0, fontSize: 10 }}>{categories.find(c => c.id === art.category)?.name}</Tag>}
                       </div>
                     </div>
-                    {art.content && <div style={{ fontSize: 12, color: '#888', marginTop: 4, marginLeft: 22, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>{art.content.replace(/<[^>]+>/g, '').substring(0, 120)}</div>}
+                    {art.excerpt && <div style={{ fontSize: 12, color: '#888', marginTop: 4, marginLeft: 22, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>{art.excerpt.substring(0, 120)}</div>}
                   </div>
                 ))
               )}
