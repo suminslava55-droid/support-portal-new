@@ -117,7 +117,7 @@ COMPROXY_HUB_PASSWORD=Dms6RcU62YhFxKLPKdwYjQBqaZU7V4Wv
 - **Ограничение типов файлов FAQ** (B-3) — allowlist безопасных расширений; nginx отдаёт вложения только как `attachment` (no inline HTML/SVG)
 - **RCE через task_id** (B-4) — allowlist разрешённых task_id в планировщике, hardening `cron_manager.sh` (strip `\n`)
 - **Bypass rate-limit** (B-5) — nginx передаёт `X-Forwarded-For: $remote_addr` (реальный IP), брутфорс невозможен
-- **nginx/default.conf в git** (B-6) — добавлен `location /static/`, nginx стартует после `git clone`
+- **Шаблон конфига nginx в git** (B-6) — добавлен `nginx/default.conf.example` (с `location /static/` и блоком HTTPS); сам `nginx/default.conf` остаётся в `.gitignore` и создаётся из шаблона на каждом сервере, см. INSTALL.md §7
 - **Транзакция в restore backup** (B-7) — `TRUNCATE + loaddata` в `transaction.atomic()`; БД не остаётся пустой при сбое
 - **Транзакция в bulk-импорте** (B-8) — все клиенты создаются атомарно или ни одного
 - **pg_trgm через миграцию** (B-9) — миграции 0034 (GIN-индексы), fuzzy-поиск надёжен

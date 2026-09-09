@@ -433,6 +433,175 @@ IP касс берутся онлайн у Микротика по SSH в мом
 
 ---
 
+## Проблемы с HTTPS и SSL-сертификатом
+
+### Где лежит сертификат и где он прописан
+
+| Что | Где |
+|-----|-----|
+| Файлы | `/opt/support-portal/nginx/certs/` — `root:service 750`, **не в git** |
+| Монтирование | `./nginx/certs:/etc/nginx/certs:ro` в `docker-compose.yml` |
+| Конфиг | `nginx/default.conf` → `ssl_certificate /etc/nginx/certs/fullchain.crt` |
+| Веб-сервер | только в Docker; системного nginx на хосте нет (`systemctl is-active nginx` → `inactive`) |
+
+Быстрая диагностика:
+
+```bash
+cd /opt/support-portal
+grep -n -i -E "listen|server_name|ssl_certificate" nginx/default.conf
+openssl x509 -in nginx/certs/fullchain.crt -noout -subject -issuer -dates
+echo | openssl s_client -connect 127.0.0.1:443 -servername ВАШ_ДОМЕН 2>/dev/null \
+  | openssl x509 -noout -dates
+```
+
+Если даты в файле и на порту 443 разные — nginx не перечитал конфиг (см. ниже).
+
+### Браузер: «Срок действия сертификата истёк» / NET::ERR_CERT_DATE_INVALID
+
+Портал использует платный wildcard-сертификат. **Certbot/Let's Encrypt не применяется, автопродления нет** — перевыпуск только вручную у поставщика. Проверить срок:
+
+```bash
+openssl x509 -in /opt/support-portal/nginx/certs/fullchain.crt -noout -dates
+```
+
+> **Кассы при этом продолжают работать.** AgentService на кассах написан на Java и срок сертификата не проверяет — телеметрия и раздача обновлений идут в обычном объёме. Просрочка ломает только браузеры. Убедиться, что поллы идут: `docker compose logs --tail=2000 nginx | grep -c 'poll/v3'`.
+
+### Замена (продление) сертификата
+
+**1. Бэкап** — файлов нет в git, восстанавливать больше неоткуда:
+
+```bash
+cd /opt/support-portal
+sudo cp -a nginx/certs "/root/certs-backup-$(date +%F)"
+```
+
+**2. Проверить присланное** до любых подмен:
+
+```bash
+cd /opt/support-portal/nginx/certs
+CRT="новый_домен.crt"; INT="новый_intermediate.crt"; KEY="новый.key"
+
+openssl x509 -in "$CRT" -noout -subject -issuer -dates -ext subjectAltName
+grep -q ENCRYPTED "$KEY" && echo "КЛЮЧ ПОД ПАРОЛЕМ — nginx не стартует"
+
+# ключ подходит к сертификату? хеши должны совпасть
+openssl x509 -in "$CRT" -noout -pubkey | openssl md5
+openssl pkey  -in "$KEY" -pubout       | openssl md5
+
+# issuer сертификата должен совпасть с subject промежуточного
+openssl x509 -in "$CRT" -noout -issuer
+openssl x509 -in "$INT" -noout -subject
+```
+
+**3. Собрать** — сначала сертификат домена, затем промежуточный, корневой не нужен:
+
+```bash
+{ sed 's/\r$//' "$CRT"; echo; sed 's/\r$//' "$INT"; echo; } > fullchain.crt.new
+sed 's/\r$//' "$KEY" > privkey.key.new
+```
+
+**4. Подменить и перезагрузить** (`reload` graceful, простоя нет):
+
+```bash
+mv fullchain.crt fullchain.crt.old && mv fullchain.crt.new fullchain.crt
+mv privkey.key   privkey.key.old   && mv privkey.key.new   privkey.key
+sudo chown root:service fullchain.crt privkey.key && sudo chmod 640 fullchain.crt privkey.key
+
+cd /opt/support-portal
+docker compose exec nginx nginx -t && docker compose exec nginx nginx -s reload
+```
+
+**5. Проверить:**
+
+```bash
+echo | openssl s_client -connect ВАШ_ДОМЕН:443 -servername ВАШ_ДОМЕН \
+  -verify_return_error 2>&1 | grep "Verify return code"
+```
+
+Ожидается `Verify return code: 0 (ok)`. Откат: вернуть `.old` на место и повторить `nginx -s reload`.
+
+### Сменился промежуточный CA
+
+При перевыпуске поставщик может выдать сертификат под **новым** промежуточным CA (например, GlobalSign `GCC R3 DV TLS CA 2020` → `GCC R46 DV TLS CA 2025`). Старый intermediate в этом случае цепочку не соберёт. Всегда берите тот промежуточный, что пришёл вместе с новым сертификатом, и сверяйте `issuer` сертификата с `subject` промежуточного (шаг 2 выше).
+
+### Ключ не подходит к сертификату
+
+`nginx -t` падает с `key values mismatch`. Причина — прислали ключ от другого запроса (CSR). Проверка:
+
+```bash
+openssl x509 -in fullchain.crt -noout -pubkey | openssl md5
+openssl pkey  -in privkey.key  -pubout       | openssl md5
+```
+
+Хеши разные — запрашивайте у поставщика правильную пару, подменять файлы нельзя.
+
+> `file` на ключе в формате PKCS#8 (`-----BEGIN PRIVATE KEY-----`) может написать «OpenSSH private key» — это ложная тревога, ориентируйтесь только на совпадение хешей выше.
+
+### nginx не подхватил новый сертификат
+
+Даты в файле новые, а на порту 443 старые:
+
+```bash
+cd /opt/support-portal
+docker compose exec nginx nginx -t && docker compose exec nginx nginx -s reload
+# если не помогло:
+docker compose restart nginx
+```
+
+Проверить, что контейнер видит те же файлы:
+
+```bash
+docker compose exec nginx ls -la /etc/nginx/certs/
+docker compose exec nginx nginx -T | grep -i ssl_certificate
+```
+
+### Неполная цепочка — браузер доверяет, а часть клиентов нет
+
+Браузеры кэшируют промежуточные CA, поэтому неполный `fullchain.crt` у них проходит, а curl/Java/мобильные клиенты ругаются. В файле должно быть **два** сертификата:
+
+```bash
+openssl crl2pkcs7 -nocrl -certfile /opt/support-portal/nginx/certs/fullchain.crt \
+  | openssl pkcs7 -print_certs -noout
+```
+
+Один сертификат — забыт промежуточный, пересоберите `fullchain.crt` (шаг 3 выше).
+
+### `ls: cannot open directory 'certs/': Permission denied`
+
+Каталог принадлежит `root`, а работа идёт под `service`. Вернуть доступ группе:
+
+```bash
+cd /opt/support-portal/nginx
+sudo chown -R root:service certs
+sudo chmod 750 certs
+sudo chmod 640 certs/*
+```
+
+> Порядок важен: `chown` идёт **до** `chmod`. Иначе шелл не сможет раскрыть маску `certs/*` — glob разворачивает ваша оболочка, а не `sudo`.
+
+### Как узнать заранее, что сертификат скоро истечёт
+
+Ежедневная проверка с записью в системный журнал за 30 дней до конца:
+
+```bash
+sudo tee /etc/cron.d/cert-expiry-check > /dev/null <<'EOF'
+0 9 * * * root openssl x509 -in /opt/support-portal/nginx/certs/fullchain.crt -noout -checkend 2592000 >/dev/null || logger -t cert-expiry "VNIMANIE: sertifikat istekaet menee chem cherez 30 dney"
+EOF
+sudo chmod 644 /etc/cron.d/cert-expiry-check
+```
+
+Проверить вручную (`2592000` секунд = 30 дней):
+
+```bash
+openssl x509 -in /opt/support-portal/nginx/certs/fullchain.crt -noout -checkend 2592000 \
+  && echo "OK, bolshe 30 dney" || echo "ISTEKAET SKORO"
+sudo journalctl -t cert-expiry -n 10 --no-pager
+```
+
+> Текст сообщения латиницей намеренно — `logger` пишет кириллицу в journald неровно, в зависимости от локали cron.
+
+---
+
 ## Прочее
 
 ### Конфликт миграций
@@ -443,12 +612,16 @@ docker compose exec backend python manage.py migrate --run-syncdb
 
 ### nginx не стартует после git clone
 
-Файл `nginx/default.conf` хранится в git — он должен появляться после `git clone` автоматически. Если файл всё же отсутствует:
+Файл `nginx/default.conf` **не в git** (он в `.gitignore` — конфиг свой на каждом сервере), поэтому после `git clone` его нет. Создайте из шаблона:
 
 ```bash
-git checkout -- nginx/default.conf
+cd /opt/support-portal
+cp nginx/default.conf.example nginx/default.conf
+nano nginx/default.conf          # заменить techportal.example.com на свой домен
 docker compose restart nginx
 ```
+
+> `git checkout -- nginx/default.conf` **не сработает** — файл не отслеживается git (`did not match any file(s) known to git`).
 
 Также проверьте что backend прошёл healthcheck перед nginx:
 ```bash

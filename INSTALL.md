@@ -249,15 +249,59 @@ docker compose ps
 
 ## 7. Настраиваем nginx
 
-Файл `nginx/default.conf` хранится в git — nginx стартует сразу после `git clone`.
+Файл `nginx/default.conf` **не хранится в git** (он в `.gitignore` — конфиг свой на каждом сервере). В репозитории лежит шаблон `nginx/default.conf.example`, его нужно скопировать после клонирования:
 
-При необходимости настроить `server_name` или HTTPS:
 ```bash
-nano /opt/support-portal/nginx/default.conf
+cd /opt/support-portal
+cp nginx/default.conf.example nginx/default.conf
+nano nginx/default.conf          # заменить techportal.example.com на свой домен
 docker compose restart nginx
 ```
 
-> **Боевой сервер:** если используется собственный домен или SSL-сертификаты — отредактировать `server_name` и добавить блок `listen 443 ssl` после клонирования.
+Шаблон содержит два блока: HTTP (порт 80, редирект на HTTPS) и HTTPS (порт 443). Для установки **без домена и сертификатов** оставьте только первый блок, уберите из него `return 301` и замените `server_name` на `_`.
+
+### 7.1 HTTPS и SSL-сертификаты
+
+Сертификаты монтируются в контейнер из каталога `nginx/certs/` (тоже **не в git**):
+
+| Файл на хосте | Путь в контейнере | Назначение |
+|---------------|-------------------|------------|
+| `nginx/certs/fullchain.crt` | `/etc/nginx/certs/fullchain.crt` | сертификат домена + промежуточный CA |
+| `nginx/certs/privkey.key` | `/etc/nginx/certs/privkey.key` | приватный ключ |
+
+`fullchain.crt` собирается конкатенацией: **сначала сертификат домена, затем промежуточный**. Корневой сертификат включать не нужно — браузеры его игнорируют.
+
+```bash
+cd /opt/support-portal/nginx/certs
+{ sed 's/\r$//' ваш_домен.crt; echo; sed 's/\r$//' intermediate.crt; echo; } > fullchain.crt
+```
+
+> `sed 's/\r$//'` убирает CRLF — файлы от поставщиков часто приходят из Windows, а openssl на них спотыкается.
+
+Проверить, что ключ подходит к сертификату (**хеши должны совпасть**), и выставить права:
+
+```bash
+cd /opt/support-portal/nginx/certs
+openssl x509 -in fullchain.crt -noout -pubkey | openssl md5
+openssl pkey  -in privkey.key  -pubout       | openssl md5
+
+sudo chown -R root:service /opt/support-portal/nginx/certs
+sudo chmod 750 /opt/support-portal/nginx/certs
+sudo chmod 640 /opt/support-portal/nginx/certs/*
+```
+
+Применить и проверить снаружи:
+
+```bash
+cd /opt/support-portal
+docker compose exec nginx nginx -t && docker compose exec nginx nginx -s reload
+echo | openssl s_client -connect ВАШ_ДОМЕН:443 -servername ВАШ_ДОМЕН \
+  -verify_return_error 2>&1 | grep "Verify return code"
+```
+
+Ожидаемый результат — `Verify return code: 0 (ok)`.
+
+> **Продление сертификата, смена промежуточного CA и разбор типовых ошибок** — в [TROUBLESHOOTING.md](TROUBLESHOOTING.md), раздел «Проблемы с HTTPS и SSL-сертификатом».
 
 ---
 
@@ -420,9 +464,14 @@ cd /opt/support-portal
 - `scheduler_run.sh` — скрипт с токеном
 - `media/` — загруженные файлы
 - `backups/` — резервные копии
+- `nginx/default.conf` — конфиг nginx, свой на каждом сервере
+- `nginx/certs/` — SSL-сертификаты и приватный ключ
+- `frontend/build/` — артефакты сборки, пересобираются через `deploy-frontend.sh`
 
-Файлы **в git** (изменились после аудита июнь 2026):
-- `nginx/default.conf` — теперь в git (ранее был в `.gitignore`), nginx стартует сразу после клонирования
-- `frontend/package-lock.json` — теперь в git для воспроизводимых сборок
+Файлы **в git**:
+- `nginx/default.conf.example` — шаблон конфига nginx с готовым блоком HTTPS
+- `frontend/package-lock.json` — для воспроизводимых сборок (аудит июнь 2026)
 
 > ⚠️ **Потеря ENCRYPTION_KEY = потеря всех зашифрованных паролей и токенов ОФД.** Храните резервную копию `.env` отдельно от сервера.
+
+> ⚠️ **`nginx/default.conf` и `nginx/certs/` существуют в единственном экземпляре на сервере.** `git pull` их не восстановит — делайте резервную копию перед правками: `sudo cp -a nginx/certs /root/certs-backup-$(date +%F)`.
