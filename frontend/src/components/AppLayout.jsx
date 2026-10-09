@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Menu, Avatar, Dropdown, Typography, Modal, Form, Input, message, Switch, Image, Drawer, Button, Tooltip } from 'antd';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   SyncOutlined, TeamOutlined, SettingOutlined, UserOutlined, LogoutOutlined,
   WifiOutlined, LockOutlined, BulbOutlined, BulbFilled, CalendarOutlined, BankOutlined,
@@ -50,7 +50,7 @@ export default function AppLayout({ children }) {
   const isAdminOrSysadmin = isAdmin || user?.role_data?.name === 'sysadmin';
   const isCommunications = user?.role_data?.name === 'communications';
 
-  const menuItems = [
+  const menuItemsRaw = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: 'Дашборд' },
     { key: '/clients', icon: <TeamOutlined />, label: 'Клиенты' },
     { key: '/fn-replacement', icon: <SyncOutlined />, label: 'Замена ФН' },
@@ -64,6 +64,12 @@ export default function AppLayout({ children }) {
     ...(isAdmin ? [{ key: '/users', icon: <UserOutlined />, label: 'Пользователи' }] : []),
     ...(isAdmin ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Настройки' }] : []),
   ];
+
+  // Пункты — настоящие ссылки: Ctrl/Cmd+клик, средняя кнопка и «Открыть в новой вкладке» работают
+  const menuItems = menuItemsRaw.map(item => ({
+    ...item,
+    label: <Link to={item.key}>{item.label}</Link>,
+  }));
 
   const handleChangePassword = async () => {
     const values = await form.validateFields();
@@ -163,7 +169,12 @@ export default function AppLayout({ children }) {
         selectedKeys={[selectedKey]}
         items={menuItems}
         inlineCollapsed={collapsed}
-        onClick={({ key }) => { navigate(key); setDrawerOpen(false); }}
+        onClick={({ key, domEvent }) => {
+          const e = domEvent;
+          // клик по самой ссылке обрабатывает Link; с модификаторами браузер откроет новую вкладку
+          if (!e.target.closest('a') && !(e.ctrlKey || e.metaKey || e.shiftKey)) navigate(key);
+          setDrawerOpen(false);
+        }}
         style={{ border: 'none', marginTop: collapsed ? 8 : 8 }}
       />
       </div>
