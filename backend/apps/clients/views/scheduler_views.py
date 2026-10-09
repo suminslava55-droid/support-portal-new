@@ -431,7 +431,7 @@ def _run_fetch_external_ip(task_id, user_id):
         changed   = 0
         errors    = 0
         error_log = []
-        cmd = ':put ([/tool fetch url="https://api.ipify.org" http-method=get output=user as-value]->"data")'
+        rekeyed_log = []
 
         for i, client in enumerate(clients):
             mikrotik_ip = client.mikrotik_ip
@@ -439,24 +439,19 @@ def _run_fetch_external_ip(task_id, user_id):
             _set(progress=pct,
                  progress_text=f'Клиент {i+1}/{total}: {client.address or client.pharmacy_code} ({mikrotik_ip})')
             try:
-                from .misc_views import _make_ssh_client, _save_known_hosts
-                ssh = _make_ssh_client(mikrotik_ip)
-                ssh.connect(mikrotik_ip, username=ssh_user, password=ssh_password, timeout=10, port=22)
-                _save_known_hosts(ssh)
-                stdin, stdout, stderr = ssh.exec_command(cmd, timeout=15)
-                new_ip = stdout.read().decode().strip()
+                from .misc_views import connect_ssh_autorekey, fetch_external_ip
+                ssh, rekeyed = connect_ssh_autorekey(mikrotik_ip, ssh_user, ssh_password)
+                if rekeyed:
+                    rekeyed_log.append(f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)})')
+                new_ip, last_output = fetch_external_ip(ssh)
                 ssh.close()
 
                 if not new_ip:
                     errors += 1
-                    error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): пустой ответ')
-                    continue
-
-                # Проверяем что получили валидный IP, а не строку ошибки от Микротика
-                import re as _re
-                if not _re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', new_ip):
-                    errors += 1
-                    error_log.append(f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)}): неверный ответ от Микротика: {_safe_log(new_ip[:50])}')
+                    if not last_output:
+                        error_log.append(f'{client.address or client.pharmacy_code} ({mikrotik_ip}): пустой ответ')
+                    else:
+                        error_log.append(f'{_safe_log(client.address or client.pharmacy_code)} ({_safe_log(mikrotik_ip)}): неверный ответ от Микротика: {_safe_log(last_output[:50])}')
                     continue
 
                 old_ip = client.external_ip or ''
@@ -503,6 +498,8 @@ def _run_fetch_external_ip(task_id, user_id):
             f'Ошибок: {errors}. '
             f'Время выполнения: {elapsed_str}.'
         )
+        if rekeyed_log:
+            summary += '\n\nSSH-ключ изменился (замена Микротика?), запись в known_hosts обновлена:\n' + '\n'.join(rekeyed_log)
         if error_log:
             summary += '\n\nОшибки:\n' + '\n'.join(error_log)
 

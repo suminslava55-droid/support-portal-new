@@ -18,6 +18,34 @@ class HealthView(APIView):
         return Response({'status': 'ok'})
 
 
+# Сервисы определения внешнего IP, которые Микротик опрашивает по очереди.
+# На части роутеров HTTPS до api.ipify.org обрывается по таймауту (режется 443), поэтому первым идёт HTTP.
+EXTERNAL_IP_URLS = [
+    'http://api.ipify.org',
+    'https://ifconfig.me/ip',
+    'https://icanhazip.com',
+]
+
+
+def fetch_external_ip(ssh):
+    """Запрашивает внешний IP через /tool fetch на Микротике, перебирая EXTERNAL_IP_URLS.
+    Возвращает (ip, last_output): ip — строка IPv4 или None, last_output — последний ответ для сообщения об ошибке."""
+    import re
+    last_output = ''
+    for url in EXTERNAL_IP_URLS:
+        cmd = f':put ([/tool fetch url="{url}" http-method=get output=user as-value]->"data")'
+        try:
+            _, stdout, _ = ssh.exec_command(cmd, timeout=20)
+            out = stdout.read().decode(errors='replace').strip()
+        except Exception as e:
+            last_output = str(e) or 'timeout'
+            continue
+        if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', out):
+            return out, out
+        last_output = out
+    return None, last_output
+
+
 def _make_ssh_client(host):
     """
     Создаёт SSHClient с проверкой host key через known_hosts.
@@ -49,6 +77,35 @@ def _save_known_hosts(ssh):
     import os
     os.makedirs(os.path.dirname(KNOWN_HOSTS_FILE), exist_ok=True)
     ssh.save_host_keys(KNOWN_HOSTS_FILE)
+
+
+def _forget_host_key(host):
+    """Удаляет запись хоста из known_hosts (после замены Микротика)."""
+    import os, paramiko
+    if not os.path.exists(KNOWN_HOSTS_FILE):
+        return
+    keys = paramiko.HostKeys(KNOWN_HOSTS_FILE)
+    if host in keys:
+        del keys[host]
+        keys.save(KNOWN_HOSTS_FILE)
+
+
+def connect_ssh_autorekey(host, username, password):
+    """Подключается к Микротику; если ключ хоста изменился (замена роутера) — удаляет
+    старую запись и подключается заново с запоминанием нового ключа.
+    Возвращает (ssh, rekeyed)."""
+    import paramiko
+    rekeyed = False
+    try:
+        ssh = _make_ssh_client(host)
+        ssh.connect(host, username=username, password=password, timeout=10, port=22)
+    except paramiko.BadHostKeyException:
+        _forget_host_key(host)
+        rekeyed = True
+        ssh = _make_ssh_client(host)
+        ssh.connect(host, username=username, password=password, timeout=10, port=22)
+    _save_known_hosts(ssh)
+    return ssh, rekeyed
 
 
 class FetchExternalIPView(APIView):
@@ -89,17 +146,13 @@ class FetchExternalIPView(APIView):
                 timeout=10, port=22
             )
             _save_known_hosts(ssh)
-            cmd = ':put ([/tool fetch url="https://api.ipify.org" http-method=get output=user as-value]->"data")'
-            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=15)
-            new_ip = stdout.read().decode().strip()
+            new_ip, last_output = fetch_external_ip(ssh)
             ssh.close()
 
             if not new_ip:
-                return Response({'error': 'Не удалось получить внешний IP с Микротика'}, status=400)
-
-            import re
-            if not re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', new_ip):
-                return Response({'error': f'Микротик вернул неверный ответ: {new_ip}'}, status=400)
+                if not last_output:
+                    return Response({'error': 'Не удалось получить внешний IP с Микротика'}, status=400)
+                return Response({'error': f'Микротик вернул неверный ответ: {last_output[:100]}'}, status=400)
 
             return Response({
                 'new_ip': new_ip,
