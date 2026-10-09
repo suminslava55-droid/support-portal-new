@@ -3,12 +3,21 @@ from .models import ProxyDevice, ProxyTelemetry, UpdatePackage, DeviceTask
 
 
 class ProxyTelemetrySerializer(serializers.ModelSerializer):
+    # Напряжение резервной батареи ККТ, мВ (из counters_report.service_info)
+    battery_voltage = serializers.SerializerMethodField()
+
+    def get_battery_voltage(self, obj):
+        info = (obj.raw_counters or {}).get('service_info') or {}
+        v = info.get('battery_voltage')
+        return v if isinstance(v, (int, float)) else None
+
     class Meta:
         model = ProxyTelemetry
         fields = [
             'shift_status', 'shift_exceeded_24h',
             'kkt_flags_fatal', 'kkt_flags_current', 'fn_flags',
             'unsent_ofd_count', 'unsent_oism_count',
+            'battery_voltage',
             'updated_at',
         ]
 

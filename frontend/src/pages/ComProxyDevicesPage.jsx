@@ -400,6 +400,18 @@ function DevicesTab() {
       },
     },
     {
+      title: 'Батарея', key: 'battery', width: 90,
+      sorter: (a, b) => numCmp(a.telemetry?.battery_voltage, b.telemetry?.battery_voltage),
+      render: (_, r) => {
+        const mv = r.telemetry?.battery_voltage;
+        if (mv === undefined || mv === null) return <Text type="secondary">—</Text>;
+        // литиевая резервная батарейка: ≥3.0 В норма, 2.7–3.0 садится, <2.7 заменить
+        const color = mv >= 3000 ? 'green' : mv >= 2700 ? 'orange' : 'red';
+        const hint = mv >= 3000 ? 'Норма' : mv >= 2700 ? 'Садится' : 'Требуется замена';
+        return <Tooltip title={hint}><Tag color={color}>{(mv / 1000).toFixed(2)} В</Tag></Tooltip>;
+      },
+    },
+    {
       title: 'Последний отклик', dataIndex: 'last_seen_at', width: 140,
       sorter: (a, b) => dateCmp(a.last_seen_at, b.last_seen_at),
       render: (v) => {
