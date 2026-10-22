@@ -292,7 +292,7 @@ class DashboardStatsView(APIView):
 
         clients = Client.objects.filter(is_draft=False)
         now = timezone.now()
-        today = now.date()
+        today = timezone.localdate()
         month_ago = now - timedelta(days=30)
 
         total = clients.count()
@@ -351,11 +351,12 @@ class DashboardStatsView(APIView):
             fn_end_date__isnull=False,
             fn_end_date__gte=now,
         ).select_related('client').order_by('fn_end_date')[:6]:
-            diff = (kkt.fn_end_date.date() - today).days
+            fn_end = timezone.localtime(kkt.fn_end_date)
+            diff = (fn_end.date() - today).days
             fn_nearest.append({
                 'client_id': kkt.client_id,
                 'address': kkt.client.address or kkt.client.company or f'Клиент #{kkt.client_id}',
-                'fn_end_date': kkt.fn_end_date.strftime('%d.%m.%Y'),
+                'fn_end_date': fn_end.strftime('%d.%m.%Y'),
                 'days_left': diff,
                 'kkt_reg_id': kkt.kkt_reg_id,
             })
@@ -367,11 +368,12 @@ class DashboardStatsView(APIView):
             contract_end_date__isnull=False,
             contract_end_date__gte=now,
         ).select_related('client').order_by('contract_end_date')[:6]:
-            diff = (kkt.contract_end_date.date() - today).days
+            contract_end = timezone.localtime(kkt.contract_end_date)
+            diff = (contract_end.date() - today).days
             ofd_nearest.append({
                 'client_id': kkt.client_id,
                 'address': kkt.client.address or kkt.client.company or f'Клиент #{kkt.client_id}',
-                'contract_end_date': kkt.contract_end_date.strftime('%d.%m.%Y'),
+                'contract_end_date': contract_end.strftime('%d.%m.%Y'),
                 'days_left': diff,
                 'kkt_reg_id': kkt.kkt_reg_id,
             })

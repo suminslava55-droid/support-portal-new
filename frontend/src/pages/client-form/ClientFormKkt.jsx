@@ -5,6 +5,7 @@ import {
   MinusCircleOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { fmtOfdDate } from '../../utils/dates';
 
 const { Text } = Typography;
 
@@ -46,14 +47,14 @@ function KktCard({ kkt, onDelete }) {
         <Descriptions.Item label="Конец срока ФН">
           {kkt.fn_end_date ? (
             <Tag color={dayjs(kkt.fn_end_date).isBefore(dayjs().add(90, 'day')) ? 'red' : 'green'}>
-              {dayjs(kkt.fn_end_date).format('DD.MM.YYYY')}
+              {fmtOfdDate(kkt.fn_end_date)}
             </Tag>
           ) : '—'}
         </Descriptions.Item>
         <Descriptions.Item label="Конец договора ОФД">
           {kkt.contract_end_date ? (
             <Tag color={dayjs(kkt.contract_end_date).isBefore(dayjs().add(30, 'day')) ? 'red' : 'green'}>
-              {dayjs(kkt.contract_end_date).format('DD.MM.YYYY')}
+              {fmtOfdDate(kkt.contract_end_date)}
             </Tag>
           ) : '—'}
         </Descriptions.Item>

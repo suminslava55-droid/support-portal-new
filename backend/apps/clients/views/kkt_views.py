@@ -2,6 +2,7 @@ import subprocess
 import json
 import os
 from datetime import datetime
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -107,8 +108,8 @@ class OfdKktView(APIView):
                 'kkt_model': k.kkt_model,
                 'create_date': k.create_date.isoformat() if k.create_date else None,
 
-                'contract_end_date': k.contract_end_date.isoformat() if k.contract_end_date else None,
-                'fn_end_date': k.fn_end_date.isoformat() if k.fn_end_date else None,
+                'contract_end_date': timezone.localtime(k.contract_end_date).isoformat() if k.contract_end_date else None,
+                'fn_end_date': timezone.localtime(k.fn_end_date).isoformat() if k.fn_end_date else None,
 
                 'fiscal_address': k.fiscal_address,
                 'fetched_at': k.fetched_at.isoformat() if k.fetched_at else None,
@@ -502,8 +503,8 @@ def _kkt_row(k):
         'rnm': k.kkt_reg_id or '—',
         'serial_number': k.serial_number or '—',
         'fn_number': k.fn_number or '—',
-        'fn_end_date': k.fn_end_date.isoformat() if k.fn_end_date else None,
-        'contract_end_date': k.contract_end_date.isoformat() if k.contract_end_date else None,
+        'fn_end_date': timezone.localtime(k.fn_end_date).isoformat() if k.fn_end_date else None,
+        'contract_end_date': timezone.localtime(k.contract_end_date).isoformat() if k.contract_end_date else None,
     }
 
 

@@ -12,6 +12,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { getSearchVariants } from '../utils/keyboardLayout';
 import dayjs from 'dayjs';
+import { fmtOfdDate } from '../utils/dates';
 import 'dayjs/locale/ru';
 import api from '../api/axios';
 import useThemeStore from '../store/themeStore';
@@ -55,7 +56,7 @@ const SORT_MAP = {
 
 // ─── утилиты ─────────────────────────────────────────────────────────────────
 
-const fmt = iso => iso ? (dayjs(iso).isValid() ? dayjs(iso).format('DD.MM.YYYY') : '—') : '—';
+const fmt = fmtOfdDate;
 
 function FnTag({ iso }) {
   if (!iso) return '—';

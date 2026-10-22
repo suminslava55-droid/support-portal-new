@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Space, Button, Tag, Empty, Descriptions, Popconfirm, Typography, Divider, Tooltip, Collapse, Spin } from 'antd';
 import { ReloadOutlined, SyncOutlined, DeleteOutlined, ApiOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { fmtOfdDate } from '../../utils/dates';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
 import { CopyField } from './helpers';
@@ -301,14 +302,14 @@ export default function ClientDetailKkt({ clientId, kktData, kktFetching, kktRef
               <Descriptions.Item label="Конец срока ФН">
                 {kkt.fn_end_date ? (
                   <Tag color={dayjs(kkt.fn_end_date).isBefore(dayjs().add(90, 'day')) ? 'red' : 'green'}>
-                    {dayjs(kkt.fn_end_date).format('DD.MM.YYYY')}
+                    {fmtOfdDate(kkt.fn_end_date)}
                   </Tag>
                 ) : '—'}
               </Descriptions.Item>
               <Descriptions.Item label="Конец договора ОФД">
                 {kkt.contract_end_date ? (
                   <Tag color={dayjs(kkt.contract_end_date).isBefore(dayjs().add(30, 'day')) ? 'red' : 'green'}>
-                    {dayjs(kkt.contract_end_date).format('DD.MM.YYYY')}
+                    {fmtOfdDate(kkt.contract_end_date)}
                   </Tag>
                 ) : '—'}
               </Descriptions.Item>
