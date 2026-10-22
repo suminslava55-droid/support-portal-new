@@ -103,6 +103,7 @@ export const comproxyAPI = {
   matchDevice: (uuid, kktDataId) => api.post(`/comproxy/devices/${uuid}/match/`, { kkt_data_id: kktDataId }),
   unmatchDevice: (uuid) => api.post(`/comproxy/devices/${uuid}/unmatch/`),
   getStats: () => api.get('/comproxy/stats/'),
+  getDashboard: () => api.get('/comproxy/dashboard/'),
 
   // Обновления
   getUpdates: (params) => api.get('/comproxy/updates/', { params }),

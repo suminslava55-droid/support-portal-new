@@ -132,6 +132,65 @@ class ProxyStatsView(APIView):
         })
 
 
+class ProxyDashboardView(APIView):
+    """GET /api/comproxy/dashboard/ — сводка ComProxy для главной страницы:
+    распределение прошивок и ФФД, ККТ с садящейся батарейкой и с неотправленными в ОФД."""
+    permission_classes = [IsAuthenticated, IsAdminOrSysadmin]
+
+    LIST_LIMIT = 6
+    BATTERY_OK_MV = 3000  # как в таблице устройств: ≥3.0 В норма, 2.7–3.0 садится, <2.7 заменить
+
+    @staticmethod
+    def _distribution(values):
+        counts = {}
+        for v in values:
+            key = v or 'Нет данных'
+            counts[key] = counts.get(key, 0) + 1
+        return [
+            {'name': k, 'value': c}
+            for k, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        ]
+
+    @staticmethod
+    def _device_row(d, value):
+        client = d.kkt_data.client if d.kkt_data_id else None
+        return {
+            'uuid': d.uuid,
+            'registry_number': d.registry_number,
+            'client_id': client.id if client else None,
+            'address': (client.address if client else '') or d.fiscal_address or d.uuid[:8],
+            'value': value,
+        }
+
+    def get(self, request):
+        devices = list(
+            ProxyDevice.objects.select_related('telemetry', 'kkt_data__client')
+        )
+
+        firmware = self._distribution(d.firmware_version for d in devices)
+        ffd = self._distribution(d.ffd_version for d in devices)
+
+        battery, unsent = [], []
+        for d in devices:
+            t = getattr(d, 'telemetry', None)
+            if t is None:
+                continue
+            mv = ((t.raw_counters or {}).get('service_info') or {}).get('battery_voltage')
+            if isinstance(mv, (int, float)) and mv < self.BATTERY_OK_MV:
+                battery.append(self._device_row(d, mv))
+            if t.unsent_ofd_count > 0:
+                unsent.append(self._device_row(d, t.unsent_ofd_count))
+        battery.sort(key=lambda r: r['value'])
+        unsent.sort(key=lambda r: -r['value'])
+
+        return Response({
+            'firmware': firmware,
+            'ffd': ffd,
+            'battery': {'count': len(battery), 'items': battery[:self.LIST_LIMIT]},
+            'unsent_ofd': {'count': len(unsent), 'items': unsent[:self.LIST_LIMIT]},
+        })
+
+
 # ─── Управление обновлениями ─────────────────────────────
 
 ALLOWED_EXTENSIONS = {

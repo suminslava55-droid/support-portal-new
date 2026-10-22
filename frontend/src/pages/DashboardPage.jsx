@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Spin, Tag, Tooltip, Button, Result } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { Typography, Spin, Tag, Tooltip, Button, Result, Tabs } from 'antd';
+import { Link } from 'react-router-dom';
 import api from '../api/axios';
+import { comproxyAPI } from '../api';
 import useThemeStore from '../store/themeStore';
+import useAuthStore from '../store/authStore';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 
@@ -91,7 +93,8 @@ function BarRow({ label, value, max }) {
   );
 }
 
-function FnRow({ address, fnEndDate, daysLeft, clientId, navigate }) {
+// Строка «адрес — дата» для ближайших замен ФН / окончаний договора ОФД
+function KktDateRow({ address, date, daysLeft, clientId, regId }) {
   let badgeColor = 'orange';
   if (daysLeft < 0) badgeColor = 'red';
   else if (daysLeft <= 30) badgeColor = 'red';
@@ -102,13 +105,14 @@ function FnRow({ address, fnEndDate, daysLeft, clientId, navigate }) {
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       padding: '7px 0', borderBottom: '0.5px solid rgba(128,128,128,0.15)', fontSize: 13,
     }}>
-      <span
-        onClick={() => navigate(`/clients/${clientId}`, { state: { tab: 'kkt' } })}
-        style={{ color: '#1677ff', cursor: 'pointer' }}
-      >
-        {address}
-      </span>
-      <Tag color={badgeColor} style={{ margin: 0, fontSize: 11 }}>{fnEndDate}</Tag>
+      <Tooltip title={regId ? `РНМ ${regId}` : undefined} placement="topLeft">
+        <Link to={`/clients/${clientId}?tab=kkt`} style={{ color: '#1677ff' }}>
+          {address}
+        </Link>
+      </Tooltip>
+      <Tooltip title={daysLeft === 0 ? 'сегодня' : `через ${daysLeft} дн.`}>
+        <Tag color={badgeColor} style={{ margin: 0, fontSize: 11 }}>{date}</Tag>
+      </Tooltip>
     </div>
   );
 }
@@ -168,7 +172,7 @@ function DutyPerson({ name, initials, dutyType, idx }) {
   );
 }
 
-function ActivityRow({ userName, action, clientName, clientId, createdAt, navigate }) {
+function ActivityRow({ userName, action, clientName, clientId, createdAt }) {
   const firstLine = action.split('\n')[0];
   const timeStr = dayjs(createdAt).isSame(dayjs(), 'day')
     ? dayjs(createdAt).format('HH:mm')
@@ -183,12 +187,9 @@ function ActivityRow({ userName, action, clientName, clientId, createdAt, naviga
         <div style={{ fontWeight: 500 }}>{userName}</div>
         <div style={{ color: '#888' }}>
           {firstLine} ·{' '}
-          <span
-            style={{ color: '#1677ff', cursor: 'pointer' }}
-            onClick={() => navigate(`/clients/${clientId}`)}
-          >
+          <Link to={`/clients/${clientId}`} style={{ color: '#1677ff' }}>
             {clientName}
-          </span>
+          </Link>
         </div>
       </div>
       <div style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap' }}>{timeStr}</div>
@@ -196,8 +197,204 @@ function ActivityRow({ userName, action, clientName, clientId, createdAt, naviga
   );
 }
 
+/* ─── Дежурства: сегодня + завтра в одной карточке ── */
+
+function DutyDay({ title, duty, birthdays, vacations }) {
+  const empty = !(duty || []).length && !(birthdays || []).length && !(vacations || []).length;
+  return (
+    <div>
+      <div style={{
+        fontSize: 11, fontWeight: 500, color: '#888',
+        textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8,
+      }}>
+        {title}
+      </div>
+      {empty
+        ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет событий</div>
+        : <>
+            {(duty || []).map((d, i) => (
+              <DutyPerson key={`duty-${d.user_id}`} name={d.name} initials={d.initials} dutyType={d.duty_type} idx={i} />
+            ))}
+            {(birthdays || []).map((d, i) => (
+              <DutyPerson key={`bday-${d.user_id}`} name={d.name} initials={d.initials} dutyType="birthday" idx={i} />
+            ))}
+            {(vacations || []).map((d, i) => (
+              <DutyPerson key={`vac-${d.user_id}`} name={d.name} initials={d.initials} dutyType="vacation" idx={i} />
+            ))}
+          </>
+      }
+    </div>
+  );
+}
+
+/* ─── Иконки вкладок ComProxy (currentColor, 18px) ── */
+
+const svgProps = {
+  width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none',
+  stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round',
+};
+
+// Прошивка — микросхема
+const FirmwareIcon = () => (
+  <svg {...svgProps}>
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+    <rect x="9.5" y="9.5" width="5" height="5" rx="0.8" />
+    <path d="M9 2.5v3.5M15 2.5v3.5M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5" />
+  </svg>
+);
+
+// ФФД — фискальный документ (чек)
+const FfdIcon = () => (
+  <svg {...svgProps}>
+    <path d="M6 2.5h12v19l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z" />
+    <path d="M9 7.5h6M9 11h6M9 14.5h3.5" />
+  </svg>
+);
+
+// Батарея
+const BatteryIcon = () => (
+  <svg {...svgProps}>
+    <rect x="2.5" y="7" width="17" height="10" rx="2" />
+    <path d="M21.5 10.5v3" />
+    <rect x="5" y="9.5" width="5" height="5" rx="0.6" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+// Не отправлено в ОФД — облако со стрелкой вверх
+const UnsentOfdIcon = () => (
+  <svg {...svgProps}>
+    <path d="M7 18.5H6.5a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 16.6 8.6 4.5 4.5 0 0 1 17.5 18.5H17" />
+    <path d="M12 21v-8M9 15.5l3-3 3 3" />
+  </svg>
+);
+
+/* ─── Карточка ComProxy ────────────────────────────── */
+
+function ComProxyCountBadge({ count }) {
+  if (!count) return null;
+  return (
+    <span style={{
+      minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+      background: '#ff4d4f', color: '#fff', fontSize: 11, lineHeight: '18px', textAlign: 'center',
+    }}>
+      {count}
+    </span>
+  );
+}
+
+function ComProxyDeviceRow({ item, tag }) {
+  const address = item.client_id
+    ? <Link to={`/clients/${item.client_id}?tab=kkt`} style={{ color: '#1677ff' }}>{item.address}</Link>
+    : <span>{item.address}</span>;
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+      padding: '7px 0', borderBottom: '0.5px solid rgba(128,128,128,0.15)', fontSize: 13,
+    }}>
+      <Tooltip title={item.registry_number ? `РНМ ${item.registry_number}` : undefined} placement="topLeft">
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+          {address}
+        </span>
+      </Tooltip>
+      {tag}
+    </div>
+  );
+}
+
+function ComProxyListFooter({ count, shown }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#888', marginTop: 8 }}>
+      <span>{count > shown ? `Показано ${shown} из ${count}` : `Всего: ${count}`}</span>
+      <Link to="/comproxy">Все устройства →</Link>
+    </div>
+  );
+}
+
+const COMPROXY_TABS = {
+  firmware: 'Прошивка',
+  ffd: 'ФФД',
+  battery: 'Батарея',
+  unsent_ofd: 'Не отправлено в ОФД',
+};
+
+function ComProxyCard() {
+  const [cp, setCp] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [tab, setTab] = useState('firmware');
+
+  useEffect(() => {
+    comproxyAPI.getDashboard()
+      .then(({ data }) => setCp(data))
+      .catch(() => setFailed(true));
+  }, []);
+
+  const tabLabel = (key, Icon, count) => (
+    <Tooltip title={COMPROXY_TABS[key]}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 2px' }}>
+        <Icon />
+        <ComProxyCountBadge count={count} />
+      </span>
+    </Tooltip>
+  );
+
+  const distribution = (rows) => {
+    const max = Math.max(...rows.map((r) => r.value), 1);
+    return rows.length === 0
+      ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет данных</div>
+      : rows.slice(0, 8).map((r) => <BarRow key={r.name} label={r.name} value={r.value} max={max} />);
+  };
+
+  let body;
+  if (failed) body = <div style={{ fontSize: 13, color: '#aaa' }}>Не удалось загрузить данные ComProxy</div>;
+  else if (!cp) body = <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>;
+
+  const items = cp ? [
+    { key: 'firmware', label: tabLabel('firmware', FirmwareIcon), children: distribution(cp.firmware) },
+    { key: 'ffd', label: tabLabel('ffd', FfdIcon), children: distribution(cp.ffd) },
+    {
+      key: 'battery',
+      label: tabLabel('battery', BatteryIcon, cp.battery.count),
+      children: cp.battery.count === 0
+        ? <div style={{ fontSize: 13, color: '#aaa' }}>Все батарейки в норме (≥ 3.0 В)</div>
+        : <>
+            {cp.battery.items.map((it) => (
+              <ComProxyDeviceRow key={it.uuid} item={it} tag={
+                <Tooltip title={it.value >= 2700 ? 'Садится' : 'Требуется замена'}>
+                  <Tag color={it.value >= 2700 ? 'orange' : 'red'} style={{ margin: 0, fontSize: 11 }}>
+                    {(it.value / 1000).toFixed(2)} В
+                  </Tag>
+                </Tooltip>
+              } />
+            ))}
+            <ComProxyListFooter count={cp.battery.count} shown={cp.battery.items.length} />
+          </>,
+    },
+    {
+      key: 'unsent_ofd',
+      label: tabLabel('unsent_ofd', UnsentOfdIcon, cp.unsent_ofd.count),
+      children: cp.unsent_ofd.count === 0
+        ? <div style={{ fontSize: 13, color: '#aaa' }}>Все документы отправлены в ОФД</div>
+        : <>
+            {cp.unsent_ofd.items.map((it) => (
+              <ComProxyDeviceRow key={it.uuid} item={it} tag={
+                <Tag color="warning" style={{ margin: 0, fontSize: 11 }}>{it.value}</Tag>
+              } />
+            ))}
+            <ComProxyListFooter count={cp.unsent_ofd.count} shown={cp.unsent_ofd.items.length} />
+          </>,
+    },
+  ] : [];
+
+  return (
+    <Card title={`ComProxy · ${COMPROXY_TABS[tab]}`}>
+      {body || <Tabs size="small" activeKey={tab} onChange={setTab} style={{ marginTop: -8 }} items={items} />}
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
-  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const isAdminOrSysadmin = user?.is_superuser || ['admin', 'sysadmin'].includes(user?.role_data?.name);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -254,21 +451,46 @@ export default function DashboardPage() {
           ))}
         </Card>
 
-        {/* Ближайшие замены ФН */}
-        <Card title="Ближайшие замены ФН">
-          {(data.fn_nearest || []).length === 0
-            ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет ближайших замен</div>
-            : (data.fn_nearest || []).map((fn, i) => (
-              <FnRow
-                key={i}
-                address={fn.address}
-                fnEndDate={fn.fn_end_date}
-                daysLeft={fn.days_left}
-                clientId={fn.client_id}
-                navigate={navigate}
-              />
-            ))
-          }
+        {/* Ближайшие замены ФН / окончания договора ОФД */}
+        <Card>
+          <Tabs
+            size="small"
+            style={{ marginTop: -8 }}
+            items={[
+              {
+                key: 'fn',
+                label: 'Ближайшие замены ФН',
+                children: (data.fn_nearest || []).length === 0
+                  ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет ближайших замен</div>
+                  : (data.fn_nearest || []).map((fn, i) => (
+                    <KktDateRow
+                      key={i}
+                      address={fn.address}
+                      date={fn.fn_end_date}
+                      daysLeft={fn.days_left}
+                      clientId={fn.client_id}
+                      regId={fn.kkt_reg_id}
+                    />
+                  )),
+              },
+              {
+                key: 'ofd',
+                label: 'Конец договора ОФД',
+                children: (data.ofd_nearest || []).length === 0
+                  ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет ближайших окончаний договора</div>
+                  : (data.ofd_nearest || []).map((o, i) => (
+                    <KktDateRow
+                      key={i}
+                      address={o.address}
+                      date={o.contract_end_date}
+                      daysLeft={o.days_left}
+                      clientId={o.client_id}
+                      regId={o.kkt_reg_id}
+                    />
+                  )),
+              },
+            ]}
+          />
         </Card>
 
         {/* Задания + бэкап */}
@@ -298,44 +520,28 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* ── Дежурства + активность ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10 }}>
+      {/* ── Дежурства + ComProxy + активность ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isAdminOrSysadmin ? 3 : 2}, minmax(0,1fr))`, gap: 10 }}>
 
-        {/* Сегодня */}
-        <Card title={`Сегодня · ${todayLabel}`}>
-          {(data.duty_today || []).length === 0 && (data.birthdays_today || []).length === 0 && (data.vacations_today || []).length === 0
-            ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет событий</div>
-            : <>
-                {(data.duty_today || []).map((d, i) => (
-                  <DutyPerson key={`duty-${d.user_id}`} name={d.name} initials={d.initials} dutyType={d.duty_type} idx={i} />
-                ))}
-                {(data.birthdays_today || []).map((d, i) => (
-                  <DutyPerson key={`bday-${d.user_id}`} name={d.name} initials={d.initials} dutyType="birthday" idx={i} />
-                ))}
-                {(data.vacations_today || []).map((d, i) => (
-                  <DutyPerson key={`vac-${d.user_id}`} name={d.name} initials={d.initials} dutyType="vacation" idx={i} />
-                ))}
-              </>
-          }
+        {/* Сегодня + завтра */}
+        <Card>
+          <DutyDay
+            title={`Сегодня · ${todayLabel}`}
+            duty={data.duty_today}
+            birthdays={data.birthdays_today}
+            vacations={data.vacations_today}
+          />
+          <Divider />
+          <DutyDay
+            title={`Завтра · ${tomorrowLabel}`}
+            duty={data.duty_tomorrow}
+            birthdays={data.birthdays_tomorrow}
+            vacations={data.vacations_tomorrow}
+          />
         </Card>
 
-        {/* Завтра */}
-        <Card title={`Завтра · ${tomorrowLabel}`}>
-          {(data.duty_tomorrow || []).length === 0 && (data.birthdays_tomorrow || []).length === 0 && (data.vacations_tomorrow || []).length === 0
-            ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет событий</div>
-            : <>
-                {(data.duty_tomorrow || []).map((d, i) => (
-                  <DutyPerson key={`duty-${d.user_id}`} name={d.name} initials={d.initials} dutyType={d.duty_type} idx={i} />
-                ))}
-                {(data.birthdays_tomorrow || []).map((d, i) => (
-                  <DutyPerson key={`bday-${d.user_id}`} name={d.name} initials={d.initials} dutyType="birthday" idx={i} />
-                ))}
-                {(data.vacations_tomorrow || []).map((d, i) => (
-                  <DutyPerson key={`vac-${d.user_id}`} name={d.name} initials={d.initials} dutyType="vacation" idx={i} />
-                ))}
-              </>
-          }
-        </Card>
+        {/* ComProxy — только для ролей с доступом к разделу */}
+        {isAdminOrSysadmin && <ComProxyCard />}
 
         {/* Последние изменения */}
         <Card title="Последние изменения">
@@ -347,7 +553,6 @@ export default function DashboardPage() {
               clientName={a.client_name}
               clientId={a.client_id}
               createdAt={a.created_at}
-              navigate={navigate}
             />
           ))}
         </Card>

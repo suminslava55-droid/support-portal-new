@@ -7,6 +7,7 @@ urlpatterns = [
     path('devices/<str:uuid>/match/', admin_views.ProxyDeviceMatchView.as_view()),
     path('devices/<str:uuid>/unmatch/', admin_views.ProxyDeviceUnmatchView.as_view()),
     path('stats/', admin_views.ProxyStatsView.as_view()),
+    path('dashboard/', admin_views.ProxyDashboardView.as_view()),
 
     # Обновления
     path('updates/', admin_views.UpdatePackageListCreateView.as_view()),

@@ -357,6 +357,23 @@ class DashboardStatsView(APIView):
                 'address': kkt.client.address or kkt.client.company or f'Клиент #{kkt.client_id}',
                 'fn_end_date': kkt.fn_end_date.strftime('%d.%m.%Y'),
                 'days_left': diff,
+                'kkt_reg_id': kkt.kkt_reg_id,
+            })
+
+        # Ближайшие окончания договора ОФД
+        ofd_nearest = []
+        for kkt in KktData.objects.filter(
+            client__is_draft=False,
+            contract_end_date__isnull=False,
+            contract_end_date__gte=now,
+        ).select_related('client').order_by('contract_end_date')[:6]:
+            diff = (kkt.contract_end_date.date() - today).days
+            ofd_nearest.append({
+                'client_id': kkt.client_id,
+                'address': kkt.client.address or kkt.client.company or f'Клиент #{kkt.client_id}',
+                'contract_end_date': kkt.contract_end_date.strftime('%d.%m.%Y'),
+                'days_left': diff,
+                'kkt_reg_id': kkt.kkt_reg_id,
             })
 
         # ── Регламентные задания ───────────────────────────────
@@ -466,6 +483,7 @@ class DashboardStatsView(APIView):
             'fn_this_month_name': this_month_start.strftime('%B %Y'),
             'fn_next_month_name': next_month_start.strftime('%B %Y'),
             'fn_nearest': fn_nearest,
+            'ofd_nearest': ofd_nearest,
             'tasks': tasks_data,
             'backup': backup_info,
             'duty_today': duty_today,

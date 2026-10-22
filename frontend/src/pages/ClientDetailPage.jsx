@@ -31,7 +31,10 @@ export default function ClientDetailPage() {
 
   const [client, setClient]           = useState(null);
   const [loading, setLoading]         = useState(true);
-  const [activeTab, setActiveTab]     = useState(location.state?.tab || 'info');
+  // Вкладка: из state (переход внутри SPA) или из ?tab= (ссылка, открытая в новой вкладке)
+  const [activeTab, setActiveTab]     = useState(
+    location.state?.tab || new URLSearchParams(location.search).get('tab') || 'info',
+  );
 
   // Заметки
   const [notes, setNotes]             = useState([]);
