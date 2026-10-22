@@ -51,8 +51,8 @@ export default function ClientDetailInfo({ client, pingResults, pinging, checkPi
     <>
       <Card title="Информация о клиенте" style={{ marginBottom: 16 }}>
         <Descriptions column={2} bordered size="small">
-          <Descriptions.Item label="Адрес" span={2}>{client.address || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Компания">{client.company || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Адрес" span={2}><CopyField value={client.address} /></Descriptions.Item>
+          <Descriptions.Item label="Компания"><CopyField value={client.company} /></Descriptions.Item>
           <Descriptions.Item label="ИНН"><CopyField value={client.inn} /></Descriptions.Item>
           <Descriptions.Item label="Телефон"><CopyField value={client.phone}>{formatPhone(client.phone)}</CopyField></Descriptions.Item>
           <Descriptions.Item label="ICCID"><CopyField value={client.iccid} /></Descriptions.Item>
