@@ -3,20 +3,21 @@ import { Link } from 'react-router-dom';
 import {
   Typography, Table, Tag, Input, Space, Button, Select, Card,
   Statistic, Row, Col, Modal, message, Tooltip, Popconfirm,
-  Tabs, Upload, Form, Switch, Badge,
+  Tabs, Upload, Form, Switch, Badge, Popover, Checkbox,
 } from 'antd';
 import {
   ApiOutlined, SearchOutlined, LinkOutlined, DisconnectOutlined,
   ReloadOutlined, WarningOutlined, CheckCircleOutlined,
   UploadOutlined, CloudUploadOutlined, SendOutlined,
   CloseCircleOutlined, ClockCircleOutlined,
-  DeleteOutlined,
+  DeleteOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
 import { comproxyAPI } from '../api';
 import api from '../api';
+import ResizableTitle from '../components/ResizableTitle';
 
 dayjs.extend(relativeTime);
 dayjs.locale('ru');
@@ -267,6 +268,31 @@ function UploadModal({ visible, onClose, onUploaded }) {
   );
 }
 
+/* ─── Настройки колонок таблицы устройств (localStorage) ── */
+
+const COLUMNS_STORAGE_KEY = 'comproxy.devices.columns';
+// Скрыты по умолчанию (пока пользователь сам не включит)
+const DEFAULT_HIDDEN = [];
+
+const loadColumnPrefs = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMNS_STORAGE_KEY) || 'null');
+    if (saved && typeof saved === 'object') {
+      return {
+        widths: saved.widths && typeof saved.widths === 'object' ? saved.widths : {},
+        hidden: Array.isArray(saved.hidden) ? saved.hidden : DEFAULT_HIDDEN,
+      };
+    }
+  } catch { /* приватный режим / битые данные — берём умолчания */ }
+  return { widths: {}, hidden: DEFAULT_HIDDEN };
+};
+
+const saveColumnPrefs = (prefs) => {
+  try {
+    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(prefs));
+  } catch { /* не критично */ }
+};
+
 /* ─── Вкладка «Устройства» ────────────────────────── */
 
 function DevicesTab() {
@@ -280,6 +306,12 @@ function DevicesTab() {
   const [matchModal, setMatchModal] = useState({ visible: false, device: null });
   const [selectedUuids, setSelectedUuids] = useState([]);
   const [deployModal, setDeployModal] = useState({ visible: false, uuids: [], all: false });
+  const [colWidths, setColWidths] = useState(() => loadColumnPrefs().widths);
+  const [hiddenCols, setHiddenCols] = useState(() => loadColumnPrefs().hidden);
+
+  useEffect(() => {
+    saveColumnPrefs({ widths: colWidths, hidden: hiddenCols });
+  }, [colWidths, hiddenCols]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -327,7 +359,7 @@ function DevicesTab() {
 
   const columns = [
     {
-      title: 'Устройство', dataIndex: 'uuid', width: 110,
+      title: 'Устройство', key: 'uuid', dataIndex: 'uuid', width: 110,
       render: (uuid) => (
         <Tooltip title={uuid}>
           <Text code style={{ fontSize: 12 }}>{uuid.slice(0, 8)}...</Text>
@@ -335,17 +367,22 @@ function DevicesTab() {
       ),
     },
     {
-      title: 'РНМ', dataIndex: 'registry_number', width: 180,
+      title: 'РНМ', key: 'registry_number', dataIndex: 'registry_number', width: 180,
       sorter: (a, b) => strCmp(a.registry_number, b.registry_number),
       render: (v) => v || <Text type="secondary">—</Text>,
     },
     {
-      title: 'Модель', dataIndex: 'kkt_name', width: 140, ellipsis: true,
+      title: 'IP', key: 'ip_address', dataIndex: 'ip_address', width: 130,
+      sorter: (a, b) => strCmp(a.ip_address, b.ip_address),
+      render: (v) => (v ? <Text copyable={{ text: v }}>{v}</Text> : <Text type="secondary">—</Text>),
+    },
+    {
+      title: 'Модель', key: 'kkt_name', dataIndex: 'kkt_name', width: 140, ellipsis: true,
       sorter: (a, b) => strCmp(a.kkt_name, b.kkt_name),
       render: (v) => v || '—',
     },
     {
-      title: 'Адрес', key: 'address', ellipsis: true,
+      title: 'Адрес', key: 'address', width: 260, ellipsis: true,
       sorter: (a, b) => strCmp(addrOf(a), addrOf(b)),
       render: (_, r) => {
         const addr = addrOf(r);
@@ -359,22 +396,22 @@ function DevicesTab() {
       },
     },
     {
-      title: 'Компания', dataIndex: 'client_company', width: 150, ellipsis: true,
+      title: 'Компания', key: 'client_company', dataIndex: 'client_company', width: 150, ellipsis: true,
       sorter: (a, b) => strCmp(a.client_company, b.client_company),
       render: (v) => v || <Text type="secondary">—</Text>,
     },
     {
-      title: 'ComProxy', dataIndex: 'comproxy_version', width: 90,
+      title: 'ComProxy', key: 'comproxy_version', dataIndex: 'comproxy_version', width: 90,
       sorter: (a, b) => strCmp(a.comproxy_version, b.comproxy_version),
       render: (v) => v ? <Tag color="blue">{v}</Tag> : '—',
     },
     {
-      title: 'Прошивка', dataIndex: 'firmware_version', width: 100,
+      title: 'Прошивка', key: 'firmware_version', dataIndex: 'firmware_version', width: 100,
       sorter: (a, b) => strCmp(a.firmware_version, b.firmware_version),
       render: (v) => v ? <Tag color="cyan">{v}</Tag> : '—',
     },
     {
-      title: 'ФФД', dataIndex: 'ffd_version', width: 60,
+      title: 'ФФД', key: 'ffd_version', dataIndex: 'ffd_version', width: 60,
       sorter: (a, b) => strCmp(a.ffd_version, b.ffd_version),
       render: (v) => v || '—',
     },
@@ -412,7 +449,7 @@ function DevicesTab() {
       },
     },
     {
-      title: 'Последний отклик', dataIndex: 'last_seen_at', width: 140,
+      title: 'Последний отклик', key: 'last_seen_at', dataIndex: 'last_seen_at', width: 140,
       sorter: (a, b) => dateCmp(a.last_seen_at, b.last_seen_at),
       render: (v) => {
         if (!v) return '—';
@@ -450,6 +487,43 @@ function DevicesTab() {
       },
     },
   ];
+
+  // Видимые колонки с учётом сохранённых ширин; ширина меняется перетаскиванием границы заголовка
+  const visibleColumns = columns
+    .filter((c) => !hiddenCols.includes(c.key))
+    .map((c) => {
+      const width = colWidths[c.key] ?? c.width;
+      return {
+        ...c,
+        width,
+        onHeaderCell: () => ({
+          width,
+          onResize: (w) => setColWidths((prev) => ({ ...prev, [c.key]: w })),
+        }),
+      };
+    });
+  // 32 — колонка чекбоксов выбора
+  const tableScrollX = visibleColumns.reduce((sum, c) => sum + (c.width || 0), 32);
+
+  const columnsSettings = (
+    <div style={{ width: 220 }}>
+      <Checkbox.Group
+        style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+        value={columns.map((c) => c.key).filter((k) => !hiddenCols.includes(k))}
+        onChange={(checked) => {
+          if (!checked.length) return; // хотя бы одна колонка должна остаться
+          setHiddenCols(columns.map((c) => c.key).filter((k) => !checked.includes(k)));
+        }}
+        options={columns.map((c) => ({ label: c.title, value: c.key }))}
+      />
+      <div style={{ borderTop: '1px solid #f0f0f0', marginTop: 10, paddingTop: 8 }}>
+        <Button size="small" type="link" style={{ padding: 0 }}
+          onClick={() => { setHiddenCols(DEFAULT_HIDDEN); setColWidths({}); }}>
+          Сбросить вид и ширину
+        </Button>
+      </div>
+    </div>
+  );
 
   const rowSelection = {
     selectedRowKeys: selectedUuids,
@@ -512,18 +586,24 @@ function DevicesTab() {
           <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
             Обновить
           </Button>
+          <Popover title="Столбцы" trigger="click" placement="bottomRight" content={columnsSettings}>
+            <Tooltip title="Настройка столбцов">
+              <Button icon={<SettingOutlined />} />
+            </Tooltip>
+          </Popover>
         </Space>
       </div>
 
       <Table
         dataSource={displayedDevices}
-        columns={columns}
+        columns={visibleColumns}
+        components={{ header: { cell: ResizableTitle } }}
         rowKey="uuid"
         loading={loading}
         size="small"
         rowSelection={rowSelection}
         pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
-        scroll={{ x: 1400 }}
+        scroll={{ x: tableScrollX }}
         rowClassName={(r) => r.telemetry?.shift_exceeded_24h ? 'row-shift-exceeded' : ''}
       />
 

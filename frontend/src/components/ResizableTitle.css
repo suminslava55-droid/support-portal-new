@@ -1,0 +1,40 @@
+/* Ресайз колонок Ant Design Table (см. ResizableTitle.jsx) */
+
+/* Зона захвата 10px у правой границы, внутри — видимая полоска-разделитель */
+.resizable-th-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.resizable-th-handle::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  right: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: #d1d5db;
+  transition: background 0.2s ease, top 0.2s ease, bottom 0.2s ease;
+}
+
+.ant-table-thead > tr:hover .resizable-th-handle::after {
+  background: #a5b4fc;
+}
+
+.resizable-th-handle:hover::after,
+.resizable-th-handle:active::after {
+  top: 0;
+  bottom: 0;
+  background: #4f46e5;
+}
+
+/* Встроенный разделитель antd не нужен — его заменяет ручка */
+.ant-table-thead > tr > th.resizable-th::before {
+  display: none;
+}
