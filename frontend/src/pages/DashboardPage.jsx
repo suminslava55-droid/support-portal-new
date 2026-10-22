@@ -150,8 +150,7 @@ function DutyPerson({ name, initials, dutyType, idx }) {
   const av = getAvatarColor(idx);
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0',
-      borderBottom: '0.5px solid rgba(128,128,128,0.15)', fontSize: 13,
+      display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13,
     }}>
       <div style={{
         width: 28, height: 28, borderRadius: '50%',
@@ -197,20 +196,33 @@ function ActivityRow({ userName, action, clientName, clientId, createdAt }) {
   );
 }
 
-/* ─── Дежурства: сегодня + завтра в одной карточке ── */
+/* ─── Дежурства: сегодня + завтра блоками-днями ── */
 
-function DutyDay({ title, duty, birthdays, vacations }) {
+function DutyDay({ dayName, dateLabel, highlight, duty, birthdays, vacations }) {
+  const isDark = useThemeStore((s) => s.isDark);
   const empty = !(duty || []).length && !(birthdays || []).length && !(vacations || []).length;
+  // «Сегодня» — индиго-акцент слева и светлая подложка, «Завтра» — нейтральный фон
+  const bg = highlight
+    ? (isDark ? 'rgba(99,102,241,0.14)' : '#EEF2FF')
+    : (isDark ? 'rgba(255,255,255,0.04)' : '#F7F7F8');
   return (
-    <div>
-      <div style={{
-        fontSize: 11, fontWeight: 500, color: '#888',
-        textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8,
-      }}>
-        {title}
+    <div style={{
+      background: bg,
+      borderLeft: `3px solid ${highlight ? '#4F46E5' : 'transparent'}`,
+      borderRadius: 8,
+      padding: '10px 12px',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: empty ? 0 : 6 }}>
+        <span style={{
+          fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
+          color: highlight ? (isDark ? '#a5b4fc' : '#4F46E5') : '#888',
+        }}>
+          {dayName}
+        </span>
+        <span style={{ fontSize: 12, color: '#888' }}>{dateLabel}</span>
       </div>
       {empty
-        ? <div style={{ fontSize: 13, color: '#aaa' }}>Нет событий</div>
+        ? <div style={{ fontSize: 13, color: '#aaa', marginTop: 6 }}>Нет событий</div>
         : <>
             {(duty || []).map((d, i) => (
               <DutyPerson key={`duty-${d.user_id}`} name={d.name} initials={d.initials} dutyType={d.duty_type} idx={i} />
@@ -524,16 +536,19 @@ export default function DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isAdminOrSysadmin ? 3 : 2}, minmax(0,1fr))`, gap: 10 }}>
 
         {/* Сегодня + завтра */}
-        <Card>
+        <Card title="Дежурства">
           <DutyDay
-            title={`Сегодня · ${todayLabel}`}
+            dayName="Сегодня"
+            dateLabel={todayLabel}
+            highlight
             duty={data.duty_today}
             birthdays={data.birthdays_today}
             vacations={data.vacations_today}
           />
-          <Divider />
+          <div style={{ height: 10 }} />
           <DutyDay
-            title={`Завтра · ${tomorrowLabel}`}
+            dayName="Завтра"
+            dateLabel={tomorrowLabel}
             duty={data.duty_tomorrow}
             birthdays={data.birthdays_tomorrow}
             vacations={data.vacations_tomorrow}
