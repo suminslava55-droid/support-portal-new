@@ -26,6 +26,7 @@ const SearchPage       = lazy(() => import('./pages/SearchPage'));
 const FaqPage          = lazy(() => import('./pages/FaqPage'));
 const ComProxyDevicesPage = lazy(() => import('./pages/ComProxyDevicesPage'));
 const PcManagementPage = lazy(() => import('./pages/PcManagementPage'));
+const ArcadePage       = lazy(() => import('./pages/ArcadePage'));
 
 dayjs.locale('ru');
 
@@ -158,6 +159,7 @@ export default function App() {
             <Route path="/comproxy" element={<RequireAuth><RequireAdminOrSysadmin><ComProxyDevicesPage /></RequireAdminOrSysadmin></RequireAuth>} />
             <Route path="/pc-management" element={<RequireAuth><RequireAdminOrSysadmin><PcManagementPage /></RequireAdminOrSysadmin></RequireAuth>} />
             <Route path="/settings" element={<RequireAuth><RequireAdmin><SettingsPage /></RequireAdmin></RequireAuth>} />
+            <Route path="/arcade" element={<RequireAuth><ArcadePage /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Suspense>

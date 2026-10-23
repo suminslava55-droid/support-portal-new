@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Layout, Menu, Avatar, Dropdown, Typography, Modal, Form, Input, message, Switch, Image, Drawer, Button, Tooltip } from 'antd';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
@@ -39,6 +39,20 @@ export default function AppLayout({ children }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const isMobile = useIsMobile();
+  const titleClicks = useRef({ count: 0, last: 0 });
+
+  // Пасхалка: 5 быстрых кликов по «Портал поддержки» → скрытая аркада
+  const handleTitleClick = () => {
+    const now = Date.now();
+    const c = titleClicks.current;
+    c.count = now - c.last < 600 ? c.count + 1 : 1;
+    c.last = now;
+    if (c.count >= 5) {
+      c.count = 0;
+      setDrawerOpen(false);
+      navigate('/arcade');
+    }
+  };
 
   useEffect(() => {
     if (location.state?.forceChangePassword || user?.must_change_password) {
@@ -158,7 +172,7 @@ export default function AppLayout({ children }) {
             style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid #1677ff', cursor: 'pointer' }}
             preview={{ mask: '🔍' }}
           />
-          <Typography.Text strong style={{ fontSize: 15, color: '#1677ff', lineHeight: 1.2 }}>
+          <Typography.Text strong onClick={handleTitleClick} style={{ fontSize: 15, color: '#1677ff', lineHeight: 1.2, userSelect: 'none' }}>
             Портал поддержки
           </Typography.Text>
         </div>

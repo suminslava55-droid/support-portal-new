@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'apps.clients',
     'apps.comproxy',
     'apps.pcmgmt',
+    'apps.arcade',
 ]
 
 MIDDLEWARE = [
