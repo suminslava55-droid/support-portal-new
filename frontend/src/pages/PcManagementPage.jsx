@@ -194,7 +194,7 @@ function RunPanel({ run }) {
         {statusFilter && <Text type="secondary">Показано: {filteredTargets.length}</Text>}
       </Space>
       <Table size="small" rowKey="id" columns={targetColumns} style={{ marginTop: 6 }}
-        dataSource={filteredTargets} pagination={{ pageSize: 50 }} scroll={{ y: 340 }} />
+        dataSource={filteredTargets} pagination={{ defaultPageSize: 50 }} scroll={{ y: 340 }} />
     </>
   );
 }
@@ -481,7 +481,7 @@ function TasksTab({ selectedIds, targetMode, openCreateSignal }) {
       </Space>
 
       <Table size="small" rowKey="id" loading={loading} columns={columns} dataSource={jobs}
-        pagination={{ pageSize: 20 }} scroll={{ x: 1370 }} />
+        pagination={{ defaultPageSize: 20 }} scroll={{ x: 1370 }} />
 
       {/* Модалка создания */}
       <Modal

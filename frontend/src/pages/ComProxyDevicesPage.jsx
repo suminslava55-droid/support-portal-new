@@ -602,7 +602,7 @@ function DevicesTab() {
         loading={loading}
         size="small"
         rowSelection={rowSelection}
-        pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
+        pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
         scroll={{ x: tableScrollX }}
         rowClassName={(r) => r.telemetry?.shift_exceeded_24h ? 'row-shift-exceeded' : ''}
       />
@@ -822,7 +822,7 @@ function TasksTab() {
       </div>
 
       <Table dataSource={tasks} columns={columns} rowKey="id" loading={loading}
-        size="small" pagination={{ pageSize: 50 }} scroll={{ x: 1200 }} />
+        size="small" pagination={{ defaultPageSize: 50 }} scroll={{ x: 1200 }} />
     </div>
   );
 }
