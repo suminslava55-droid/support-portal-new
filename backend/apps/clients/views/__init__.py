@@ -31,6 +31,8 @@ from .kkt_views import (
 from .zabbix_views import (
     ClientProblemsView,
     ClientProblemsExportView,
+    ClientServerView,
+    ClientServerSummaryView,
 )
 
 from .bulk_views import (

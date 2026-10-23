@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..models import Client, SystemSettings
-from ..zabbix import ZabbixError, get_outages, format_duration, local_tz
+from ..zabbix import ZabbixError, get_outages, format_duration, local_tz, get_server_health, get_problems_summary
 
 DEFAULT_DAYS = 30
 MAX_DAYS = 366
@@ -136,3 +136,35 @@ class ClientProblemsExportView(APIView):
         )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+
+def _client(pk):
+    try:
+        return Client.objects.get(pk=pk)
+    except Client.DoesNotExist:
+        raise ZabbixError('Клиент не найден')
+
+
+class ClientServerView(APIView):
+    """GET /api/clients/{pk}/server/ — здоровье сервера аптеки и активные проблемы из Zabbix."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk=None):
+        try:
+            data = get_server_health(SystemSettings.get(), _client(pk).pharmacy_code)
+        except ZabbixError as e:
+            return Response({'error': str(e)}, status=400)
+        return Response(data)
+
+
+class ClientServerSummaryView(APIView):
+    """GET /api/clients/{pk}/server/summary/ — только число проблем (бейдж в карточке)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk=None):
+        # Без узла / без настроек Zabbix бейджа просто нет — не ошибка, не шумим в логах
+        try:
+            data = get_problems_summary(SystemSettings.get(), _client(pk).pharmacy_code)
+        except ZabbixError as e:
+            return Response({'count': None, 'max_severity': None, 'error': str(e)})
+        return Response(data)

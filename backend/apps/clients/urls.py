@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, KassaIpsView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktTsPiotView, ClientChzView, ClientChzRestartView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView, FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView, FaqHistoryView, HealthView, ClientProblemsView, ClientProblemsExportView
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, KassaIpsView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktTsPiotView, ClientChzView, ClientChzRestartView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView, FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView, FaqHistoryView, HealthView, ClientProblemsView, ClientProblemsExportView, ClientServerView, ClientServerSummaryView
 from .settings_views import SystemSettingsView, TestEmailView, CheckPackagesView, ZabbixTestView
 
 router = DefaultRouter()
@@ -46,5 +46,7 @@ urlpatterns = [
     path('<int:pk>/chz/restart/', ClientChzRestartView.as_view(), name='client-chz-restart'),
     path('<int:pk>/problems/', ClientProblemsView.as_view(), name='client-problems'),
     path('<int:pk>/problems/export/', ClientProblemsExportView.as_view(), name='client-problems-export'),
+    path('<int:pk>/server/', ClientServerView.as_view(), name='client-server'),
+    path('<int:pk>/server/summary/', ClientServerSummaryView.as_view(), name='client-server-summary'),
     path('', include(router.urls)),
 ]

@@ -178,3 +178,129 @@ def format_duration(seconds):
     m = rem // 60
     parts = ([f'{d} д'] if d else []) + ([f'{h} ч'] if h else []) + [f'{m} мин']
     return ' '.join(parts)
+
+
+# ──────────────── Вкладка «Сервер»: здоровье сервера аптеки ────────────────
+
+SEVERITY_NAMES = ['Не классифицировано', 'Информация', 'Предупреждение', 'Средняя', 'Высокая', 'Чрезвычайная']
+DISK_FIELDS = ['modelname', 'disktype', 'lifetimeperc', 'temperature', 'powerondays', 'crcerror', 'reallocsector']
+IPERF_RX = 'vfs.file.contents[C:\\rx.txt,utf8]'
+IPERF_TX = 'vfs.file.contents[C:\\tx.txt,utf8]'
+FLEET_CACHE_SEC = 3600
+_fleet_cache = {'ts': 0, 'data': None}
+
+
+def _find_host(zbx, pharmacy_code):
+    pharmacy_code = (pharmacy_code or '').strip()
+    if not pharmacy_code:
+        raise ZabbixError('У клиента не задан Код аптеки (UT)')
+    hosts = zbx.call('host.get', {'filter': {'host': [pharmacy_code]}, 'output': ['hostid', 'host', 'name']})
+    if not hosts:
+        raise ZabbixError(f'Узел {pharmacy_code} не найден в Zabbix')
+    return hosts[0]
+
+
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _median(values):
+    values = sorted(v for v in values if v)
+    return round(values[len(values) // 2], 1) if values else None
+
+
+def _fleet_iperf(zbx):
+    """Медиана iperf по всей сети — для сравнения; кэш на час."""
+    now = datetime.now().timestamp()
+    if _fleet_cache['data'] is None or now - _fleet_cache['ts'] > FLEET_CACHE_SEC:
+        items = zbx.call('item.get', {'filter': {'key_': [IPERF_RX, IPERF_TX]}, 'output': ['key_', 'lastvalue']})
+        _fleet_cache['data'] = {
+            'rx': _median(_num(i['lastvalue']) for i in items if i['key_'] == IPERF_RX),
+            'tx': _median(_num(i['lastvalue']) for i in items if i['key_'] == IPERF_TX),
+        }
+        _fleet_cache['ts'] = now
+    return _fleet_cache['data']
+
+
+def _problems(zbx, hostid):
+    rows = zbx.call('problem.get', {
+        'hostids': [hostid],
+        'output': ['eventid', 'name', 'severity', 'clock', 'acknowledged'],
+        'sortfield': ['eventid'], 'sortorder': 'DESC',
+    })
+    out = [{
+        'name': p['name'],
+        'severity': int(p['severity']),
+        'severity_name': SEVERITY_NAMES[int(p['severity'])],
+        'since': int(p['clock']),
+        'acknowledged': p['acknowledged'] == '1',
+    } for p in rows]
+    out.sort(key=lambda p: (-p['severity'], -p['since']))
+    return out
+
+
+def zabbix_web_url(settings):
+    url = (settings.zabbix_url or '').strip().rstrip('/')
+    if url.endswith('/api_jsonrpc.php'):
+        url = url[:-len('/api_jsonrpc.php')]
+    return url
+
+
+def get_problems_summary(settings, pharmacy_code):
+    """Лёгкий запрос для бейджа: число активных проблем и максимальная важность."""
+    zbx = ZabbixClient(settings)
+    host = _find_host(zbx, pharmacy_code)
+    problems = _problems(zbx, host['hostid'])
+    return {
+        'count': len(problems),
+        'max_severity': max((p['severity'] for p in problems), default=None),
+    }
+
+
+def get_server_health(settings, pharmacy_code):
+    """Метрики сервера аптеки + активные проблемы узла. Значения — как есть, с временем замера."""
+    zbx = ZabbixClient(settings)
+    host = _find_host(zbx, pharmacy_code)
+    raw = zbx.call('item.get', {
+        'hostids': [host['hostid']],
+        'output': ['key_', 'lastvalue', 'lastclock'],
+        'filter': {'status': 0},
+    })
+    items = {i['key_']: i for i in raw}
+
+    def val(key, numeric=True):
+        it = items.get(key)
+        if not it or not it['lastclock'] or it['lastclock'] == '0':
+            return None
+        v = _num(it['lastvalue']) if numeric else it['lastvalue'].strip()
+        return {'value': v, 'clock': int(it['lastclock'])}
+
+    def disk(prefix):
+        d = {f: val(f'{prefix}_{f}', numeric=f not in ('modelname', 'disktype')) for f in DISK_FIELDS}
+        return d if any(d.values()) else None
+
+    auth_key = next((k for k in items if k.startswith('icmpping[auth.')), None)
+    base = zabbix_web_url(settings)
+    return {
+        'host': host['host'],
+        'host_name': host['name'],
+        'zabbix_link': f"{base}/zabbix.php?action=problem.view&filter_set=1&hostids%5B%5D={host['hostid']}" if base else None,
+        'problems': _problems(zbx, host['hostid']),
+        'uptime': val('system.uptime'),
+        'ram_available': val('vm.memory.size[pavailable]'),
+        'agent_ping': val('agent.ping'),
+        'agent_version': val('agent.version', numeric=False),
+        'disks': [{'title': title, **d} for title, d in
+                  [('Системный диск', disk('osdrive')), ('Диск базы', disk('pgdbdrive'))] if d],
+        'volumes': {
+            'c_free': val('vfs.fs.size[C:,free]'),
+            'd_free': val('vfs.fs.size[D:,free]'),
+            'e_free': val('vfs.fs.size[E:,free]'),
+            'e_used': val('vfs.fs.size[E:,used]'),
+        },
+        'iperf': {'rx': val(IPERF_RX), 'tx': val(IPERF_TX), 'fleet': _fleet_iperf(zbx)},
+        'auth_ping': val(auth_key) if auth_key else None,
+    }

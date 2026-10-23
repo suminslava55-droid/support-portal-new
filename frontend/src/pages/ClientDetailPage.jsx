@@ -16,6 +16,7 @@ import ClientDetailInfo      from './client-detail/ClientDetailInfo';
 import ClientDetailProviders from './client-detail/ClientDetailProviders';
 import ClientDetailKkt       from './client-detail/ClientDetailKkt';
 import ClientDetailChz       from './client-detail/ClientDetailChz';
+import ClientDetailServer, { severityColor } from './client-detail/ClientDetailServer';
 import ChzIcon               from '../components/ChzIcon';
 import { ActivityIcon, getFileIcon, formatSize } from './client-detail/helpers';
 
@@ -61,6 +62,9 @@ export default function ClientDetailPage() {
   const [kassaIps, setKassaIps]       = useState({});
   const [kassaLoading, setKassaLoading] = useState(false);
 
+  // Активные проблемы Zabbix (бейдж): null — неизвестно / узла нет
+  const [zbxProblems, setZbxProblems] = useState(null);
+
   // ─── Загрузка ───────────────────────────────────────────
   const fetchClient = useCallback(async () => {
     try {
@@ -100,10 +104,26 @@ export default function ClientDetailPage() {
     }
   }, [id]);
 
+  const loadZbxSummary = useCallback(async () => {
+    try {
+      const res = await api.get(`/clients/${id}/server/summary/`);
+      setZbxProblems(res.data);
+    } catch { setZbxProblems(null); }
+  }, [id]);
+
+  // Вкладка «Сервер» обновила данные — синхронизируем бейдж
+  const onServerProblems = useCallback((problems) => {
+    setZbxProblems({
+      count: problems.length,
+      max_severity: problems.length ? Math.max(...problems.map(p => p.severity)) : null,
+    });
+  }, []);
+
   useEffect(() => {
     fetchClient();
     loadKktData();
-  }, [fetchClient, loadKktData]);
+    loadZbxSummary();
+  }, [fetchClient, loadKktData, loadZbxSummary]);
 
   useEffect(() => {
     if (client) {
@@ -267,6 +287,20 @@ export default function ClientDetailPage() {
       label: <span><ChzIcon size={15} style={{ marginRight: 6 }} />ЧЗ</span>,
       children: <ClientDetailChz clientId={id} canRestart={canRemoteMgmt} />,
     },
+    {
+      key: 'server',
+      label: (
+        <Space size={4}>
+          🖥️ Сервер
+          {zbxProblems?.count > 0 && (
+            <Tag color={severityColor(zbxProblems.max_severity)} style={{ marginLeft: 2, fontSize: 11 }}>
+              ⚠ {zbxProblems.count}
+            </Tag>
+          )}
+        </Space>
+      ),
+      children: <ClientDetailServer clientId={id} onProblems={onServerProblems} />,
+    },
   ];
 
   return (
@@ -278,6 +312,13 @@ export default function ClientDetailPage() {
           <Tag color={client.status === 'active' ? 'green' : 'default'}>
             {client.status === 'active' ? 'Активен' : 'Неактивен'}
           </Tag>
+          {zbxProblems?.count > 0 && (
+            <Tooltip title="Активные проблемы в Zabbix — открыть вкладку «Сервер»">
+              <Tag color={severityColor(zbxProblems.max_severity)} style={{ cursor: 'pointer' }} onClick={() => setActiveTab('server')}>
+                ⚠ {zbxProblems.count} в Zabbix
+              </Tag>
+            </Tooltip>
+          )}
         </Space>
         <Space>
           {permissions.can_edit_client && (
