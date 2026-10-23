@@ -155,6 +155,7 @@ def get_outages(settings, pharmacy_code, date_from, date_to):
             'started_before': start < ts_from,
             'duration_sec': seconds,
         })
+    items.reverse()  # свежие пропадания — первыми
 
     period_sec = ts_to - ts_from
     return {

@@ -21,3 +21,4 @@ scheduler_run.sh
 AUDIT_*.md
 CLAUDE.md
 /comproxy/
+.claude/settings.local.json
