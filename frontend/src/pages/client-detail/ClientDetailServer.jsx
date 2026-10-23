@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Tag, Button, Space, Typography, Spin, Alert, Tooltip, Row, Col, Progress, Table, Empty } from 'antd';
-import { ReloadOutlined, LinkOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { Card, Tag, Button, Space, Typography, Spin, Alert, Tooltip, Row, Col, Progress, Table, Empty, Descriptions } from 'antd';
+import { ReloadOutlined, LinkOutlined, CheckCircleFilled, DesktopOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
@@ -139,7 +139,73 @@ function ProblemsBlock({ problems }) {
   );
 }
 
-export default function ClientDetailServer({ clientId, onProblems }) {
+// Железо сервера: живой опрос по WinRM — только по кнопке (2–5 с, иногда до 20)
+function HardwareCard({ clientId }) {
+  const [loading, setLoading] = useState(false);
+  const [hw, setHw] = useState(null);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get(`/clients/${clientId}/server/hardware/`, { timeout: 120000 });
+      setHw({ ...res.data, at: dayjs() });
+    } catch (e) {
+      setError(e?.response?.data?.error || 'Сервер не ответил');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const columns = [
+    { title: 'Слот', dataIndex: 'slot', render: (v, r) => <>{v}<Text type="secondary" style={{ fontSize: 12 }}> · {r.bank}</Text></> },
+    { title: 'Объём', dataIndex: 'size_gb', width: 80, render: v => `${v} ГБ` },
+    { title: 'Частота', dataIndex: 'speed', width: 100, render: v => v ? `${v} МГц` : '—' },
+    { title: 'Модуль', dataIndex: 'part_number', render: (v, r) => <>{r.manufacturer} <Text type="secondary">{v}</Text></> },
+  ];
+
+  return (
+    <Card
+      size="small"
+      title={<><DesktopOutlined style={{ marginRight: 6 }} />Железо сервера</>}
+      style={{ marginTop: 12 }}
+      extra={
+        <Space size={8}>
+          {hw && <Text type="secondary" style={{ fontSize: 12 }}>опрошен {hw.at.format('HH:mm:ss')}</Text>}
+          <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={load}>
+            {hw ? 'Обновить' : 'Опросить сервер'}
+          </Button>
+        </Space>
+      }
+    >
+      {loading && !hw && <Text type="secondary">Опрос сервера по WinRM — обычно 2–5 секунд, иногда до 20…</Text>}
+      {!loading && !hw && !error && <Text type="secondary">Плата, процессор, ОС и память по слотам — живой опрос сервера аптеки.</Text>}
+      {error && <Alert type="warning" showIcon message={error} style={{ marginBottom: hw ? 12 : 0 }} />}
+      {hw && (
+        <>
+          <Descriptions size="small" column={{ xs: 1, md: 2 }} style={{ marginBottom: 12 }}>
+            <Descriptions.Item label="Плата">{hw.board ? `${hw.board.manufacturer} ${hw.board.product}` : '—'}</Descriptions.Item>
+            <Descriptions.Item label="Процессор">
+              {hw.cpu ? <>{hw.cpu.name} <Text type="secondary">· {hw.cpu.cores} ядер / {hw.cpu.threads} потоков</Text></> : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="ОС">
+              {hw.os ? <>{hw.os.caption} <Text type="secondary">· {hw.os.version} · {hw.os.arch}</Text></> : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Память">
+              <Text strong>{hw.ram_total_gb} ГБ</Text>
+              {hw.slots_total ? <Text type="secondary"> · занято слотов {hw.modules.length} из {hw.slots_total}</Text> : null}
+              {hw.max_ram_gb ? <Text type="secondary"> · плата до {hw.max_ram_gb} ГБ</Text> : null}
+            </Descriptions.Item>
+          </Descriptions>
+          <Table rowKey="slot" size="small" pagination={false} columns={columns} dataSource={hw.modules} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+export default function ClientDetailServer({ clientId, onProblems, canQueryHardware }) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -172,8 +238,10 @@ export default function ClientDetailServer({ clientId, onProblems }) {
     </Space>
   );
 
+  const hardware = canQueryHardware ? <HardwareCard clientId={clientId} /> : null;
+
   if (loading && !data) return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
-  if (error) return <>{toolbar}<Alert type="warning" showIcon message={error} /></>;
+  if (error) return <>{toolbar}<Alert type="warning" showIcon message={error} />{hardware}</>;
   if (!data) return <Empty />;
 
   const ram = data.ram_available?.value;
@@ -262,6 +330,7 @@ export default function ClientDetailServer({ clientId, onProblems }) {
           </Card>
         </Col>
       </Row>
+      {hardware}
     </Spin>
   );
 }

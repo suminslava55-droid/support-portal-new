@@ -299,7 +299,7 @@ export default function ClientDetailPage() {
           )}
         </Space>
       ),
-      children: <ClientDetailServer clientId={id} onProblems={onServerProblems} />,
+      children: <ClientDetailServer clientId={id} onProblems={onServerProblems} canQueryHardware={canRemoteMgmt} />,
     },
   ];
 

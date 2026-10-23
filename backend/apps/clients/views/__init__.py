@@ -35,6 +35,10 @@ from .zabbix_views import (
     ClientServerSummaryView,
 )
 
+from .hardware_views import (
+    ClientServerHardwareView,
+)
+
 from .bulk_views import (
     BulkImportClientsView,
 )
