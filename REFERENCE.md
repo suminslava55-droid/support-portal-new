@@ -42,6 +42,15 @@
 - **Токен ЧЗ** задаётся у компании (раздел «Компании», рядом с токеном ОФД, шифруется). **УЗ Regime** — в Настройки → Учётные записи
 - Эндпоинты: `GET/POST /api/clients/{id}/chz/`, `POST /api/clients/{id}/chz/restart/`
 
+### 📶 Проблемки (Zabbix) — пропадания связи аптеки
+- Кнопка **«Проблемки»** в карточке клиента → вкладка «Провайдеры». Неактивна, если у клиента не задан **Код аптеки (UT)**
+- Узел Zabbix ищется по `host` = Код аптеки (UT); события берутся по триггеру из настроек (по умолчанию **`[NET] NO PING IN VPN`**)
+- Модалка: выбор периода (пресеты «Сегодня / 7 дней / 30 дней / Этот месяц / Прошлый месяц», до 366 дней), статус связи сейчас, число пропаданий, суммарный простой и % времени, таблица «Пропал → Появился → Длительность»; кнопка **«Экспорт в Excel»**
+- Пропадание, начавшееся до периода, учитывается с обрезкой по началу периода (метка «до периода»); незакрытое — до текущего момента («нет связи сейчас»)
+- Время — в часовом поясе из Настройки → Регламентные задания (`timezone_offset`)
+- Данные запрашиваются из Zabbix по кнопке (4 запроса JSON-RPC), в БД не пишутся. Доступно всем ролям
+- Настройка: Настройки → Учётные записи → **Zabbix** (URL, IP, API-токен, триггер). Если сервер портала не резолвит имя Zabbix — указывается IP: запрос идёт на IP, а имя из URL передаётся в `Host`/SNI, сертификат проверяется по имени
+
 ### 🔄 Замена ФН
 - **Вкладка Общий** — полный список всех ККТ
 - **Вкладка По месяцам** — фильтр по месяцу и году окончания срока ФН
@@ -168,7 +177,7 @@
 
 | Вкладка | Содержимое |
 |---------|------------|
-| Учётные записи | SSH (Микротик), SMTP (Email), УЗ для подключения к ПК аптек (WinRM/SMB/WMI), УЗ для подключения к Regime (Basic Auth к ЛМ ЧЗ на порту 5995) |
+| Учётные записи | SSH (Микротик), SMTP (Email), УЗ для подключения к ПК аптек (WinRM/SMB/WMI), УЗ для подключения к Regime (Basic Auth к ЛМ ЧЗ на порту 5995), Zabbix (URL, IP, API-токен, триггер — для «Проблемок»; кнопка «Проверить подключение») |
 | Автоматизация | Массовая загрузка клиентов из JSON |
 | Регламентные задания | Часовой пояс + три задания с расписанием |
 | Диагностика | Проверка Python-зависимостей (8 пакетов, включая pywinrm/impacket) |
@@ -359,6 +368,14 @@ privileged: true
 | POST | `/api/clients/{id}/chz/restart/` | Перезагрузка службы ЧЗ через задание pcmgmt (admin/sysadmin) |
 | GET | `/api/clients/{id}/ofd_kkt/{kkt_id}/tspiot/` | ТС ПИоТ — живой опрос драйвера маркировки (ComProxy:51077) |
 
+### Endpoints API Zabbix («Проблемки»)
+
+| Метод | URL | Описание |
+|-------|-----|----------|
+| GET | `/api/clients/{id}/problems/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | Пропадания связи за период (по умолчанию 30 дней): `items[{start, end, open, started_before, duration_sec}]`, `total_count`, `total_sec`, `percent`, `current_problem` |
+| GET | `/api/clients/{id}/problems/export/?date_from=&date_to=` | То же в Excel (`problemki_UTxxxxxx_<from>_<to>.xlsx`) |
+| POST | `/api/clients/system-settings/zabbix-test/` | Проверка подключения (admin): `apiinfo.version` + доступ токеном |
+
 ### Endpoints HUB AgentService (Basic Auth, для касс)
 
 | Метод | URL | Описание |
@@ -447,9 +464,11 @@ support-portal/
 │   │       │   ├── search_utils.py    # fuzzy_filter_clients, build_exact_q (pg_trgm)
 │   │       │   ├── faq_views.py       # FaqCategoryViewSet, FaqArticleViewSet, FaqFileView,
 │   │       │   │                      # FaqFileDeleteView, FaqImageUploadView, FaqImportView
+│   │       │   ├── zabbix_views.py   # ClientProblemsView, ClientProblemsExportView («Проблемки»)
 │   │       │   └── utils.py          # ping_ip, build_change_log, FIELD_LABELS
 │   │       ├── serializers.py    # Сериализаторы моделей
-│   │       ├── settings_views.py # Настройки SSH, SMTP, УЗ Windows (WinRM), УЗ Regime (ЛМ ЧЗ)
+│   │       ├── settings_views.py # Настройки SSH, SMTP, УЗ Windows (WinRM), УЗ Regime (ЛМ ЧЗ), Zabbix + ZabbixTestView
+│   │       ├── zabbix.py         # Клиент Zabbix API (Bearer, подключение по IP с SNI), get_outages — расчёт «Проблемок»
 │   │       ├── urls.py           # Маршруты приложения clients
 │   │       └── migrations/       # Миграции базы данных
 │   ├── config/
