@@ -28,6 +28,11 @@ from .kkt_views import (
     KktExportView,
 )
 
+from .zabbix_views import (
+    ClientProblemsView,
+    ClientProblemsExportView,
+)
+
 from .bulk_views import (
     BulkImportClientsView,
 )

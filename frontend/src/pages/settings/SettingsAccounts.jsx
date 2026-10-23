@@ -9,6 +9,8 @@ import {
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 
+import SettingsZabbix from './SettingsZabbix';
+
 const { Text } = Typography;
 
 export default function SettingsAccounts({
@@ -155,6 +157,9 @@ export default function SettingsAccounts({
           </Space>
         </Card>
       </Form>
+
+      {/* Zabbix — отчёт «Проблемки» */}
+      <SettingsZabbix />
 
       {/* SMTP */}
       <Form form={smtpForm} layout="vertical" onFinish={onSaveSmtp}>

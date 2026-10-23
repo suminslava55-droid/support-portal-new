@@ -21,6 +21,43 @@ class CheckPackagesView(APIView):
         return Response(result)
 
 
+ZABBIX_DEFAULT_TRIGGER = '[NET] NO PING IN VPN'
+
+
+def _zabbix_payload(s):
+    return {
+        'zabbix_url': s.zabbix_url,
+        'zabbix_ip': s.zabbix_ip,
+        'zabbix_trigger': s.zabbix_trigger,
+        'has_zabbix_token': bool(s.zabbix_token_encrypted),
+    }
+
+
+class ZabbixTestView(APIView):
+    """POST /api/clients/system-settings/zabbix-test/ — проверка подключения к Zabbix
+    (значения из формы, незаполненные — из сохранённых настроек)."""
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        from types import SimpleNamespace
+        from .zabbix import ZabbixClient, ZabbixError
+
+        s = SystemSettings.get()
+        token = (request.data.get('zabbix_token') or '').strip()
+        use_saved_token = not token or token == '••••••••'
+        cfg = SimpleNamespace(
+            zabbix_url=(request.data.get('zabbix_url') or s.zabbix_url or '').strip(),
+            zabbix_ip=(request.data.get('zabbix_ip', s.zabbix_ip) or '').strip(),
+            zabbix_token_encrypted=s.zabbix_token_encrypted if use_saved_token else 'form',
+            zabbix_token=s.zabbix_token if use_saved_token and s.zabbix_token_encrypted else token,
+        )
+        try:
+            version = ZabbixClient(cfg).test()
+        except ZabbixError as e:
+            return Response({'ok': False, 'error': str(e)}, status=400)
+        return Response({'ok': True, 'version': version})
+
+
 class SystemSettingsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -45,6 +82,7 @@ class SystemSettingsView(APIView):
             'has_winrm_password': bool(s.winrm_password_encrypted),
             'regime_user': s.regime_user,
             'has_regime_password': bool(s.regime_password_encrypted),
+            **_zabbix_payload(s),
             'timezone_offset': s.timezone_offset,
             'allowed_email_domains': s.allowed_email_domains,
         })
@@ -76,6 +114,13 @@ class SystemSettingsView(APIView):
             s.regime_password_encrypted = ''
             s.save()
             return Response({'message': 'УЗ Regime очищена'})
+        elif section == 'zabbix':
+            s.zabbix_url = ''
+            s.zabbix_ip = ''
+            s.zabbix_token_encrypted = ''
+            s.zabbix_trigger = ZABBIX_DEFAULT_TRIGGER
+            s.save()
+            return Response({'message': 'Настройки Zabbix очищены'})
         else:
             s.ssh_user = ''
             s.ssh_password_encrypted = ''
@@ -132,6 +177,16 @@ class SystemSettingsView(APIView):
                 'regime_user': s.regime_user,
                 'has_regime_password': bool(s.regime_password_encrypted),
             })
+        elif section == 'zabbix':
+            s.zabbix_url = (request.data.get('zabbix_url', s.zabbix_url) or '').strip()
+            s.zabbix_ip = (request.data.get('zabbix_ip', s.zabbix_ip) or '').strip()
+            s.zabbix_trigger = (request.data.get('zabbix_trigger', s.zabbix_trigger) or '').strip() \
+                or ZABBIX_DEFAULT_TRIGGER
+            zabbix_token = (request.data.get('zabbix_token', '') or '').strip()
+            if zabbix_token and zabbix_token != '••••••••':
+                s.set_zabbix_token(zabbix_token)
+            s.save()
+            return Response(_zabbix_payload(s))
         elif section == 'general':
             s.timezone_offset = int(request.data.get('timezone_offset', s.timezone_offset) or 0)
             s.save()

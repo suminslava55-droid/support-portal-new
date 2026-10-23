@@ -1,8 +1,9 @@
-import React from 'react';
-import { Card, Descriptions, Space, Tag, Button, Empty, Typography } from 'antd';
-import { WifiOutlined } from '@ant-design/icons';
+import React, { useState } from 'react';
+import { Card, Descriptions, Space, Tag, Button, Empty, Typography, Tooltip } from 'antd';
+import { WifiOutlined, WarningOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { CopyField, CONNECTION_LABELS, CONNECTION_COLORS } from './helpers';
+import ClientProblemsModal from './ClientProblemsModal';
 
 const { Text } = Typography;
 
@@ -68,9 +69,22 @@ function ProviderCard({ title, color, providerData, client, connectionType, tari
 export default function ClientDetailProviders({ client }) {
   const navigate = useNavigate();
   const id = client.id;
+  const [problemsOpen, setProblemsOpen] = useState(false);
 
   return (
     <>
+      {/* Отчёт о пропаданиях связи по Zabbix */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <Tooltip title={client.pharmacy_code ? 'Когда пропадала и появлялась связь (Zabbix)' : 'Не задан Код аптеки (UT)'}>
+          <Button icon={<WarningOutlined />} disabled={!client.pharmacy_code} onClick={() => setProblemsOpen(true)}>
+            Проблемки
+          </Button>
+        </Tooltip>
+      </div>
+      {client.pharmacy_code && (
+        <ClientProblemsModal open={problemsOpen} onClose={() => setProblemsOpen(false)} client={client} />
+      )}
+
       {client.provider_data ? (
         <ProviderCard
           title="Провайдер 1"

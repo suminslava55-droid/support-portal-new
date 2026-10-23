@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, KassaIpsView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktTsPiotView, ClientChzView, ClientChzRestartView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView, FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView, FaqHistoryView, HealthView
-from .settings_views import SystemSettingsView, TestEmailView, CheckPackagesView
+from .views import ClientViewSet, CustomFieldDefinitionViewSet, ProviderViewSet, FetchExternalIPView, KassaIpsView, DashboardStatsView, DutyScheduleViewSet, OfdCompanyViewSet, OfdKktView, KktTsPiotView, ClientChzView, ClientChzRestartView, KktListView, KktExportView, BulkImportClientsView, ScheduledTaskListView, ScheduledTaskRunView, ScheduledTaskProgressView, ScheduledTaskCronView, GlobalSearchView, RnmSyncView, BackupListView, BackupRestoreView, FaqCategoryViewSet, FaqArticleViewSet, FaqFileView, FaqFileDeleteView, FaqImageUploadView, FaqImportView, FaqExportView, FaqHistoryView, HealthView, ClientProblemsView, ClientProblemsExportView
+from .settings_views import SystemSettingsView, TestEmailView, CheckPackagesView, ZabbixTestView
 
 router = DefaultRouter()
 router.register('faq-categories', FaqCategoryViewSet, basename='faq-categories')
@@ -20,6 +20,7 @@ urlpatterns = [
     path('system-settings/', SystemSettingsView.as_view(), name='system-settings'),
     path('system-settings/test-email/', TestEmailView.as_view(), name='test-email'),
     path('system-settings/check-packages/', CheckPackagesView.as_view(), name='check-packages'),
+    path('system-settings/zabbix-test/', ZabbixTestView.as_view(), name='zabbix-test'),
     path('fetch_external_ip/', FetchExternalIPView.as_view(), name='fetch-external-ip'),
     path('kkt-list/', KktListView.as_view(), name='kkt-list'),
     path('kkt-export/', KktExportView.as_view(), name='kkt-export'),
@@ -43,5 +44,7 @@ urlpatterns = [
     path('<int:pk>/ofd_kkt/<int:kkt_id>/tspiot/', KktTsPiotView.as_view(), name='kkt-tspiot'),
     path('<int:pk>/chz/', ClientChzView.as_view(), name='client-chz'),
     path('<int:pk>/chz/restart/', ClientChzRestartView.as_view(), name='client-chz-restart'),
+    path('<int:pk>/problems/', ClientProblemsView.as_view(), name='client-problems'),
+    path('<int:pk>/problems/export/', ClientProblemsExportView.as_view(), name='client-problems-export'),
     path('', include(router.urls)),
 ]

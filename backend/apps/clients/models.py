@@ -344,6 +344,20 @@ class SystemSettings(models.Model):
     def set_regime_password(self, value):
         self.regime_password_encrypted = encrypt_value(value)
 
+    # Zabbix API — отчёт «Проблемки» (пропадания VPN аптек)
+    zabbix_url = models.CharField('URL Zabbix', max_length=300, blank=True)
+    zabbix_ip = models.CharField('IP Zabbix (если имя не резолвится)', max_length=45, blank=True)
+    zabbix_token_encrypted = models.TextField('API-токен Zabbix (зашифрован)', blank=True)
+    zabbix_trigger = models.CharField('Триггер пропадания связи', max_length=200,
+                                      default='[NET] NO PING IN VPN', blank=True)
+
+    @property
+    def zabbix_token(self):
+        return decrypt_value(self.zabbix_token_encrypted)
+
+    def set_zabbix_token(self, value):
+        self.zabbix_token_encrypted = encrypt_value(value)
+
     # Разрешённые домены для отправки экспортов по email.
     # Пустое значение = ограничений нет.
     # Формат: "company.ru,company2.ru,company3.ru"

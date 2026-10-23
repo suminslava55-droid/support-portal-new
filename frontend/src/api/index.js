@@ -49,6 +49,9 @@ export const clientsAPI = {
   create: (data) => api.post('/clients/', data),
   update: (id, data) => api.patch(`/clients/${id}/`, data),
   delete: (id) => api.delete(`/clients/${id}/`),
+  // «Проблемки» — пропадания связи по Zabbix
+  getProblems: (id, params) => api.get(`/clients/${id}/problems/`, { params }),
+  exportProblems: (id, params) => api.get(`/clients/${id}/problems/export/`, { params, responseType: 'blob' }),
   getNotes: (id) => api.get(`/clients/${id}/notes/`),
   addNote: (id, text) => api.post(`/clients/${id}/notes/`, { text }),
   deleteNote: (clientId, noteId) => api.delete(`/clients/${clientId}/notes/${noteId}/`),
@@ -93,6 +96,7 @@ export const settingsAPI = {
   get: () => api.get('/clients/system-settings/'),
   save: (data) => api.post('/clients/system-settings/', data),
   clear: (section) => api.delete(`/clients/system-settings/?section=${section || 'ssh'}`),
+  testZabbix: (data) => api.post('/clients/system-settings/zabbix-test/', data),
   testEmail: (toEmail) => api.post('/clients/system-settings/test-email/', { to_email: toEmail }),
   checkPackages: () => api.get('/clients/system-settings/check-packages/'),
 };
