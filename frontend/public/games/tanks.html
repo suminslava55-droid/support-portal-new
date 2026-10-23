@@ -1,0 +1,1539 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<!-- Танчики: Защита ККТ — игра аркады портала поддержки. Счёт отправляется в портал (postMessage). -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<title>Танчики — Защита ККТ</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0b0f1a}
+body{
+  position:fixed;inset:0;display:flex;flex-direction:column;
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  user-select:none;-webkit-user-select:none;touch-action:none;overscroll-behavior:none;
+  color:#f1f5f9;
+}
+.mono{font-family:ui-monospace,'Cascadia Mono',Consolas,monospace}
+
+.hud{
+  position:relative;z-index:10;flex:0 0 auto;
+  display:flex;flex-direction:column;gap:6px;
+  padding:10px 14px 8px;background:rgba(12,15,29,0.9);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
+.hud-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{display:flex;align-items:center;gap:8px;min-width:0}
+.brand-icon{
+  width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#22c55e);
+  display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 0 12px rgba(99,102,241,0.4);
+  flex:0 0 auto;
+}
+.brand-title{
+  font-weight:800;font-size:1.05rem;letter-spacing:1px;white-space:nowrap;
+  background:linear-gradient(90deg,#fff,#a5b4fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.level-badge{
+  font-size:0.7rem;font-weight:700;padding:3px 8px;border-radius:6px;
+  background:rgba(99,102,241,0.2);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.controls-hud{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.btn-icon{
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);
+  color:#cbd5e1;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:0.75rem;font-family:inherit;
+}
+.btn-icon:hover{background:rgba(255,255,255,0.12);color:#fff}
+.btn-icon.off{opacity:0.4;text-decoration:line-through}
+
+.stats-bar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:0.8rem}
+.stat-pill{
+  display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.04);
+  padding:3px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);
+}
+.v-score{color:#f6d55c;font-weight:700}
+.v-best{color:#38bdf8;font-weight:700}
+.v-lives{color:#f87171;font-weight:700}
+.v-foes{color:#fb923c;font-weight:700}
+.v-power{color:#a78bfa;font-weight:700}
+
+#canvas-wrapper{
+  position:relative;flex:1 1 auto;width:100%;min-height:0;display:flex;
+  align-items:center;justify-content:center;overflow:hidden;padding:6px;
+}
+canvas{display:block;border-radius:6px;box-shadow:0 0 0 1px rgba(255,255,255,0.08),0 10px 30px rgba(0,0,0,0.5)}
+
+.keys-hint{
+  position:absolute;bottom:4px;left:50%;transform:translateX(-50%);
+  display:flex;gap:12px;font-size:0.7rem;color:rgba(255,255,255,0.4);pointer-events:none;white-space:nowrap;
+}
+.key-badge{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);padding:1px 5px;border-radius:4px;color:#cbd5e1;font-weight:700}
+
+.touch-controls{
+  position:absolute;bottom:12px;left:0;right:0;padding:0 16px;
+  display:flex;justify-content:space-between;align-items:flex-end;pointer-events:none;z-index:25;
+}
+.dpad{display:grid;grid-template-columns:52px 52px 52px;grid-template-rows:52px 52px 52px;gap:4px;pointer-events:auto}
+.tbtn{
+  border-radius:14px;background:rgba(15,23,42,0.75);border:2px solid rgba(255,255,255,0.15);color:#fff;
+  font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;
+  -webkit-tap-highlight-color:transparent;
+}
+.tbtn.active{background:rgba(99,102,241,0.55);border-color:#818cf8}
+.tbtn-fire{width:84px;height:84px;border-radius:42px;pointer-events:auto;font-size:15px;border-color:rgba(239,68,68,0.5)}
+.tbtn-fire.active{background:rgba(239,68,68,0.55);border-color:#ef4444}
+
+@media(max-width:768px){.keys-hint{display:none}}
+@media(min-width:769px){.touch-controls{display:none}}
+</style>
+</head>
+<body>
+
+<header class="hud">
+  <div class="hud-top">
+    <div class="brand">
+      <div class="brand-icon">🪖</div>
+      <div class="brand-title">ТАНЧИКИ: ЗАЩИТА ККТ</div>
+      <div id="lvl-badge" class="level-badge">УРОВЕНЬ 1</div>
+    </div>
+    <div class="controls-hud">
+      <button id="btn-music" class="btn-icon" title="Фоновая музыка (N)">🎵</button>
+      <button id="btn-sound" class="btn-icon" title="Звуки игры (M)">🔊</button>
+      <button id="btn-pause" class="btn-icon" title="Пауза (P / Esc)">⏸</button>
+    </div>
+  </div>
+  <div class="stats-bar mono">
+    <div class="stat-pill">Счёт: <span id="v-score" class="v-score">0</span></div>
+    <div class="stat-pill">Рекорд: <span id="v-best" class="v-best">0</span></div>
+    <div class="stat-pill">Жизни: <span id="v-lives" class="v-lives">3</span></div>
+    <div class="stat-pill">Проблем осталось: <span id="v-foes" class="v-foes">20</span></div>
+    <div class="stat-pill">Прошивка: <span id="v-power" class="v-power">v1</span></div>
+  </div>
+</header>
+
+<div id="canvas-wrapper">
+  <canvas id="c"></canvas>
+  <div class="keys-hint">
+    <span><span class="key-badge">←↑→↓</span> / <span class="key-badge">WASD</span> Ехать</span>
+    <span><span class="key-badge">Пробел</span> / <span class="key-badge">J</span> Огонь</span>
+    <span><span class="key-badge">P</span> Пауза</span>
+    <span><span class="key-badge">N</span> Музыка</span>
+  </div>
+  <div class="touch-controls">
+    <div class="dpad">
+      <div></div><button class="tbtn" data-dir="0">▲</button><div></div>
+      <button class="tbtn" data-dir="3">◀</button><div></div><button class="tbtn" data-dir="1">▶</button>
+      <div></div><button class="tbtn" data-dir="2">▼</button><div></div>
+    </div>
+    <button id="t-fire" class="tbtn tbtn-fire">ОГОНЬ</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ──────────────── Звук (Web Audio) ──────────────── */
+  var audioCtx = null;
+  var soundEnabled = localStorage.getItem('tanksSound') !== 'false';
+
+  function getAudioCtx() {
+    if (!audioCtx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function tone(ctx, type, f0, f1, dur, vol, delay) {
+    var t = ctx.currentTime + (delay || 0);
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.linearRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + dur);
+  }
+
+  function playSound(type) {
+    if (!soundEnabled) return;
+    try {
+      var ctx = getAudioCtx();
+      if (!ctx) return;
+      if (type === 'shoot') tone(ctx, 'square', 520, 180, 0.08, 0.08);
+      else if (type === 'brick') tone(ctx, 'sawtooth', 160, 60, 0.09, 0.1);
+      else if (type === 'steel') tone(ctx, 'triangle', 1400, 900, 0.07, 0.08);
+      else if (type === 'armor') tone(ctx, 'square', 300, 450, 0.1, 0.1);
+      else if (type === 'boom') { tone(ctx, 'sawtooth', 180, 30, 0.35, 0.22); tone(ctx, 'square', 90, 40, 0.3, 0.1); }
+      else if (type === 'bonus_spawn') tone(ctx, 'sine', 880, 1320, 0.15, 0.12);
+      else if (type === 'bonus') [523, 659, 784, 1047].forEach(function (f, i) { tone(ctx, 'triangle', f, 0, 0.12, 0.13, i * 0.06); });
+    } catch (e) {}
+  }
+
+  /* ──────────────── Музыка (свои мелодии, синтез на лету) ────────────────
+     Ноты: 'A4', 'C#5'…, '-' — пауза; число — длительность в шагах трека. */
+  var musicEnabled = localStorage.getItem('tanksMusic') !== 'false';
+  var NOTE_IDX = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+
+  function noteFreq(n) {
+    var m = /^([A-G])(#?)(\d)$/.exec(n);
+    var midi = 12 * (parseInt(m[3], 10) + 1) + NOTE_IDX[m[1]] + (m[2] ? 1 : 0);
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  // бас «октавными качелями» по аккордам: по 8 шагов на такт
+  function bassLine(roots) {
+    var out = [];
+    roots.forEach(function (r) {
+      var hi = r.replace(/\d$/, function (o) { return String(parseInt(o, 10) + 1); });
+      for (var i = 0; i < 4; i++) { out.push([r, 1]); out.push([hi, 1]); }
+    });
+    return out;
+  }
+
+  var TRACKS = {
+    // заставка уровня — бодрый марш
+    intro: {
+      step: 0.17, loop: false,
+      parts: [
+        { wave: 'square', vol: 0.06, notes: [['G4', 1], ['G4', 1], ['C5', 2], ['E5', 2], ['C5', 1], ['E5', 1], ['G5', 3], ['E5', 1], ['G5', 2], ['C6', 4]] },
+        { wave: 'square', vol: 0.03, notes: [['-', 2], ['E4', 2], ['G4', 2], ['E4', 2], ['C5', 3], ['B4', 1], ['D5', 2], ['E5', 4]] },
+        { wave: 'triangle', vol: 0.13, notes: [['C3', 2], ['G2', 2], ['C3', 2], ['G2', 2], ['C3', 2], ['G2', 2], ['G2', 2], ['B2', 2], ['C3', 2]] }
+      ]
+    },
+    // аптека спасена
+    clear: {
+      step: 0.12, loop: false,
+      parts: [
+        { wave: 'square', vol: 0.06, notes: [['C5', 1], ['E5', 1], ['G5', 1], ['C6', 2], ['G5', 1], ['C6', 1], ['E6', 6], ['-', 1], ['D6', 1], ['E6', 1], ['G6', 6]] },
+        { wave: 'square', vol: 0.03, notes: [['E4', 1], ['G4', 1], ['C5', 1], ['E5', 2], ['C5', 1], ['E5', 1], ['G5', 6], ['-', 1], ['F5', 1], ['G5', 1], ['B5', 6]] },
+        { wave: 'triangle', vol: 0.13, notes: [['C3', 3], ['G3', 3], ['C4', 6], ['-', 1], ['G3', 2], ['C3', 6]] }
+      ]
+    },
+    // конец смены — грустный спуск
+    over: {
+      step: 0.16, loop: false,
+      parts: [
+        { wave: 'square', vol: 0.06, notes: [['E5', 2], ['D#5', 2], ['D5', 2], ['C#5', 8]] },
+        { wave: 'triangle', vol: 0.13, notes: [['A3', 2], ['G#3', 2], ['G3', 2], ['F#3', 8]] }
+      ]
+    },
+    // фон во время боя — 8 тактов по 8 шагов, по кругу
+    battle: {
+      step: 0.15, loop: true, hat: true,
+      parts: [
+        { wave: 'square', vol: 0.028, notes: [
+          ['A4', 2], ['C5', 1], ['E5', 1], ['D5', 2], ['C5', 2],
+          ['A4', 2], ['F4', 2], ['A4', 1], ['C5', 1], ['D5', 2],
+          ['E5', 2], ['G5', 2], ['E5', 1], ['D5', 1], ['C5', 2],
+          ['D5', 4], ['B4', 2], ['G4', 2],
+          ['A4', 2], ['C5', 1], ['E5', 1], ['A5', 2], ['G5', 2],
+          ['F5', 2], ['E5', 1], ['D5', 1], ['C5', 2], ['A4', 2],
+          ['B4', 2], ['D5', 2], ['G5', 2], ['F5', 2],
+          ['E5', 4], ['G#4', 2], ['B4', 2]
+        ] },
+        { wave: 'triangle', vol: 0.07, notes: bassLine(['A2', 'F2', 'C3', 'G2', 'A2', 'F2', 'G2', 'E2']) }
+      ]
+    }
+  };
+
+  var track = null;  // { name, bus, nextAt }
+  var noiseBuf = null;
+
+  function audioReady() {
+    var ctx = getAudioCtx();
+    return ctx && ctx.state === 'running' ? ctx : null;
+  }
+
+  function scheduleNote(ctx, wave, freq, t, dur, vol, dest) {
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = wave;
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.008);
+    g.gain.setValueAtTime(vol * 0.7, t + Math.min(0.05, dur * 0.5));
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(dest);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  function scheduleHat(ctx, t, dest) {
+    if (!noiseBuf) {
+      noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.05), ctx.sampleRate);
+      var d = noiseBuf.getChannelData(0);
+      for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    var src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = noiseBuf;
+    f.type = 'highpass'; f.frequency.value = 7000;
+    g.gain.setValueAtTime(0.02, t);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 0.04);
+    src.connect(f); f.connect(g); g.connect(dest);
+    src.start(t); src.stop(t + 0.05);
+  }
+
+  function scheduleIteration(ctx) {
+    var tr = TRACKS[track.name], t0 = track.nextAt, len = 0;
+    tr.parts.forEach(function (p) {
+      var t = t0;
+      p.notes.forEach(function (n) {
+        var dur = n[1] * tr.step;
+        if (n[0] !== '-') scheduleNote(ctx, p.wave, noteFreq(n[0]), t, dur * 0.92, p.vol, track.bus);
+        t += dur;
+      });
+      len = Math.max(len, t - t0);
+    });
+    if (tr.hat) for (var k = 1; k * tr.step < len; k += 2) scheduleHat(ctx, t0 + k * tr.step, track.bus);
+    track.nextAt = t0 + len;
+  }
+
+  function playTrack(name) {
+    stopTrack();
+    if (name === 'battle' ? !musicEnabled : !soundEnabled) return;  // фон — своя кнопка, остальное — звук
+    var ctx = audioReady();
+    if (!ctx) return;  // до первого нажатия браузер не даёт звук — фон включится по нажатию
+    var bus = ctx.createGain();
+    bus.connect(ctx.destination);
+    track = { name: name, bus: bus, nextAt: ctx.currentTime + 0.05 };
+    scheduleIteration(ctx);
+  }
+
+  function stopTrack() {
+    if (!track) return;
+    var bus = track.bus;
+    track = null;
+    try {
+      bus.gain.setValueAtTime(0, audioCtx.currentTime);
+      setTimeout(function () { bus.disconnect(); }, 200);
+    } catch (e) {}
+  }
+
+  // подкладываем следующий круг фоновой музыки заранее
+  function musicTick() {
+    if (!track || !TRACKS[track.name].loop || !audioCtx) return;
+    if (audioCtx.currentTime > track.nextAt - 0.5) scheduleIteration(audioCtx);
+  }
+
+  function wantBattleMusic() {
+    return state === 'play' && !paused && musicEnabled;
+  }
+  function syncBattleMusic() {
+    if (wantBattleMusic()) { if (!track || track.name !== 'battle') playTrack('battle'); }
+    else if (track && track.name === 'battle') stopTrack();
+  }
+
+  /* ──────────────── Гул мотора ──────────────── */
+  var engine = null, engineKey = '';
+
+  function engineUpdate() {
+    var ctx = audioCtx && audioCtx.state === 'running' ? audioCtx : null;
+    if (!ctx) return;
+    var on = soundEnabled && state === 'play' && !paused && player && player.alive;
+    var moving = on && player.moving;
+    var key = on + '|' + moving;
+    if (key === engineKey) return;
+    engineKey = key;
+    if (!engine) {
+      if (!on) return;
+      var o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), f = ctx.createBiquadFilter();
+      var trem = ctx.createGain(), lfo = ctx.createOscillator(), lfoGain = ctx.createGain(), out = ctx.createGain();
+      o1.type = 'sawtooth'; o2.type = 'square';
+      f.type = 'lowpass'; f.frequency.value = 380;
+      trem.gain.value = 0.6;
+      lfo.frequency.value = 16; lfoGain.gain.value = 0.4;
+      lfo.connect(lfoGain); lfoGain.connect(trem.gain);
+      out.gain.value = 0;
+      o1.connect(f); o2.connect(f); f.connect(trem); trem.connect(out); out.connect(ctx.destination);
+      o1.start(); o2.start(); lfo.start();
+      engine = { o1: o1, o2: o2, lfo: lfo, out: out };
+    }
+    var t = ctx.currentTime;
+    engine.out.gain.setTargetAtTime(on ? (moving ? 0.05 : 0.022) : 0, t, 0.06);
+    engine.o1.frequency.setTargetAtTime(moving ? 74 : 50, t, 0.08);
+    engine.o2.frequency.setTargetAtTime(moving ? 76.5 : 51.5, t, 0.08);
+    engine.lfo.frequency.setTargetAtTime(moving ? 22 : 13, t, 0.08);
+  }
+
+  /* ──────────────── Портал: отправка результата в таблицу рейтингов ──────────────── */
+  function reportScore() {
+    if (window.parent === window) return;
+    window.parent.postMessage({ type: 'arcade:gameover', game: 'tanks', score: score }, window.location.origin);
+  }
+
+  /* ──────────────── Константы поля ──────────────── */
+  var CELL = 16, N = 26, FIELD = CELL * N, TANK = 32;
+  var EMPTY = 0, BRICK = 1, STEEL = 2, WATER = 3, BUSH = 4, ICE = 5, CRACKED = 6;  // CRACKED — кирпич после первого попадания
+  var DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
+  var BASE = { x: 192, y: 384, w: 32, h: 32 };
+  var BASE_WALL = [[11, 23], [12, 23], [13, 23], [14, 23], [11, 24], [11, 25], [14, 24], [14, 25]];
+  var ENEMY_SPAWNS = [[0, 0], [192, 0], [384, 0]];
+  var PLAYER_SPAWN = [128, 384];
+  var ENEMIES_PER_LEVEL = 20;
+  var CARRIER_INDEXES = [3, 10, 17];
+
+  // Проблемы аптеки, которые прут на кассу
+  var KINDS = {
+    fn:  { label: 'ФН',  name: 'ФН истёк',            color: '#94a3b8', speed: 0.75, bullet: 4,   hp: 1, pts: 100, fire: 0.012 },
+    ofd: { label: 'ОФД', name: 'Нет связи с ОФД',     color: '#f59e0b', speed: 1.6,  bullet: 4,   hp: 1, pts: 200, fire: 0.012 },
+    chz: { label: 'ЧЗ',  name: 'Ошибка маркировки',   color: '#22c55e', speed: 1.0,  bullet: 6.5, hp: 1, pts: 300, fire: 0.02 },
+    fns: { label: 'ФНС', name: 'Налоговая проверка',  color: '#ef4444', speed: 0.75, bullet: 4.5, hp: 4, pts: 400, fire: 0.015 }
+  };
+  var ARMOR_COLORS = ['#ef4444', '#f97316', '#eab308', '#fde68a'];
+
+  var BONUSES = {
+    star:   { icon: '⭐', text: 'Прошивка обновлена!' },
+    shield: { icon: '🛡️', text: 'Антивирус: неуязвимость' },
+    reload: { icon: '🔄', text: 'Перезагрузка! Все проблемы ушли' },
+    lunch:  { icon: '☕', text: 'Обед! Проблемы замерли' },
+    safe:   { icon: '🧱', text: 'ККТ в сейфе!' },
+    life:   { icon: '💰', text: 'Премия! +1 жизнь' }
+  };
+  var BONUS_TYPES = ['star', 'star', 'shield', 'reload', 'lunch', 'safe', 'life'];
+
+  /* ──────────────── Уровни (13×13 блоков) ────────────────
+     . пусто  # кирпич  @ сейф (бетон)  ~ лужа  % фикус  - мокрый пол
+     l/r/u/d — половинка кирпича (лево/право/верх/низ) */
+  var LEVELS = [
+    {
+      name: 'Утро понедельника', sub: 'Касса не открывает смену',
+      mix: [18, 2, 0, 0],
+      map: [
+        '.............',
+        '.#.#.#.#.#.#.',
+        '.#.#.#.#.#.#.',
+        '.#.#.#@#.#.#.',
+        '.#.#.....#.#.',
+        '.....#.#.....',
+        '@.##.....##.@',
+        '.....#.#.....',
+        '.#.#.###.#.#.',
+        '.#.#.#.#.#.#.',
+        '.#.#.....#.#.',
+        '.#.#.....#.#.',
+        '.............'
+      ]
+    },
+    {
+      name: 'Инвентаризация', sub: 'Всё пересчитать, ничего не потерять',
+      mix: [14, 4, 2, 0],
+      map: [
+        '..%.......%..',
+        '.#@#.#.#.#@#.',
+        '.#.#.#%#.#.#.',
+        '.#...#@#...#.',
+        '.###.....###.',
+        '%....#.#....%',
+        '..@.##.##.@..',
+        '%....#.#....%',
+        '.###.%.%.###.',
+        '.#.#.#.#.#.#.',
+        '.#.#.....#.#.',
+        '.#.#.....#.#.',
+        '.............'
+      ]
+    },
+    {
+      name: 'Мокрый пол', sub: 'Осторожно: скользко!',
+      mix: [12, 4, 2, 2],
+      map: [
+        '.............',
+        '.##.--.--.##.',
+        '.##.--.--.##.',
+        '....##.##....',
+        '~~..#...#..~~',
+        '.....---.....',
+        '.@#.-----.#@.',
+        '.....---.....',
+        '~~..#...#..~~',
+        '....##.##....',
+        '.##.......##.',
+        '.##.......##.',
+        '.............'
+      ]
+    },
+    {
+      name: 'Переход на ФФД 1.2', sub: 'Прошивка сама себя не обновит',
+      mix: [8, 6, 3, 3],
+      map: [
+        '.............',
+        '.@.#.@.@.#.@.',
+        '.@.#.....#.@.',
+        '.@.###.###.@.',
+        '.............',
+        '##.@@...@@.##',
+        '...#.%%%.#...',
+        '##.@@...@@.##',
+        '.............',
+        '.@.###.###.@.',
+        '.@.#.....#.@.',
+        '.@.#.....#.@.',
+        '.............'
+      ]
+    },
+    {
+      name: 'Конец квартала', sub: 'Отчёты, отчёты, отчёты',
+      mix: [6, 5, 5, 4],
+      map: [
+        '.............',
+        '.#.#.#.#.#.#.',
+        '.#~~~#.#~~~#.',
+        '.#.%.....%.#.',
+        '...%.#@#.%...',
+        '.##..#.#..##.',
+        '.....%%%.....',
+        '.@@.#...#.@@.',
+        '.#..#.#.#..#.',
+        '.#.##.#.##.#.',
+        '.#.........#.',
+        '.#.#.....#.#.',
+        '.............'
+      ]
+    },
+    {
+      name: 'Налоговая неделя', sub: 'Держи ККТ любой ценой',
+      mix: [4, 6, 4, 6],
+      map: [
+        '.............',
+        '.%%%.#@#.%%%.',
+        '.%#%.#.#.%#%.',
+        '.%%%.....%%%.',
+        '..#..@.@..#..',
+        '@.#.#####.#.@',
+        '..#.......#..',
+        '.##.@.#.@.##.',
+        '.....-#-.....',
+        '.#.#.---.#.#.',
+        '.#.#.....#.#.',
+        '.#.#.....#.#.',
+        '.............'
+      ]
+    }
+  ];
+  var LOOP_MIX = [2, 6, 5, 7];
+
+  /* ──────────────── DOM ──────────────── */
+  var c = document.getElementById('c'),
+      ctx = c.getContext('2d'),
+      wrapper = document.getElementById('canvas-wrapper'),
+      lvlBadge = document.getElementById('lvl-badge'),
+      vScore = document.getElementById('v-score'),
+      vBest = document.getElementById('v-best'),
+      vLives = document.getElementById('v-lives'),
+      vFoes = document.getElementById('v-foes'),
+      vPower = document.getElementById('v-power'),
+      btnSound = document.getElementById('btn-sound'),
+      btnPause = document.getElementById('btn-pause');
+
+  /* ──────────────── Состояние ──────────────── */
+  var grid, player, enemies, bullets, explosions, texts, bonus;
+  var score, best, lives, levelIdx, loopN, queue, spawnedCount, killedCount;
+  var spawnTimer, spawnPoint, freezeTimer, safeTimer, baseAlive;
+  var state, stateTimer, overReason, paused, frame;
+  var scale = 1, dpr = 1, lastTime = 0, accumulator = 0, FIXED_STEP = 1000 / 60;
+
+  best = parseInt(localStorage.getItem('tanksBest') || '0', 10);
+
+  /* ──────────────── Ввод ──────────────── */
+  var heldDirs = [];  // стек нажатых направлений, последнее — актуальное
+  var fireHeld = false;
+  var KEY_DIRS = { ArrowUp: 0, KeyW: 0, ArrowRight: 1, KeyD: 1, ArrowDown: 2, KeyS: 2, ArrowLeft: 3, KeyA: 3 };
+
+  function pressDir(d) { releaseDir(d); heldDirs.push(d); }
+  function releaseDir(d) { var i = heldDirs.indexOf(d); if (i >= 0) heldDirs.splice(i, 1); }
+  function inputDir() { return heldDirs.length ? heldDirs[heldDirs.length - 1] : -1; }
+
+  /* ──────────────── Поле ──────────────── */
+  function cellAt(cx, cy) {
+    if (cx < 0 || cy < 0 || cx >= N || cy >= N) return STEEL;
+    return grid[cy * N + cx];
+  }
+  function setCell(cx, cy, v) {
+    if (cx >= 0 && cy >= 0 && cx < N && cy < N) grid[cy * N + cx] = v;
+  }
+
+  function loadMap(rows) {
+    grid = new Uint8Array(N * N);
+    var full = { '#': BRICK, '@': STEEL, '~': WATER, '%': BUSH, '-': ICE };
+    for (var ty = 0; ty < 13; ty++) {
+      for (var tx = 0; tx < 13; tx++) {
+        var ch = rows[ty].charAt(tx), cx = tx * 2, cy = ty * 2;
+        if (full[ch]) {
+          setCell(cx, cy, full[ch]); setCell(cx + 1, cy, full[ch]);
+          setCell(cx, cy + 1, full[ch]); setCell(cx + 1, cy + 1, full[ch]);
+        } else if (ch === 'l') { setCell(cx, cy, BRICK); setCell(cx, cy + 1, BRICK); }
+        else if (ch === 'r') { setCell(cx + 1, cy, BRICK); setCell(cx + 1, cy + 1, BRICK); }
+        else if (ch === 'u') { setCell(cx, cy, BRICK); setCell(cx + 1, cy, BRICK); }
+        else if (ch === 'd') { setCell(cx, cy + 1, BRICK); setCell(cx + 1, cy + 1, BRICK); }
+      }
+    }
+    setBaseWall(BRICK);
+  }
+
+  function setBaseWall(v) {
+    for (var i = 0; i < BASE_WALL.length; i++) {
+      var cx = BASE_WALL[i][0], cy = BASE_WALL[i][1];
+      if (tankOnRect(cx * CELL, cy * CELL, CELL, CELL)) continue;  // не замуровываем танк
+      setCell(cx, cy, v);
+    }
+  }
+
+  function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+
+  function allTanks() {
+    return player && player.alive ? enemies.concat([player]) : enemies;
+  }
+
+  function tankOnRect(x, y, w, h) {
+    if (!enemies) return false;
+    var ts = allTanks();
+    for (var i = 0; i < ts.length; i++) {
+      if (overlap(ts[i].x, ts[i].y, TANK, TANK, x, y, w, h)) return true;
+    }
+    return false;
+  }
+
+  /* ──────────────── Танки: движение ──────────────── */
+  function tankBlocked(t, nx, ny) {
+    if (nx < 0 || ny < 0 || nx > FIELD - TANK || ny > FIELD - TANK) return true;
+    var c0 = Math.floor(nx / CELL), c1 = Math.floor((nx + TANK - 0.001) / CELL);
+    var r0 = Math.floor(ny / CELL), r1 = Math.floor((ny + TANK - 0.001) / CELL);
+    for (var r = r0; r <= r1; r++) {
+      for (var cc = c0; cc <= c1; cc++) {
+        var v = cellAt(cc, r);
+        if (v === BRICK || v === CRACKED || v === STEEL || v === WATER) return true;
+      }
+    }
+    if (overlap(nx, ny, TANK, TANK, BASE.x, BASE.y, BASE.w, BASE.h)) return true;
+    var ts = allTanks();
+    for (var i = 0; i < ts.length; i++) {
+      var o = ts[i];
+      if (o === t) continue;
+      // уже наложившиеся (например, при появлении) могут разъехаться
+      if (overlap(nx, ny, TANK, TANK, o.x, o.y, TANK, TANK) &&
+          !overlap(t.x, t.y, TANK, TANK, o.x, o.y, TANK, TANK)) return true;
+    }
+    return false;
+  }
+
+  function turn(t, d) {
+    if (d === t.dir) return;
+    if (d % 2 !== t.dir % 2) {
+      // поворот на 90° — выравниваем по сетке, чтобы проходить в проёмы
+      if (d % 2 === 0) {
+        var nx = Math.round(t.x / CELL) * CELL;
+        if (!tankBlocked(t, nx, t.y)) t.x = nx;
+      } else {
+        var ny = Math.round(t.y / CELL) * CELL;
+        if (!tankBlocked(t, t.x, ny)) t.y = ny;
+      }
+    }
+    t.dir = d;
+  }
+
+  function moveTank(t, dist) {
+    var nx = t.x + DX[t.dir] * dist, ny = t.y + DY[t.dir] * dist;
+    if (!tankBlocked(t, nx, ny)) {
+      t.x = nx; t.y = ny; t.tread += dist;
+      return true;
+    }
+    // доезжаем вплотную до препятствия (до границы клетки)
+    var px = t.x, py = t.y;
+    if (DX[t.dir] > 0) px = Math.ceil(t.x / CELL - 1e-6) * CELL;
+    else if (DX[t.dir] < 0) px = Math.floor(t.x / CELL + 1e-6) * CELL;
+    if (DY[t.dir] > 0) py = Math.ceil(t.y / CELL - 1e-6) * CELL;
+    else if (DY[t.dir] < 0) py = Math.floor(t.y / CELL + 1e-6) * CELL;
+    var moved = Math.abs(px - t.x) + Math.abs(py - t.y);
+    if (moved > 0 && moved <= dist && !tankBlocked(t, px, py)) {
+      t.x = px; t.y = py; t.tread += moved;
+    }
+    return false;
+  }
+
+  function onIce(t) {
+    var cx = Math.floor((t.x + TANK / 2) / CELL), cy = Math.floor((t.y + TANK / 2) / CELL);
+    return cellAt(cx, cy) === ICE || cellAt(cx - 1, cy - 1) === ICE;
+  }
+
+  /* ──────────────── Стрельба ──────────────── */
+  function fire(t) {
+    var isPlayer = t === player;
+    var maxB = isPlayer && player.power >= 2 ? 2 : 1;
+    if (t.bullets >= maxB || t.cooldown > 0) return;
+    var speed = isPlayer ? (player.power >= 1 ? 7 : 4.5) : t.kind.bullet;
+    bullets.push({
+      x: t.x + TANK / 2 + DX[t.dir] * 14,
+      y: t.y + TANK / 2 + DY[t.dir] * 14,
+      dir: t.dir, speed: speed, owner: t, isPlayer: isPlayer,
+      steel: isPlayer && player.power >= 3, dead: false
+    });
+    t.bullets++;
+    t.cooldown = isPlayer ? 10 : 30;
+    if (isPlayer) playSound('shoot');
+  }
+
+  function killBullet(b) {
+    if (b.dead) return;
+    b.dead = true;
+    b.owner.bullets = Math.max(0, b.owner.bullets - 1);
+  }
+
+  function bulletStep(b) {
+    if (b.x < 0 || b.y < 0 || b.x >= FIELD || b.y >= FIELD) {
+      if (b.isPlayer) playSound('steel');
+      addExplosion(Math.max(0, Math.min(FIELD, b.x)), Math.max(0, Math.min(FIELD, b.y)), false);
+      return true;
+    }
+    // Ландшафт: пуля сносит полосу шириной в танк (две клетки)
+    var vertical = b.dir % 2 === 0;
+    var hw = vertical ? 6 : 3, hh = vertical ? 3 : 6;
+    var c0 = Math.floor((b.x - hw) / CELL), c1 = Math.floor((b.x + hw - 0.001) / CELL);
+    var r0 = Math.floor((b.y - hh) / CELL), r1 = Math.floor((b.y + hh - 0.001) / CELL);
+    var hitBrick = false, hitSteel = false;
+    for (var r = r0; r <= r1; r++) {
+      for (var cc = c0; cc <= c1; cc++) {
+        if (cc < 0 || r < 0 || cc >= N || r >= N) continue;
+        var v = grid[r * N + cc];
+        if (v === BRICK) { grid[r * N + cc] = b.steel ? EMPTY : CRACKED; hitBrick = true; }
+        else if (v === CRACKED) { grid[r * N + cc] = EMPTY; hitBrick = true; }
+        else if (v === STEEL) {
+          if (b.steel) { grid[r * N + cc] = EMPTY; hitBrick = true; }
+          else hitSteel = true;
+        }
+      }
+    }
+    if (hitBrick || hitSteel) {
+      if (b.isPlayer) playSound(hitSteel && !hitBrick ? 'steel' : 'brick');
+      addExplosion(b.x, b.y, false);
+      return true;
+    }
+    // ККТ
+    if (baseAlive && overlap(b.x - 3, b.y - 3, 6, 6, BASE.x, BASE.y, BASE.w, BASE.h)) {
+      destroyBase();
+      return true;
+    }
+    // Танки
+    if (b.isPlayer) {
+      for (var i = 0; i < enemies.length; i++) {
+        var e = enemies[i];
+        if (!e.alive || e.spawning > 0) continue;
+        if (overlap(b.x - 3, b.y - 3, 6, 6, e.x, e.y, TANK, TANK)) { hitEnemy(e); return true; }
+      }
+    } else if (player.alive && overlap(b.x - 3, b.y - 3, 6, 6, player.x, player.y, TANK, TANK)) {
+      hitPlayer();
+      return true;
+    }
+    return false;
+  }
+
+  function updateBullets() {
+    for (var i = 0; i < bullets.length; i++) {
+      var b = bullets[i];
+      if (b.dead) continue;
+      var steps = Math.ceil(b.speed / 4), d = b.speed / steps;
+      for (var s = 0; s < steps; s++) {
+        b.x += DX[b.dir] * d;
+        b.y += DY[b.dir] * d;
+        if (bulletStep(b)) { killBullet(b); break; }
+        if (state !== 'play') break;
+      }
+    }
+    // пули гасят друг друга
+    for (var a = 0; a < bullets.length; a++) {
+      var ba = bullets[a];
+      if (ba.dead || !ba.isPlayer) continue;
+      for (var k = 0; k < bullets.length; k++) {
+        var bk = bullets[k];
+        if (bk.dead || bk.isPlayer) continue;
+        if (Math.abs(ba.x - bk.x) < 7 && Math.abs(ba.y - bk.y) < 7) { killBullet(ba); killBullet(bk); break; }
+      }
+    }
+    bullets = bullets.filter(function (b) { return !b.dead; });
+  }
+
+  /* ──────────────── Попадания ──────────────── */
+  function hitEnemy(e) {
+    if (e.carrier) { e.carrier = false; spawnBonus(); }
+    e.hp--;
+    if (e.hp > 0) { playSound('armor'); e.flash = 8; return; }
+    destroyEnemy(e);
+  }
+
+  function destroyEnemy(e) {
+    e.alive = false;
+    killedCount++;
+    score += e.kind.pts;
+    addExplosion(e.x + TANK / 2, e.y + TANK / 2, true);
+    addText('+' + e.kind.pts, e.x + TANK / 2, e.y, '#f6d55c');
+    playSound('boom');
+  }
+
+  function hitPlayer() {
+    if (player.shield > 0) return;
+    player.alive = false;
+    player.power = 0;
+    lives--;
+    addExplosion(player.x + TANK / 2, player.y + TANK / 2, true);
+    playSound('boom');
+    if (lives <= 0) gameOver('Инженер ТП ушёл на больничный');
+    else player.respawn = 70;
+  }
+
+  function destroyBase() {
+    baseAlive = false;
+    addExplosion(BASE.x + 16, BASE.y + 16, true);
+    playSound('boom');
+    gameOver('ККТ сломана — чеки не пробиваются!');
+  }
+
+  function gameOver(reason) {
+    if (state === 'over') return;
+    state = 'over';
+    stateTimer = 0;
+    overReason = reason;
+    if (score > best) {
+      best = score;
+      localStorage.setItem('tanksBest', best);
+    }
+    playTrack('over');
+    reportScore();
+  }
+
+  /* ──────────────── Бонусы ──────────────── */
+  function spawnBonus() {
+    var tries = 0, x, y;
+    do {
+      x = Math.floor(Math.random() * 12) * 32 + 16 * Math.floor(Math.random() * 2);
+      y = Math.floor(Math.random() * 11) * 32;
+      tries++;
+    } while (tries < 30 && overlap(x, y, 32, 32, BASE.x - 32, BASE.y - 32, 96, 64));
+    var type = BONUS_TYPES[Math.floor(Math.random() * BONUS_TYPES.length)];
+    bonus = { type: type, x: x, y: y, timer: 900 };
+    playSound('bonus_spawn');
+  }
+
+  function takeBonus() {
+    var t = bonus.type;
+    bonus = null;
+    score += 500;
+    playSound('bonus');
+    if (t === 'star') player.power = Math.min(3, player.power + 1);
+    else if (t === 'shield') player.shield = 600;
+    else if (t === 'reload') {
+      for (var i = 0; i < enemies.length; i++) if (enemies[i].alive && enemies[i].spawning <= 0) destroyEnemy(enemies[i]);
+    }
+    else if (t === 'lunch') freezeTimer = 600;
+    else if (t === 'safe') { safeTimer = 900; setBaseWall(STEEL); }
+    else if (t === 'life') lives++;
+    var txt = t === 'star' ? 'Прошивка v' + (player.power + 1) + '!' : BONUSES[t].text;
+    addText(txt, player.x + TANK / 2, player.y - 6, '#a5b4fc', 90);
+  }
+
+  /* ──────────────── Эффекты ──────────────── */
+  function addExplosion(x, y, big) {
+    explosions.push({ x: x, y: y, t: 0, max: big ? 30 : 12, big: big });
+  }
+  function addText(text, x, y, col, life) {
+    texts.push({ text: text, x: x, y: y, col: col, life: life || 50, max: life || 50 });
+  }
+
+  /* ──────────────── Уровни и появление ──────────────── */
+  function buildQueue(mix) {
+    var kinds = ['fn', 'ofd', 'chz', 'fns'], q = [];
+    for (var k = 0; k < 4; k++) for (var i = 0; i < mix[k]; i++) q.push(kinds[k]);
+    // перемешиваем, но «налоговые» — ближе к концу
+    q.sort(function (a, b) { return (a === 'fns') - (b === 'fns') || Math.random() - 0.5; });
+    for (var j = q.length - 1; j > 0; j--) {
+      if (Math.random() < 0.3) {
+        var s = Math.max(0, j - 3) + Math.floor(Math.random() * Math.min(4, j + 1));
+        var tmp = q[j]; q[j] = q[s]; q[s] = tmp;
+      }
+    }
+    return q;
+  }
+
+  function startLevel() {
+    var L = LEVELS[levelIdx % LEVELS.length];
+    loopN = Math.floor(levelIdx / LEVELS.length);
+    queue = buildQueue(loopN > 0 ? LOOP_MIX : L.mix);
+    spawnedCount = 0;
+    killedCount = 0;
+    spawnTimer = 30;
+    spawnPoint = 0;
+    freezeTimer = 0;
+    safeTimer = 0;
+    enemies = [];
+    bullets = [];
+    explosions = [];
+    texts = [];
+    bonus = null;
+    baseAlive = true;
+    placePlayer();
+    loadMap(L.map);
+    state = 'intro';
+    stateTimer = 0;
+    lvlBadge.textContent = 'УРОВЕНЬ ' + (levelIdx + 1) + ': ' + L.name.toUpperCase();
+    playTrack('intro');
+  }
+
+  function placePlayer() {
+    var power = player ? player.power : 0;
+    player = {
+      x: PLAYER_SPAWN[0], y: PLAYER_SPAWN[1], dir: 0, tread: 0,
+      speed: 1.3, bullets: 0, cooldown: 0, alive: true,
+      shield: 180, power: power, slide: 0, respawn: 0
+    };
+  }
+
+  function spawnEnemy() {
+    var sp = ENEMY_SPAWNS[spawnPoint];
+    if (tankOnRect(sp[0], sp[1], TANK, TANK)) { spawnPoint = (spawnPoint + 1) % 3; return false; }
+    var kindKey = queue[spawnedCount];
+    var kind = KINDS[kindKey];
+    var speedMul = 1 + Math.min(0.5, loopN * 0.1);
+    enemies.push({
+      x: sp[0], y: sp[1], dir: 2, tread: 0,
+      kind: kind, kindKey: kindKey, hp: kind.hp, speed: kind.speed * speedMul,
+      bullets: 0, cooldown: 30, alive: true, spawning: 50,
+      carrier: CARRIER_INDEXES.indexOf(spawnedCount) >= 0,
+      turnTimer: 60 + Math.random() * 120, blocked: 0, flash: 0
+    });
+    spawnedCount++;
+    spawnPoint = (spawnPoint + 1) % 3;
+    return true;
+  }
+
+  function chooseDir(e, wasBlocked) {
+    var r = Math.random(), d, dx, dy;
+    if (r < 0.35) d = 2;
+    else if (r < 0.55 && player.alive) {
+      dx = player.x - e.x; dy = player.y - e.y;
+      d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0);
+    } else if (r < 0.72) {
+      dx = BASE.x - e.x; dy = BASE.y - e.y;
+      d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0);
+    } else d = Math.floor(Math.random() * 4);
+    if (wasBlocked && d === e.dir) d = (d + 1 + Math.floor(Math.random() * 3)) % 4;
+    turn(e, d);
+    e.turnTimer = 60 + Math.random() * 180;
+  }
+
+  /* ──────────────── Обновление ──────────────── */
+  function update() {
+    if (paused) return;
+    frame++;
+
+    if (state === 'intro') {
+      if (++stateTimer > 190) { state = 'play'; stateTimer = 0; syncBattleMusic(); }
+      return;
+    }
+    if (state === 'over') {
+      stateTimer++;
+      updateEffects();
+      return;
+    }
+    if (state === 'clear') {
+      updateEffects();
+      if (++stateTimer > 150) { levelIdx++; startLevel(); }
+      return;
+    }
+
+    // Игрок
+    if (player.alive) {
+      if (player.cooldown > 0) player.cooldown--;
+      if (player.shield > 0) player.shield--;
+      var d = inputDir();
+      player.moving = d >= 0 || player.slide > 0;
+      if (d >= 0) {
+        turn(player, d);
+        var movedP = moveTank(player, player.speed);
+        player.slide = movedP && onIce(player) ? 18 : 0;
+      } else if (player.slide > 0) {
+        var step = Math.min(player.speed, player.slide);
+        if (!moveTank(player, step)) player.slide = 0;
+        else player.slide -= step;
+      }
+      if (fireHeld) fire(player);
+      if (bonus && overlap(player.x, player.y, TANK, TANK, bonus.x, bonus.y, 32, 32)) takeBonus();
+    } else if (player.respawn > 0) {
+      if (--player.respawn === 0 && !tankOnRect(PLAYER_SPAWN[0], PLAYER_SPAWN[1], TANK, TANK)) placePlayer();
+      else if (player.respawn === 0) player.respawn = 10;
+    }
+
+    // Появление проблем
+    var maxActive = 4 + Math.min(2, loopN);
+    if (spawnedCount < ENEMIES_PER_LEVEL && enemies.length < maxActive) {
+      if (--spawnTimer <= 0) {
+        spawnTimer = spawnEnemy() ? Math.max(60, 150 - levelIdx * 10) : 20;
+      }
+    }
+
+    // Враги
+    if (freezeTimer > 0) freezeTimer--;
+    for (var i = 0; i < enemies.length; i++) {
+      var e = enemies[i];
+      if (!e.alive) continue;
+      if (e.flash > 0) e.flash--;
+      if (e.spawning > 0) { e.spawning--; continue; }
+      if (e.cooldown > 0) e.cooldown--;
+      if (freezeTimer > 0) continue;
+      var moved = moveTank(e, e.speed);
+      if (!moved) {
+        e.blocked++;
+        if (e.blocked > 10 || Math.random() < 0.04) { chooseDir(e, true); e.blocked = 0; }
+      } else {
+        e.blocked = 0;
+      }
+      if (--e.turnTimer <= 0) chooseDir(e, false);
+      var chance = e.kind.fire * (moved ? 1 : 3);
+      if (Math.random() < chance) fire(e);
+    }
+    enemies = enemies.filter(function (en) { return en.alive; });
+
+    updateBullets();
+    if (state !== 'play') return;
+
+    // Сейф вокруг ККТ
+    if (safeTimer > 0 && --safeTimer === 0) setBaseWall(BRICK);
+
+    // Бонус исчезает
+    if (bonus && --bonus.timer <= 0) bonus = null;
+
+    updateEffects();
+
+    // Уровень пройден
+    if (killedCount >= ENEMIES_PER_LEVEL && enemies.length === 0) {
+      state = 'clear';
+      stateTimer = 0;
+      score += 1000;
+      addText('+1000 за спасённую аптеку', FIELD / 2, FIELD / 2 + 40, '#22c55e', 140);
+      playTrack('clear');
+    }
+  }
+
+  function updateEffects() {
+    if (!baseAlive && frame % 8 === 0) addText('💨', BASE.x + 8 + Math.random() * 16, BASE.y + 8, '#9ca3af', 30);
+    for (var i = explosions.length - 1; i >= 0; i--) {
+      if (++explosions[i].t >= explosions[i].max) explosions.splice(i, 1);
+    }
+    for (var j = texts.length - 1; j >= 0; j--) {
+      texts[j].y -= 0.5;
+      if (--texts[j].life <= 0) texts.splice(j, 1);
+    }
+  }
+
+  /* ──────────────── HUD ──────────────── */
+  var hudCache = '';
+  function updateHud() {
+    var remaining = Math.max(0, ENEMIES_PER_LEVEL - killedCount);
+    var power = player ? player.power : 0;
+    var key = score + '|' + best + '|' + lives + '|' + remaining + '|' + power;
+    if (key === hudCache) return;
+    hudCache = key;
+    vScore.textContent = score;
+    vBest.textContent = Math.max(best, score);
+    vLives.textContent = Math.max(0, lives);
+    vFoes.textContent = remaining;
+    vPower.textContent = 'v' + (power + 1);
+  }
+
+  /* ──────────────── Отрисовка ──────────────── */
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function drawFloor() {
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(0, 0, FIELD, FIELD);
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var i = 32; i < FIELD; i += 32) {
+      ctx.moveTo(i + 0.5, 0); ctx.lineTo(i + 0.5, FIELD);
+      ctx.moveTo(0, i + 0.5); ctx.lineTo(FIELD, i + 0.5);
+    }
+    ctx.stroke();
+  }
+
+  function drawBrick(x, y, cx, cy) {
+    ctx.fillStyle = '#9a3412';
+    ctx.fillRect(x, y, CELL, CELL);
+    ctx.fillStyle = '#c2410c';
+    var off = (cy % 2) * 4;
+    ctx.fillRect(x, y, CELL, 7);
+    ctx.fillRect(x, y + 8, CELL, 7);
+    ctx.fillStyle = '#7c2d12';
+    ctx.fillRect(x + ((cx % 2) ? 4 : 12) - off / 2, y, 1, 7);
+    ctx.fillRect(x + ((cx % 2) ? 12 : 4) - off / 2, y + 8, 1, 7);
+  }
+
+  function drawCracks(x, y) {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x, y, CELL, CELL);
+    ctx.strokeStyle = '#1c0a03';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x + 3, y + 1); ctx.lineTo(x + 7, y + 7); ctx.lineTo(x + 5, y + 11); ctx.lineTo(x + 9, y + 15);
+    ctx.moveTo(x + 7, y + 7); ctx.lineTo(x + 13, y + 5);
+    ctx.stroke();
+  }
+
+  function drawSteel(x, y) {
+    ctx.fillStyle = '#64748b';
+    ctx.fillRect(x, y, CELL, CELL);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillRect(x + 3, y + 3, 10, 10);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(x + 5, y + 5, 6, 6);
+  }
+
+  function drawWater(x, y) {
+    ctx.fillStyle = '#1e3a8a';
+    ctx.fillRect(x, y, CELL, CELL);
+    ctx.strokeStyle = 'rgba(147,197,253,0.6)';
+    ctx.lineWidth = 1;
+    var ph = Math.floor(frame / 20) % 2 ? 3 : 0;
+    ctx.beginPath();
+    ctx.moveTo(x + 1 + ph, y + 5); ctx.lineTo(x + 5 + ph, y + 3); ctx.lineTo(x + 9 + ph, y + 5);
+    ctx.moveTo(x + 4 - ph, y + 12); ctx.lineTo(x + 8 - ph, y + 10); ctx.lineTo(x + 12 - ph, y + 12);
+    ctx.stroke();
+  }
+
+  function drawIce(x, y, cx, cy) {
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(x, y, CELL, CELL);
+    ctx.strokeStyle = 'rgba(226,232,240,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(x + 2, y + 13); ctx.lineTo(x + 13, y + 2);
+    ctx.moveTo(x + 8, y + 15); ctx.lineTo(x + 15, y + 8);
+    ctx.stroke();
+    // табличка «Осторожно, мокрый пол» на каждом втором блоке
+    if (cx % 4 === 0 && cy % 4 === 0) {
+      ctx.fillStyle = '#facc15';
+      ctx.beginPath();
+      ctx.moveTo(x + 8, y + 2); ctx.lineTo(x + 14, y + 13); ctx.lineTo(x + 2, y + 13);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#1f2937';
+      ctx.fillRect(x + 7.5, y + 6, 1.2, 4);
+      ctx.fillRect(x + 7.5, y + 11, 1.2, 1.2);
+    }
+  }
+
+  function drawBush(x, y) {
+    ctx.fillStyle = '#166534';
+    ctx.fillRect(x, y, CELL, CELL);
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath();
+    ctx.arc(x + 5, y + 5, 4, 0, Math.PI * 2);
+    ctx.arc(x + 11, y + 6, 4, 0, Math.PI * 2);
+    ctx.arc(x + 7, y + 11, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4ade80';
+    ctx.fillRect(x + 4, y + 3, 2, 2);
+    ctx.fillRect(x + 11, y + 9, 2, 2);
+  }
+
+  function drawTerrain(bushes) {
+    var safeBlink = safeTimer > 0 && safeTimer < 120 && Math.floor(frame / 8) % 2 === 0;
+    for (var cy = 0; cy < N; cy++) {
+      for (var cx = 0; cx < N; cx++) {
+        var v = grid[cy * N + cx], x = cx * CELL, y = cy * CELL;
+        if (bushes) { if (v === BUSH) drawBush(x, y); continue; }
+        if (v === BRICK) drawBrick(x, y, cx, cy);
+        else if (v === CRACKED) { drawBrick(x, y, cx, cy); drawCracks(x, y); }
+        else if (v === STEEL) {
+          if (safeBlink && isBaseWall(cx, cy)) drawBrick(x, y, cx, cy);
+          else drawSteel(x, y);
+        }
+        else if (v === WATER) drawWater(x, y);
+        else if (v === ICE) drawIce(x, y, cx, cy);
+      }
+    }
+  }
+
+  function isBaseWall(cx, cy) {
+    for (var i = 0; i < BASE_WALL.length; i++) if (BASE_WALL[i][0] === cx && BASE_WALL[i][1] === cy) return true;
+    return false;
+  }
+
+  // ККТ — касса, которую защищаем
+  function drawBase() {
+    var x = BASE.x, y = BASE.y;
+    if (!baseAlive) {
+      ctx.fillStyle = '#374151';
+      rr(x + 2, y + 10, 28, 20, 3); ctx.fill();
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + 7, y + 13); ctx.lineTo(x + 25, y + 27);
+      ctx.moveTo(x + 25, y + 13); ctx.lineTo(x + 7, y + 27);
+      ctx.stroke();
+      return;
+    }
+    // чековая лента
+    var paper = 4 + Math.sin(frame * 0.05) * 1.5;
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(x + 9, y + 1 + (5 - paper), 14, paper + 6);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(x + 11, y + 4, 10, 1);
+    ctx.fillRect(x + 11, y + 6, 7, 1);
+    // корпус
+    ctx.fillStyle = '#4f46e5';
+    rr(x + 2, y + 9, 28, 22, 4); ctx.fill();
+    // экран
+    ctx.fillStyle = '#052e16';
+    rr(x + 5, y + 12, 22, 8, 2); ctx.fill();
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 6px ui-monospace,monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ККТ', x + 16, y + 16.5);
+    // кнопки
+    ctx.fillStyle = '#c7d2fe';
+    for (var bx = 0; bx < 4; bx++) for (var by = 0; by < 2; by++) ctx.fillRect(x + 6 + bx * 5.5, y + 22 + by * 4, 3.5, 2.5);
+  }
+
+  function drawTank(t, color, label, isPlayer) {
+    var cx = t.x + TANK / 2, cy = t.y + TANK / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t.dir * Math.PI / 2);
+    // гусеницы
+    ctx.fillStyle = '#1f2937';
+    ctx.fillRect(-15, -15, 8, 30);
+    ctx.fillRect(7, -15, 8, 30);
+    ctx.fillStyle = '#4b5563';
+    var ph = Math.floor(t.tread / 2) % 4;
+    for (var i = -15 + ph; i < 15; i += 4) {
+      ctx.fillRect(-15, i, 8, 1.5);
+      ctx.fillRect(7, i, 8, 1.5);
+    }
+    // корпус
+    ctx.fillStyle = color;
+    rr(-10, -11, 20, 24, 3); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(-10, 8, 20, 5);
+    // башня и ствол
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.beginPath(); ctx.arc(0, 1, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = isPlayer ? '#e0e7ff' : '#e5e7eb';
+    ctx.fillRect(-2, -17, 4, 14);
+    ctx.restore();
+    // надпись (не вращается)
+    ctx.fillStyle = isPlayer ? '#ffffff' : '#0b0f1a';
+    ctx.font = 'bold ' + (label.length > 2 ? 7 : 8) + 'px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cy + 1.5);
+  }
+
+  function drawSpawnStar(e) {
+    var cx = e.x + TANK / 2, cy = e.y + TANK / 2;
+    var r = 6 + (Math.sin(e.spawning * 0.5) + 1) * 6;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(e.spawning * 0.2);
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (var k = 0; k < 4; k++) {
+      var a = k * Math.PI / 4;
+      ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      ctx.lineTo(-Math.cos(a) * r, -Math.sin(a) * r);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawEnemies() {
+    for (var i = 0; i < enemies.length; i++) {
+      var e = enemies[i];
+      if (e.spawning > 0) { drawSpawnStar(e); continue; }
+      var color = e.kindKey === 'fns' ? ARMOR_COLORS[Math.max(0, e.kind.hp - e.hp)] : e.kind.color;
+      if (e.carrier && Math.floor(frame / 10) % 2 === 0) color = '#ec4899';
+      if (e.flash > 0) color = '#ffffff';
+      drawTank(e, color, e.kind.label, false);
+      if (freezeTimer > 0) {
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('☕', e.x + TANK - 3, e.y + 3);
+      }
+    }
+  }
+
+  function drawPlayer() {
+    if (!player.alive) return;
+    drawTank(player, '#6366f1', 'ТП', true);
+    if (player.shield > 0) {
+      ctx.strokeStyle = 'rgba(56,189,248,' + (0.5 + Math.sin(frame * 0.4) * 0.35) + ')';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(player.x + TANK / 2, player.y + TANK / 2, 20, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function drawBullets() {
+    for (var i = 0; i < bullets.length; i++) {
+      var b = bullets[i];
+      ctx.fillStyle = b.isPlayer ? '#fde047' : '#f87171';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawBonus() {
+    if (!bonus) return;
+    if (bonus.timer < 180 && Math.floor(frame / 6) % 2 === 0) return;
+    if (Math.floor(frame / 15) % 2 === 0) {
+      ctx.fillStyle = 'rgba(236,72,153,0.35)';
+      rr(bonus.x - 2, bonus.y - 2, 36, 36, 8); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(15,23,42,0.85)';
+    rr(bonus.x + 2, bonus.y + 2, 28, 28, 6); ctx.fill();
+    ctx.strokeStyle = '#f472b6';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.font = '17px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(BONUSES[bonus.type].icon, bonus.x + 16, bonus.y + 17);
+  }
+
+  function drawExplosions() {
+    for (var i = 0; i < explosions.length; i++) {
+      var ex = explosions[i], k = ex.t / ex.max;
+      var r = (ex.big ? 22 : 9) * (0.4 + k);
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = '#f97316';
+      ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fde047';
+      ctx.beginPath(); ctx.arc(ex.x, ex.y, r * 0.55, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawTexts() {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (var i = 0; i < texts.length; i++) {
+      var t = texts[i];
+      ctx.globalAlpha = Math.min(1, t.life / 20);
+      ctx.font = 'bold 11px system-ui,sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText(t.text, t.x + 1, t.y + 1);
+      ctx.fillStyle = t.col;
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawCard(title, titleCol, lines, hint) {
+    ctx.fillStyle = 'rgba(11,15,26,0.72)';
+    ctx.fillRect(0, 0, FIELD, FIELD);
+    var w = 340, h = 70 + lines.length * 20 + (hint ? 30 : 0);
+    var x = (FIELD - w) / 2, y = (FIELD - h) / 2;
+    ctx.fillStyle = 'rgba(19,25,44,0.96)';
+    rr(x, y, w, h, 10); ctx.fill();
+    ctx.strokeStyle = titleCol;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = titleCol;
+    ctx.font = 'bold 17px system-ui,sans-serif';
+    ctx.fillText(title, FIELD / 2, y + 30);
+    ctx.font = '12px system-ui,sans-serif';
+    for (var i = 0; i < lines.length; i++) {
+      ctx.fillStyle = i === 0 ? '#e2e8f0' : '#94a3b8';
+      ctx.fillText(lines[i], FIELD / 2, y + 60 + i * 20);
+    }
+    if (hint) {
+      ctx.fillStyle = '#f6d55c';
+      ctx.font = 'bold 12px system-ui,sans-serif';
+      ctx.fillText(hint, FIELD / 2, y + h - 20);
+    }
+  }
+
+  function draw() {
+    ctx.save();
+    drawFloor();
+    drawTerrain(false);
+    drawBase();
+    drawEnemies();
+    drawPlayer();
+    drawBullets();
+    drawTerrain(true);
+    drawBonus();
+    drawExplosions();
+    drawTexts();
+
+    var L = LEVELS[levelIdx % LEVELS.length];
+    if (state === 'intro') {
+      var title = 'Уровень ' + (levelIdx + 1) + ': ' + L.name;
+      drawCard(title, '#a5b4fc', [L.sub + (loopN > 0 ? ' · круг ' + (loopN + 1) : ''),
+        'Защити ККТ от 20 проблем аптеки'], null);
+    } else if (state === 'clear') {
+      drawCard('Аптека спасена! 🎉', '#22c55e', ['Все чеки пробиты, смена закрыта', 'Счёт: ' + score], null);
+    } else if (state === 'over') {
+      drawCard('КОНЕЦ СМЕНЫ', '#ef4444', [overReason, 'Счёт: ' + score + '  ·  Рекорд: ' + best + '  ·  Уровень ' + (levelIdx + 1)],
+        stateTimer > 60 ? 'Пробел / тап — новая смена' : null);
+    } else if (paused) {
+      drawCard('ПАУЗА', '#f6d55c', ['Проблемы подождут'], 'P / Esc — продолжить');
+    }
+    ctx.restore();
+    updateHud();
+  }
+
+  /* ──────────────── Размеры ──────────────── */
+  function resize() {
+    var w = wrapper.clientWidth - 12, h = wrapper.clientHeight - 12;
+    if (window.matchMedia && window.matchMedia('(max-width:768px)').matches) h -= 180;  // место под кнопки
+    var size = Math.max(160, Math.min(w, h));
+    scale = size / FIELD;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.style.width = Math.floor(size) + 'px';
+    c.style.height = Math.floor(size) + 'px';
+    c.width = Math.floor(size * dpr);
+    c.height = Math.floor(size * dpr);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  }
+
+  /* ──────────────── Цикл ──────────────── */
+  function loop(now) {
+    if (!now) now = performance.now();
+    if (!lastTime) lastTime = now;
+    var delta = Math.min(200, now - lastTime);
+    lastTime = now;
+    accumulator += delta;
+    while (accumulator >= FIXED_STEP) {
+      update();
+      accumulator -= FIXED_STEP;
+    }
+    draw();
+    musicTick();
+    engineUpdate();
+    requestAnimationFrame(loop);
+  }
+
+  function newGame() {
+    score = 0;
+    lives = 3;
+    levelIdx = 0;
+    paused = false;
+    frame = 0;
+    player = null;
+    hudCache = '';
+    btnPause.textContent = '⏸';
+    startLevel();
+  }
+
+  function togglePause() {
+    if (state === 'over') return;
+    paused = !paused;
+    btnPause.textContent = paused ? '▶' : '⏸';
+    syncBattleMusic();
+  }
+
+  function onFirePress() {
+    if (state === 'over') { if (stateTimer > 60) newGame(); return; }
+    fireHeld = true;
+  }
+
+  /* ──────────────── События ──────────────── */
+  function updateSoundButton() {
+    btnSound.textContent = soundEnabled ? '🔊' : '🔇';
+    btnMusic.classList[musicEnabled ? 'remove' : 'add']('off');
+    localStorage.setItem('tanksSound', soundEnabled ? 'true' : 'false');
+    localStorage.setItem('tanksMusic', musicEnabled ? 'true' : 'false');
+    if (!soundEnabled && track && track.name !== 'battle') stopTrack();
+    syncBattleMusic();
+  }
+  function toggleSound() { soundEnabled = !soundEnabled; updateSoundButton(); }
+  function toggleMusic() {
+    musicEnabled = !musicEnabled;
+    updateSoundButton();
+  }
+  var btnMusic = document.getElementById('btn-music');
+  updateSoundButton();
+  btnSound.addEventListener('click', function (e) { e.stopPropagation(); getAudioCtx(); toggleSound(); });
+  btnMusic.addEventListener('click', function (e) { e.stopPropagation(); getAudioCtx(); toggleMusic(); });
+
+  // браузер включает звук только после действия пользователя
+  function wakeAudio() {
+    var ctx = getAudioCtx();
+    if (ctx && ctx.state !== 'running') ctx.resume().then(syncBattleMusic, function () {});
+    else syncBattleMusic();
+  }
+  btnPause.addEventListener('click', function (e) {
+    e.stopPropagation();
+    togglePause();
+  });
+
+  window.addEventListener('keydown', function (e) {
+    if (KEY_DIRS.hasOwnProperty(e.code)) { e.preventDefault(); pressDir(KEY_DIRS[e.code]); }
+    else if (e.code === 'Space' || e.code === 'KeyJ' || e.code === 'Enter') { e.preventDefault(); onFirePress(); }
+    else if (e.code === 'KeyP' || e.code === 'Escape') { e.preventDefault(); togglePause(); }
+    else if (e.code === 'KeyM') toggleSound();
+    else if (e.code === 'KeyN') toggleMusic();
+    wakeAudio();
+  });
+  window.addEventListener('keyup', function (e) {
+    if (KEY_DIRS.hasOwnProperty(e.code)) releaseDir(KEY_DIRS[e.code]);
+    else if (e.code === 'Space' || e.code === 'KeyJ' || e.code === 'Enter') fireHeld = false;
+  });
+  // ушли из окна (клик по рейтингу, другая вкладка) — пауза, чтобы ККТ не сломали без нас
+  window.addEventListener('blur', function () {
+    heldDirs = [];
+    fireHeld = false;
+    if (state === 'play' && !paused) togglePause();
+  });
+
+  c.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.pointerType !== 'mouse') e.preventDefault();
+    window.focus();
+    wakeAudio();
+    if (state === 'over') onFirePress();
+    else if (paused) togglePause();
+  });
+
+  var dirButtons = document.querySelectorAll('.tbtn[data-dir]');
+  Array.prototype.forEach.call(dirButtons, function (btn) {
+    var d = parseInt(btn.getAttribute('data-dir'), 10);
+    btn.addEventListener('touchstart', function (e) { e.preventDefault(); btn.classList.add('active'); pressDir(d); wakeAudio(); }, { passive: false });
+    var up = function () { btn.classList.remove('active'); releaseDir(d); };
+    btn.addEventListener('touchend', up);
+    btn.addEventListener('touchcancel', up);
+  });
+  var tFire = document.getElementById('t-fire');
+  tFire.addEventListener('touchstart', function (e) { e.preventDefault(); tFire.classList.add('active'); onFirePress(); wakeAudio(); }, { passive: false });
+  tFire.addEventListener('touchend', function () { tFire.classList.remove('active'); fireHeld = false; });
+  tFire.addEventListener('touchcancel', function () { tFire.classList.remove('active'); fireHeld = false; });
+
+  window.addEventListener('resize', resize);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+
+  resize();
+  newGame();
+  loop();
+})();
+</script>
+</body>
+</html>

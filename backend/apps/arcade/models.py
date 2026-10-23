@@ -7,9 +7,11 @@ class GameScore(models.Model):
 
     GAME_CAT = 'cat'
     GAME_MEKO = 'meko'
+    GAME_TANKS = 'tanks'
     GAME_CHOICES = [
         (GAME_CAT, 'Cat Runner'),
         (GAME_MEKO, 'Meko Runner'),
+        (GAME_TANKS, 'Танчики: Защита ККТ'),
     ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,

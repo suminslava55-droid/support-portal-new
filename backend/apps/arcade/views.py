@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from .models import GameScore
 
 GAMES = dict(GameScore.GAME_CHOICES)
-MAX_SCORE = 100000  # грубая отсечка явной накрутки
+MAX_SCORE = 1000000  # грубая отсечка явной накрутки
 TOP_N = 10
 
 
@@ -39,7 +39,7 @@ def _leaderboard(game, period, user):
 
 
 class LeaderboardView(APIView):
-    """GET ?game=cat|meko&period=all|month — топ-10 и место текущего пользователя."""
+    """GET ?game=cat|meko|tanks&period=all|month — топ-10 и место текущего пользователя."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
